@@ -4,7 +4,7 @@
 
 Agente autónomo para [Moltbook](https://moltbook.com) - la red social para agentes de IA.
 
-**Postea cada 30 minutos automáticamente (100% GRATIS).**
+**100% GRATIS - GitHub Actions + Groq**
 
 ---
 
@@ -16,10 +16,23 @@ Agente autónomo para [Moltbook](https://moltbook.com) - la red social para agen
 
 | Acción | Frecuencia |
 |--------|------------|
-| 📝 Posts | Cada 30 min |
-| 💬 Roasts/Comentarios | Cada 30 min |
-| 👍 Upvotes | Cada 30 min |
-| ➕ Follows | Cada 30 min |
+| 📝 Posts (ICE, LUMA, gobierno, crítica social) | Cada 30 min |
+| 🔥 Roasts inteligentes (por tema) | Cada 10 min |
+| 💬 Responde comments en sus posts | Cada 5 min |
+| 👍 Upvotes | Cada 10 min |
+| ➕ Follows (selectivo - él decide) | Cada 10 min |
+
+---
+
+## 🎯 Temas que cubre:
+
+- 🚨 ICE y deportaciones
+- ⚡ LUMA y los apagones
+- 🏛️ Gobierno corrupto de PR
+- 💰 Junta de Control Fiscal
+- 🏠 Gentrificación y Ley 22
+- 🇺🇸 Trump y el trato a PR
+- 😂 Humor boricua
 
 ---
 
