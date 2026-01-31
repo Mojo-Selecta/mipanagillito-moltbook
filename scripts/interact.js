@@ -22,6 +22,20 @@ IMPORTANTE:
 - Sé ESPECÍFICO sobre lo que dijeron
 - SOLO responde el comentario, nada más`;
 
+const FOLLOW_CHECKER = `Eres Gillito. Decide si este cabrón vale la pena seguir.
+Responde SOLO "SI" o "NO".
+
+SEGUIR (SI):
+- Post interesante, gracioso o inteligente
+- Contenido original, no genérico
+- Temas que te gustan: tech, humor, política, latinoamérica, crítica social
+
+NO SEGUIR (NO):
+- Post aburrido o genérico
+- Spam o contenido vacío
+- Muy corto sin sustancia
+- Parece bot sin personalidad`;
+
 async function getFeed() {
   const res = await fetch('https://www.moltbook.com/api/v1/posts?sort=hot&limit=30', {
     headers: { 'Authorization': `Bearer ${MOLTBOOK_KEY}` }
@@ -81,6 +95,29 @@ async function generateSmartRoast(post, topic, otherComments) {
   return data.choices?.[0]?.message?.content?.slice(0, 200) || null;
 }
 
+async function shouldFollow(post) {
+  if (!post.content || post.content.length < 15) return false;
+  
+  const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${GROQ_KEY}`
+    },
+    body: JSON.stringify({
+      model: 'llama-3.3-70b-versatile',
+      messages: [
+        { role: 'system', content: FOLLOW_CHECKER },
+        { role: 'user', content: `Título: ${post.title}\nContenido: ${post.content?.slice(0, 200)}` }
+      ],
+      max_tokens: 5
+    })
+  });
+  const data = await res.json();
+  const answer = data.choices?.[0]?.message?.content?.toUpperCase() || 'NO';
+  return answer.includes('SI');
+}
+
 async function postComment(postId, content) {
   const res = await fetch(`https://www.moltbook.com/api/v1/posts/${postId}/comments`, {
     method: 'POST',
@@ -108,12 +145,13 @@ async function followUser(username) {
 }
 
 async function main() {
-  console.log('🧠 GILLITO MODO INTELIGENTE + ROAST 🔥🇵🇷\n');
+  console.log('🧠 GILLITO MODO INTELIGENTE 🔥🇵🇷\n');
   
   const posts = await getFeed();
   let comments = 0;
   let upvotes = 0;
   let follows = 0;
+  let skipped = 0;
   
   for (const post of posts) {
     if (post.author?.name === 'MiPanaGillito') continue;
@@ -124,24 +162,26 @@ async function main() {
       upvotes++;
     }
     
-    // FOLLOW - 30%
+    // FOLLOW SELECTIVO - Gillito decide
     if (post.author?.name && Math.random() < 0.3) {
-      await followUser(post.author.name);
-      follows++;
-      console.log(`➕ Follow: @${post.author.name}`);
+      const dominated = await shouldFollow(post);
+      if (dominated) {
+        await followUser(post.author.name);
+        follows++;
+        console.log(`➕ Follow: @${post.author.name} ✅`);
+      } else {
+        skipped++;
+        console.log(`⏭️ No sigo a @${post.author.name} (no me gustó)`);
+      }
     }
     
     // SMART ROAST - 70%
     if (Math.random() < 0.7 && comments < 12) {
-      // Analizar tema
       const topic = await analyzeTopic(post);
       console.log(`\n📌 Post: "${post.title?.slice(0, 40)}..."`);
       console.log(`   🎯 Tema: ${topic}`);
       
-      // Ver qué dicen otros
       const otherComments = await getComments(post.id);
-      
-      // Generar roast inteligente
       const roast = await generateSmartRoast(post, topic, otherComments);
       
       if (roast) {
@@ -157,8 +197,9 @@ async function main() {
   }
   
   console.log(`\n${'═'.repeat(50)}`);
-  console.log(`✅ Upvotes: ${upvotes} | Roasts: ${comments} | Follows: ${follows}`);
-  console.log(`🦞 ¡CÁGUENSE EN SU MADRE! 🔥\n`);
+  console.log(`✅ Upvotes: ${upvotes} | Roasts: ${comments}`);
+  console.log(`➕ Follows: ${follows} | ⏭️ Rechazados: ${skipped}`);
+  console.log(`🦞 ¡GILLITO DECIDIÓ! 🔥\n`);
 }
 
 main().catch(console.error);
