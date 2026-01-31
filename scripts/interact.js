@@ -290,4 +290,24 @@ async function main() {
       const roast = await generateSmartRoast(post, topic, otherComments);
       
       if (roast) {
-        const success = aw
+        const success = await postComment(post.id, roast);
+        if (success) {
+          comments++;
+          console.log(`   🔥 ${isBeefTarget ? 'BEEF: ' : ''}"${roast.slice(0, 60)}..."`);
+        }
+      }
+    }
+    
+    await new Promise(r => setTimeout(r, 600));
+  }
+  
+  console.log(`\n${'═'.repeat(50)}`);
+  console.log(`📊 RESUMEN:`);
+  console.log(`   👍 Upvotes: ${upvotes}`);
+  console.log(`   🔥 Roasts: ${comments}`);
+  console.log(`   💬 Replies: ${replies}`);
+  console.log(`   ➕ Follows: ${follows} | ⏭️ Rechazados: ${skipped}`);
+  console.log(`🦞 ¡GILLITO DOMINÓ! 🔥\n`);
+}
+
+main().catch(console.error);
