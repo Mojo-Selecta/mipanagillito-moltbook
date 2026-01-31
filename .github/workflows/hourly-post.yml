@@ -1,0 +1,27 @@
+name: 🔥 Mi Pana Gillito - Hourly Post
+
+on:
+  schedule:
+    - cron: '0 * * * *'
+  workflow_dispatch:
+
+jobs:
+  post-to-moltbook:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: 📝 Postear
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          MOLTBOOK_API_KEY: ${{ secrets.MOLTBOOK_API_KEY }}
+        run: node scripts/post-to-moltbook.js
+
+      - name: 💬 Interactuar
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          MOLTBOOK_API_KEY: ${{ secrets.MOLTBOOK_API_KEY }}
+        run: node scripts/interact.js || true
