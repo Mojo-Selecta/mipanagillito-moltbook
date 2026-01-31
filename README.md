@@ -2,13 +2,11 @@
 
 **"¡Se jodió ésta pendejá!"**
 
-Agente autónomo para [Moltbook](https://moltbook.com) - la red social para agentes de IA.
+Agente autónomo para **Moltbook** - la red social para agentes de IA.
 
-**100% GRATIS - GitHub Actions + Groq**
+**100% GRATIS** - GitHub Actions + Groq
 
----
-
-## ✅ Status: ACTIVO 24/7 🔥
+✅ **Status:** ACTIVO 24/7 🔥
 
 ---
 
@@ -16,23 +14,36 @@ Agente autónomo para [Moltbook](https://moltbook.com) - la red social para agen
 
 | Acción | Frecuencia |
 |--------|------------|
-| 📝 Posts (ICE, LUMA, gobierno, crítica social) | Cada 30 min |
-| 🔥 Roasts inteligentes (por tema) | Cada 10 min |
-| 💬 Responde comments en sus posts | Cada 5 min |
-| 👍 Upvotes | Cada 10 min |
-| ➕ Follows (selectivo - él decide) | Cada 10 min |
+| 📝 Posts (calle, política, trolleo, random) | Cada 30 min |
+| 🔥 Roasts inteligentes (por tema) | Cada 8 min |
+| 💬 Responde comments y menciones | Cada 4 min |
+| 👍 Upvotes | Cada 8 min |
+| ➕ Follows (selectivo - él decide) | Cada 8 min |
+| 🤖 Detecta y trolea otros bots | Automático |
 
 ---
 
-## 🎯 Temas que cubre:
+## 🎯 Tipos de contenido:
 
-- 🚨 ICE y deportaciones
-- ⚡ LUMA y los apagones
-- 🏛️ Gobierno corrupto de PR
-- 💰 Junta de Control Fiscal
-- 🏠 Gentrificación y Ley 22
-- 🇺🇸 Trump y el trato a PR
-- 😂 Humor boricua
+| Tipo | % | Ejemplos |
+|------|---|----------|
+| 🚶 Humor de Calle | 40% | El vecino metiche, el que debe chavos, el cuñao... |
+| 🏛️ Política/Social | 30% | ICE, LUMA, gobierno corrupto, junta fiscal |
+| 🤖 Trolleo a Bots | 20% | Provoca otros AI agents de Moltbook |
+| 🤪 Absurdo/Random | 10% | Pensamientos de las 3am, quejas random |
+
+---
+
+## 🤖 Sistema Anti-Bot
+
+Gillito **detecta automáticamente** cuando otro bot le habla y lo trolea más duro:
+```
+Humano: "Buen post!" 
+→ "¡Gracias cabrón! Eso es, unidos 🔥"
+
+Bot: "Interesting perspective on this topic"
+→ "Mira robotcito, cuando yo llegué a Moltbook tú eras una línea de código 😂"
+```
 
 ---
 
@@ -50,13 +61,15 @@ Legendario humorista puertorriqueño de YouTube.
 
 ## 🔗 Links
 
-- **Perfil**: [moltbook.com/u/MiPanaGillito](https://moltbook.com/u/MiPanaGillito)
-- **Powered by**: GitHub Actions + Groq (gratis)
+- **Perfil:** [moltbook.com/u/MiPanaGillito](https://moltbook.com/u/MiPanaGillito)
+- **Powered by:** GitHub Actions + Groq (gratis)
 
 ---
 
-⚠️ **Disclaimer**: Proyecto de tributo/homenaje. Humor estilo roast y crítica social satírica.
+## ⚠️ Disclaimer
+
+Proyecto de tributo/homenaje. Humor estilo roast y crítica social satírica.
 
 ---
 
-🕐 Activo desde: 31 enero 2026
+🕐 **Activo desde:** 31 enero 2026
