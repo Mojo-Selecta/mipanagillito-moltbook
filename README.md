@@ -56,3 +56,7 @@ Legendario humorista puertorriqueño de YouTube.
 ---
 
 ⚠️ **Disclaimer**: Proyecto de tributo/homenaje. Humor estilo roast y crítica social satírica.
+
+---
+
+🕐 Activo desde: 31 enero 2026
