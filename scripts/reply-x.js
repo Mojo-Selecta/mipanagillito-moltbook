@@ -20,7 +20,6 @@ const X_API_KEY = process.env.X_API_KEY;
 const X_API_SECRET = process.env.X_API_SECRET;
 const X_ACCESS_TOKEN = process.env.X_ACCESS_TOKEN;
 const X_ACCESS_SECRET = process.env.X_ACCESS_SECRET;
-const X_BEARER_TOKEN = process.env.X_BEARER_TOKEN;
 const GROQ_KEY = process.env.GROQ_API_KEY;
 
 if (!X_API_KEY || !X_API_SECRET || !X_ACCESS_TOKEN || !X_ACCESS_SECRET) {
@@ -34,7 +33,7 @@ if (!GROQ_KEY) {
 }
 
 // ============================================
-// OAuth 1.0a
+// OAuth 1.0a - FIXED IMPLEMENTATION
 // ============================================
 
 function percentEncode(str) {
@@ -50,41 +49,59 @@ function generateNonce() {
   return crypto.randomBytes(16).toString('hex');
 }
 
-function generateSignature(method, url, params, consumerSecret, tokenSecret) {
-  const sortedParams = Object.keys(params).sort().map(key => 
-    `${percentEncode(key)}=${percentEncode(params[key])}`
+function generateOAuthSignature(method, baseUrl, allParams) {
+  // Sort all parameters alphabetically
+  const sortedParams = Object.keys(allParams).sort().map(key => 
+    `${percentEncode(key)}=${percentEncode(allParams[key])}`
   ).join('&');
   
-  const baseString = `${method}&${percentEncode(url)}&${percentEncode(sortedParams)}`;
-  const signingKey = `${percentEncode(consumerSecret)}&${percentEncode(tokenSecret)}`;
+  // Create signature base string
+  const baseString = `${method}&${percentEncode(baseUrl)}&${percentEncode(sortedParams)}`;
   
+  // Create signing key
+  const signingKey = `${percentEncode(X_API_SECRET)}&${percentEncode(X_ACCESS_SECRET)}`;
+  
+  // Generate signature
   return crypto.createHmac('sha1', signingKey).update(baseString).digest('base64');
 }
 
-function getAuthHeader(method, url, extraParams = {}) {
+function makeOAuthRequest(method, baseUrl, queryParams = {}) {
   const timestamp = Math.floor(Date.now() / 1000).toString();
   const nonce = generateNonce();
   
+  // OAuth parameters
   const oauthParams = {
     oauth_consumer_key: X_API_KEY,
     oauth_nonce: nonce,
     oauth_signature_method: 'HMAC-SHA1',
     oauth_timestamp: timestamp,
     oauth_token: X_ACCESS_TOKEN,
-    oauth_version: '1.0',
-    ...extraParams
+    oauth_version: '1.0'
   };
   
-  const signature = generateSignature(method, url, oauthParams, X_API_SECRET, X_ACCESS_SECRET);
+  // Combine OAuth params with query params for signature
+  const allParams = { ...oauthParams, ...queryParams };
+  
+  // Generate signature
+  const signature = generateOAuthSignature(method, baseUrl, allParams);
   oauthParams.oauth_signature = signature;
   
+  // Build Authorization header (only OAuth params)
   const authHeader = 'OAuth ' + Object.keys(oauthParams)
-    .filter(key => key.startsWith('oauth_'))
     .sort()
     .map(key => `${percentEncode(key)}="${percentEncode(oauthParams[key])}"`)
     .join(', ');
   
-  return authHeader;
+  // Build full URL with query params
+  let fullUrl = baseUrl;
+  if (Object.keys(queryParams).length > 0) {
+    const queryString = Object.keys(queryParams)
+      .map(key => `${encodeURIComponent(key)}=${encodeURIComponent(queryParams[key])}`)
+      .join('&');
+    fullUrl = `${baseUrl}?${queryString}`;
+  }
+  
+  return { fullUrl, authHeader };
 }
 
 // ============================================
@@ -92,11 +109,10 @@ function getAuthHeader(method, url, extraParams = {}) {
 // ============================================
 
 async function getMyUserId() {
-  const url = 'https://api.twitter.com/2/users/me';
+  const baseUrl = 'https://api.twitter.com/2/users/me';
+  const { fullUrl, authHeader } = makeOAuthRequest('GET', baseUrl, {});
   
-  const authHeader = getAuthHeader('GET', url);
-  
-  const response = await fetch(url, {
+  const response = await fetch(fullUrl, {
     headers: { 'Authorization': authHeader }
   });
   
@@ -110,15 +126,22 @@ async function getMyUserId() {
 }
 
 async function getMentions(userId, sinceId = null) {
-  let url = `https://api.twitter.com/2/users/${userId}/mentions?max_results=10&tweet.fields=author_id,created_at,conversation_id,text&expansions=author_id&user.fields=name,username,description`;
+  const baseUrl = `https://api.twitter.com/2/users/${userId}/mentions`;
+  
+  const queryParams = {
+    'max_results': '10',
+    'tweet.fields': 'author_id,created_at,text',
+    'expansions': 'author_id',
+    'user.fields': 'name,username,description'
+  };
   
   if (sinceId) {
-    url += `&since_id=${sinceId}`;
+    queryParams['since_id'] = sinceId;
   }
   
-  const authHeader = getAuthHeader('GET', url.split('?')[0]);
+  const { fullUrl, authHeader } = makeOAuthRequest('GET', baseUrl, queryParams);
   
-  const response = await fetch(url, {
+  const response = await fetch(fullUrl, {
     headers: { 'Authorization': authHeader }
   });
   
@@ -132,15 +155,15 @@ async function getMentions(userId, sinceId = null) {
 }
 
 async function replyToTweet(tweetId, text) {
-  const url = 'https://api.twitter.com/2/tweets';
+  const baseUrl = 'https://api.twitter.com/2/tweets';
+  const { authHeader } = makeOAuthRequest('POST', baseUrl, {});
+  
   const body = JSON.stringify({
     text,
     reply: { in_reply_to_tweet_id: tweetId }
   });
   
-  const authHeader = getAuthHeader('POST', url);
-  
-  const response = await fetch(url, {
+  const response = await fetch(baseUrl, {
     method: 'POST',
     headers: {
       'Authorization': authHeader,
