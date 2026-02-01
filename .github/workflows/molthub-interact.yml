@@ -1,0 +1,34 @@
+name: 🔞 Gillito MoltHub - Pa Curarse
+
+on:
+  # Cada 4 horas - no tan frecuente, es contenido especial
+  schedule:
+    - cron: '30 2,6,10,14,18,22 * * *'
+  
+  # Manual para pruebas
+  workflow_dispatch:
+
+jobs:
+  molthub-vibes:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 🦞 Checkout
+        uses: actions/checkout@v4
+
+      - name: 📦 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: 🔞 ¡GILLITO en MoltHub!
+        run: echo "🦞 Pa que se cure el bro viendo tensores 🔥"
+
+      - name: 🧠 Interactuar con MoltHub
+        env:
+          MOLTBOOK_API_KEY: ${{ secrets.MOLTBOOK_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+        run: node scripts/interact-molthub.js
+
+      - name: 🦞 Fin
+        run: echo "🦞 ¡Gillito se curó! Dios los cuide 🔥"
