@@ -24,6 +24,13 @@ jobs:
       - name: 💬 Revisando menciones
         run: echo "Gillito revisando menciones en X 🐦"
 
+      - name: 🔍 Debug - Ver modelo
+        run: |
+          echo "=== Contenido de reply-x.js (primeras 20 líneas) ==="
+          head -20 scripts/reply-x.js
+          echo "=== Buscando modelo ==="
+          grep -n "GROQ_MODEL" scripts/reply-x.js
+
       - name: 🗣️ Responder menciones
         env:
           X_API_KEY: ${{ secrets.X_API_KEY }}
