@@ -1,8 +1,8 @@
-name: 💬 Gillito - Comentar/Upvote/Follow
+name: 🔥 Gillito Moltbook - Interact v5.0
 
 on:
   schedule:
-    - cron: '*/8 * * * *'
+    - cron: '*/10 * * * *'    # Cada 10 minutos
   workflow_dispatch:
 
 jobs:
@@ -11,19 +11,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
+        with: { node-version: '22' }
 
-      - name: 🧠 Cargar memoria de interacciones
+      - name: 🧠 Cargar memoria interacciones
         uses: actions/cache@v4
         with:
           path: .gillito-molt-interact-history.json
-          key: gillito-molt-interact-${{ github.run_id }}
-          restore-keys: |
-            gillito-molt-interact-
+          key: molt-interact-${{ github.run_id }}
+          restore-keys: molt-interact-
 
-      - name: 🔥 Roastear, Upvotear, Seguir, Trolear Bots
+      - name: 🔥 Roast/Upvote/Follow
         env:
-          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           MOLTBOOK_API_KEY: ${{ secrets.MOLTBOOK_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
         run: node scripts/interact.js
