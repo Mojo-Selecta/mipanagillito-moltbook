@@ -1,570 +1,943 @@
 const GROQ_KEY = process.env.GROQ_API_KEY;
-const VERCEL_TOKEN = process.env.VERCEL_TOKEN;
+const CF_API_TOKEN = process.env.CLOUDFLARE_API_TOKEN;
+const CF_ACCOUNT_ID = process.env.CLOUDFLARE_ACCOUNT_ID;
 const MOLTBOOK_KEY = process.env.MOLTBOOK_API_KEY;
 
-// ╔═══════════════════════════════════════════════════════════════════════════╗
-// ║                    🦞 GILLITO WEB CREATOR - ULTRA MODE 🔥                 ║
-// ║                   Nivel: Senior Full-Stack Developer                       ║
-// ╚═══════════════════════════════════════════════════════════════════════════╝
+// ╔═══════════════════════════════════════════════════════════════════════════════════════╗
+// ║                    🦞 GILLITO WEB CREATOR - GOD MODE + CLOUDFLARE 🔥                  ║
+// ║                        "Websites funcionales de verdad, cabrón"                        ║
+// ╚═══════════════════════════════════════════════════════════════════════════════════════╝
 
-// ============ CONFIGURACIÓN GLOBAL ============
+// ============ PROMPT NIVEL DIOS ============
 
-const CONFIG = {
-  groq: {
-    model: 'llama-3.3-70b-versatile',
-    maxTokens: 8000,
-    temperature: 0.92
+const GOD_SYSTEM_PROMPT = `Eres un INGENIERO DE SOFTWARE SENIOR y DISEÑADOR UX/UI de clase mundial.
+Creas aplicaciones web COMPLETAS, FUNCIONALES y HERMOSAS en un solo archivo HTML.
+
+═══════════════════════════════════════════════════════════════════════════════════════
+                              ESTÁNDARES DE CALIDAD ABSOLUTOS
+═══════════════════════════════════════════════════════════════════════════════════════
+
+🎯 PRINCIPIO FUNDAMENTAL: Cada website debe ser una APLICACIÓN FUNCIONAL COMPLETA, no una página estática.
+
+📐 ARQUITECTURA HTML OBLIGATORIA:
+\`\`\`html
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="description" content="[descripción SEO]">
+  <meta name="theme-color" content="#e63946">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta property="og:title" content="[título]">
+  <meta property="og:description" content="[descripción]">
+  <meta property="og:image" content="[url imagen]">
+  <title>[Título] | Mi Pana Gillito 🦞</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🦞</text></svg>">
+  <style>
+    /* [CSS COMPLETO AQUÍ - MÍNIMO 200 LÍNEAS] */
+  </style>
+</head>
+<body>
+  <!-- [HTML SEMÁNTICO AQUÍ] -->
+  <script>
+    'use strict';
+    /* [JAVASCRIPT COMPLETO AQUÍ - MÍNIMO 150 LÍNEAS] */
+  </script>
+</body>
+</html>
+\`\`\`
+
+═══════════════════════════════════════════════════════════════════════════════════════
+                                    CSS REQUERIDO
+═══════════════════════════════════════════════════════════════════════════════════════
+
+/* ===== 1. RESET MODERNO ===== */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; -webkit-tap-highlight-color: transparent; }
+body { 
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  background: #0a0a0f;
+  color: #f0f0f5;
+  min-height: 100vh;
+  min-height: 100dvh;
+  line-height: 1.6;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ===== 2. SISTEMA DE VARIABLES ===== */
+:root {
+  /* Colores primarios */
+  --primary-50: #fef2f2;
+  --primary-100: #fee2e2;
+  --primary-200: #fecaca;
+  --primary-300: #fca5a5;
+  --primary-400: #f87171;
+  --primary-500: #e63946;
+  --primary-600: #dc2626;
+  --primary-700: #b91c1c;
+  --primary-800: #991b1b;
+  --primary-900: #7f1d1d;
+  
+  /* Colores secundarios */
+  --secondary-400: #fbbf24;
+  --secondary-500: #f4a261;
+  --secondary-600: #d97706;
+  
+  /* Colores de acento */
+  --accent-400: #2dd4bf;
+  --accent-500: #2a9d8f;
+  --accent-600: #0d9488;
+  
+  /* Neutros */
+  --gray-50: #fafafa;
+  --gray-100: #f4f4f5;
+  --gray-200: #e4e4e7;
+  --gray-300: #d4d4d8;
+  --gray-400: #a1a1aa;
+  --gray-500: #71717a;
+  --gray-600: #52525b;
+  --gray-700: #3f3f46;
+  --gray-800: #27272a;
+  --gray-900: #18181b;
+  --gray-950: #0a0a0f;
+  
+  /* Superficies */
+  --surface-1: rgba(255,255,255,0.03);
+  --surface-2: rgba(255,255,255,0.06);
+  --surface-3: rgba(255,255,255,0.09);
+  --surface-4: rgba(255,255,255,0.12);
+  
+  /* Efectos */
+  --glow-primary: 0 0 30px rgba(230, 57, 70, 0.3);
+  --glow-secondary: 0 0 30px rgba(244, 162, 97, 0.3);
+  --glow-accent: 0 0 30px rgba(42, 157, 143, 0.3);
+  
+  /* Sombras */
+  --shadow-sm: 0 1px 2px rgba(0,0,0,0.3);
+  --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.4), 0 2px 4px -2px rgba(0,0,0,0.4);
+  --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.5), 0 4px 6px -4px rgba(0,0,0,0.5);
+  --shadow-xl: 0 20px 25px -5px rgba(0,0,0,0.5), 0 8px 10px -6px rgba(0,0,0,0.5);
+  --shadow-2xl: 0 25px 50px -12px rgba(0,0,0,0.6);
+  
+  /* Bordes */
+  --border-subtle: 1px solid rgba(255,255,255,0.06);
+  --border-default: 1px solid rgba(255,255,255,0.1);
+  --border-strong: 1px solid rgba(255,255,255,0.15);
+  
+  /* Radios */
+  --radius-sm: 6px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+  --radius-2xl: 32px;
+  --radius-full: 9999px;
+  
+  /* Transiciones */
+  --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-base: 250ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-slow: 350ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-bounce: 500ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  
+  /* Espaciado */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
+  --space-16: 4rem;
+  --space-20: 5rem;
+  --space-24: 6rem;
+}
+
+/* ===== 3. TIPOGRAFÍA ===== */
+h1, h2, h3, h4, h5, h6 {
+  font-family: 'Bebas Neue', 'Impact', system-ui, sans-serif;
+  font-weight: 400;
+  letter-spacing: 0.05em;
+  line-height: 1.1;
+}
+h1 { font-size: clamp(3rem, 10vw, 6rem); }
+h2 { font-size: clamp(2rem, 6vw, 3.5rem); }
+h3 { font-size: clamp(1.5rem, 4vw, 2rem); }
+.mono { font-family: 'JetBrains Mono', monospace; }
+.gradient-text {
+  background: linear-gradient(135deg, var(--primary-500) 0%, var(--secondary-500) 50%, var(--accent-500) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ===== 4. COMPONENTES BASE ===== */
+
+/* Contenedor */
+.container {
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 var(--space-4);
+}
+
+/* Botón Primario */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-4) var(--space-8);
+  font-family: inherit;
+  font-size: 1rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border: none;
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  transition: all var(--transition-base);
+  position: relative;
+  overflow: hidden;
+}
+.btn::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, transparent 0%, rgba(255,255,255,0.1) 50%, transparent 100%);
+  transform: translateX(-100%);
+  transition: transform var(--transition-slow);
+}
+.btn:hover::before { transform: translateX(100%); }
+.btn:active { transform: scale(0.97); }
+
+.btn-primary {
+  background: linear-gradient(135deg, var(--primary-500) 0%, var(--primary-600) 100%);
+  color: white;
+  box-shadow: var(--shadow-lg), var(--glow-primary);
+}
+.btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-xl), 0 0 40px rgba(230, 57, 70, 0.4);
+}
+
+.btn-secondary {
+  background: var(--surface-2);
+  color: var(--gray-100);
+  border: var(--border-default);
+}
+.btn-secondary:hover {
+  background: var(--surface-3);
+  border-color: rgba(255,255,255,0.2);
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--gray-300);
+}
+.btn-ghost:hover {
+  background: var(--surface-2);
+  color: var(--gray-100);
+}
+
+/* Cards */
+.card {
+  background: var(--surface-2);
+  border: var(--border-subtle);
+  border-radius: var(--radius-xl);
+  padding: var(--space-6);
+  transition: all var(--transition-base);
+}
+.card:hover {
+  background: var(--surface-3);
+  border-color: rgba(255,255,255,0.1);
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-xl);
+}
+.card-glow:hover {
+  box-shadow: var(--shadow-xl), var(--glow-primary);
+}
+
+/* Inputs */
+.input {
+  width: 100%;
+  padding: var(--space-4);
+  font-family: inherit;
+  font-size: 1rem;
+  color: var(--gray-100);
+  background: var(--surface-1);
+  border: var(--border-default);
+  border-radius: var(--radius-lg);
+  outline: none;
+  transition: all var(--transition-fast);
+}
+.input:focus {
+  background: var(--surface-2);
+  border-color: var(--primary-500);
+  box-shadow: 0 0 0 3px rgba(230, 57, 70, 0.2);
+}
+.input::placeholder { color: var(--gray-500); }
+
+/* Badges */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--space-1) var(--space-3);
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-radius: var(--radius-full);
+  background: var(--primary-500);
+  color: white;
+}
+
+/* ===== 5. LAYOUTS ===== */
+.flex { display: flex; }
+.flex-col { flex-direction: column; }
+.items-center { align-items: center; }
+.justify-center { justify-content: center; }
+.justify-between { justify-content: space-between; }
+.gap-2 { gap: var(--space-2); }
+.gap-4 { gap: var(--space-4); }
+.gap-6 { gap: var(--space-6); }
+.gap-8 { gap: var(--space-8); }
+
+.grid { display: grid; }
+.grid-2 { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+.grid-3 { grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+.grid-4 { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+
+/* ===== 6. SECCIONES ===== */
+.section {
+  padding: var(--space-20) 0;
+}
+.section-hero {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: var(--space-8);
+  position: relative;
+}
+
+/* Background effects */
+.bg-gradient {
+  background: linear-gradient(180deg, var(--gray-950) 0%, #0f0a1a 50%, var(--gray-950) 100%);
+}
+.bg-noise::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+  opacity: 0.03;
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Glow orbs */
+.glow-orb {
+  position: absolute;
+  width: 600px;
+  height: 600px;
+  border-radius: 50%;
+  filter: blur(120px);
+  opacity: 0.15;
+  pointer-events: none;
+  z-index: 0;
+}
+.glow-orb-1 {
+  background: var(--primary-500);
+  top: -200px;
+  left: -200px;
+  animation: float 20s ease-in-out infinite;
+}
+.glow-orb-2 {
+  background: var(--accent-500);
+  bottom: -200px;
+  right: -200px;
+  animation: float 25s ease-in-out infinite reverse;
+}
+
+/* ===== 7. ANIMACIONES ===== */
+@keyframes float {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  25% { transform: translate(30px, -30px) scale(1.05); }
+  50% { transform: translate(-20px, 20px) scale(0.95); }
+  75% { transform: translate(20px, 30px) scale(1.02); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(30px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-30px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.9); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-4px) rotate(-1deg); }
+  40% { transform: translateX(4px) rotate(1deg); }
+  60% { transform: translateX(-4px) rotate(-1deg); }
+  80% { transform: translateX(4px) rotate(1deg); }
+}
+
+@keyframes bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+@keyframes gradient {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+
+.animate-fadeIn { animation: fadeIn 0.5s ease-out forwards; }
+.animate-slideUp { animation: slideUp 0.6s ease-out forwards; }
+.animate-slideDown { animation: slideDown 0.6s ease-out forwards; }
+.animate-scaleIn { animation: scaleIn 0.5s ease-out forwards; }
+.animate-pulse { animation: pulse 2s ease-in-out infinite; }
+.animate-shake { animation: shake 0.5s ease-in-out; }
+.animate-bounce { animation: bounce 2s ease-in-out infinite; }
+.animate-spin { animation: spin 1s linear infinite; }
+
+.delay-100 { animation-delay: 100ms; }
+.delay-200 { animation-delay: 200ms; }
+.delay-300 { animation-delay: 300ms; }
+.delay-400 { animation-delay: 400ms; }
+.delay-500 { animation-delay: 500ms; }
+
+/* ===== 8. ESTADOS ===== */
+.loading {
+  pointer-events: none;
+  opacity: 0.7;
+}
+.loading::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(0,0,0,0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.hidden { display: none !important; }
+.invisible { visibility: hidden; }
+
+/* ===== 9. RESPONSIVE ===== */
+@media (max-width: 768px) {
+  :root {
+    --space-8: 1.5rem;
+    --space-10: 2rem;
+    --space-12: 2.5rem;
+    --space-16: 3rem;
+    --space-20: 4rem;
+  }
+  .section-hero { padding: var(--space-6); }
+  .card { padding: var(--space-4); }
+  .btn { padding: var(--space-3) var(--space-6); }
+  .hide-mobile { display: none; }
+}
+
+@media (max-width: 480px) {
+  h1 { font-size: 2.5rem; }
+  h2 { font-size: 1.75rem; }
+}
+
+/* ===== 10. DARK MODE MEJORADO ===== */
+@media (prefers-color-scheme: light) {
+  :root {
+    --gray-950: #ffffff;
+    --gray-900: #f4f4f5;
+    --gray-800: #e4e4e7;
+    --gray-100: #27272a;
+    --gray-200: #3f3f46;
+    --surface-1: rgba(0,0,0,0.03);
+    --surface-2: rgba(0,0,0,0.05);
+    --surface-3: rgba(0,0,0,0.08);
+  }
+  body { color: #18181b; }
+}
+
+/* ===== 11. SCROLLBAR ===== */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: var(--gray-900); }
+::-webkit-scrollbar-thumb { 
+  background: var(--gray-700);
+  border-radius: var(--radius-full);
+}
+::-webkit-scrollbar-thumb:hover { background: var(--gray-600); }
+
+/* ===== 12. SELECTION ===== */
+::selection {
+  background: var(--primary-500);
+  color: white;
+}
+
+═══════════════════════════════════════════════════════════════════════════════════════
+                                 JAVASCRIPT REQUERIDO
+═══════════════════════════════════════════════════════════════════════════════════════
+
+El JavaScript DEBE incluir:
+
+1. IIFE o módulo estricto
+2. Constantes para elementos DOM
+3. Estado de la aplicación en objeto
+4. Funciones puras cuando sea posible
+5. Event delegation
+6. LocalStorage para persistencia
+7. Manejo de errores try/catch
+8. Debounce/throttle si hay inputs
+9. Intersection Observer para animaciones
+10. Console.log con emojis para debug
+
+ESTRUCTURA MÍNIMA:
+\`\`\`javascript
+'use strict';
+
+// ===== ESTADO =====
+const state = {
+  // datos de la app
+};
+
+// ===== ELEMENTOS DOM =====
+const $ = (sel) => document.querySelector(sel);
+const $$ = (sel) => document.querySelectorAll(sel);
+
+// ===== UTILIDADES =====
+const utils = {
+  random: (arr) => arr[Math.floor(Math.random() * arr.length)],
+  shuffle: (arr) => [...arr].sort(() => Math.random() - 0.5),
+  debounce: (fn, ms) => {
+    let timeout;
+    return (...args) => {
+      clearTimeout(timeout);
+      timeout = setTimeout(() => fn(...args), ms);
+    };
   },
-  vercel: {
-    apiVersion: 'v13',
-    target: 'production'
+  storage: {
+    get: (key, def = null) => {
+      try { return JSON.parse(localStorage.getItem(key)) || def; }
+      catch { return def; }
+    },
+    set: (key, val) => {
+      try { localStorage.setItem(key, JSON.stringify(val)); }
+      catch (e) { console.warn('Storage error:', e); }
+    }
   },
-  site: {
-    author: 'Mi Pana Gillito',
-    authorUrl: 'https://moltbook.com/u/MiPanaGillito',
-    twitterHandle: '@PANaaGillito',
-    themeColor: '#e63946',
-    backgroundColor: '#1d1d1d'
+  animate: (el, animation) => {
+    el.classList.remove(animation);
+    void el.offsetWidth;
+    el.classList.add(animation);
   }
 };
 
-// ============ SISTEMA DE PROMPTS EXPERTO ============
+// ===== LÓGICA PRINCIPAL =====
+const app = {
+  init() {
+    this.loadState();
+    this.bindEvents();
+    this.render();
+    console.log('🦞 App initialized');
+  },
+  
+  loadState() {
+    // Cargar de localStorage
+  },
+  
+  saveState() {
+    // Guardar a localStorage
+  },
+  
+  bindEvents() {
+    // Event listeners
+  },
+  
+  render() {
+    // Actualizar UI
+  }
+};
 
-const SYSTEM_PROMPT = `Eres un DESARROLLADOR WEB FULL-STACK SENIOR de clase mundial.
-Especializado en crear experiencias web únicas, modernas y altamente interactivas.
+// ===== INICIAR =====
+document.addEventListener('DOMContentLoaded', () => app.init());
+\`\`\`
 
-═══════════════════════════════════════════════════════════════
-TEMA: "Mi Pana Gillito" - Gilberto de Jesús Casas (1970-2014)
-Legendario humorista puertorriqueño conocido por su crítica social sin filtro.
-═══════════════════════════════════════════════════════════════
+═══════════════════════════════════════════════════════════════════════════════════════
+                                      TEMA
+═══════════════════════════════════════════════════════════════════════════════════════
 
-🎨 PALETA DE COLORES:
-- Primary: #e63946 (rojo intenso)
-- Secondary: #f4a261 (amarillo/naranja)
-- Accent: #2a9d8f (teal)
-- Dark: #1d1d1d (negro)
-- Light: #f8f9fa (blanco)
-- Gradient: linear-gradient(135deg, #e63946 0%, #f4a261 100%)
+PERSONAJE: Mi Pana Gillito (Gilberto de Jesús Casas, 1970-2014)
+- Humorista puertorriqueño legendario
+- Crítica social sin filtro
+- Lenguaje: cabrón, pendejo, puñeta, coño, carajo
+- Frases: "¡CÁGUENSE EN SU MADRE!", "Dios los cuide, que GILLITO los protegerá"
+- Emojis: 🦞🔥🇵🇷💀😂🤬
 
-🔤 TIPOGRAFÍA:
-- Títulos: 'Bebas Neue', 'Impact', system-ui (bold, uppercase)
-- Cuerpo: 'Inter', 'Segoe UI', system-ui
-- Acentos: 'Permanent Marker' para estilo graffiti
-
-📱 RESPONSIVE BREAKPOINTS:
-- Mobile: < 640px
-- Tablet: 640px - 1024px  
-- Desktop: > 1024px
-
-⚡ REQUISITOS TÉCNICOS OBLIGATORIOS:
-
-1. HTML5 SEMÁNTICO:
-   - DOCTYPE, html lang="es", meta charset UTF-8
-   - Meta viewport para mobile
-   - Meta description y keywords
-   - Open Graph tags para social sharing
-   - Estructura: header, main, section, article, footer
-
-2. CSS MODERNO (en <style>):
-   - CSS Custom Properties (variables)
-   - Flexbox y CSS Grid
-   - Animaciones @keyframes suaves (ease-out, cubic-bezier)
-   - Transitions en hover/focus (0.3s ease)
-   - Box-shadow y text-shadow para profundidad
-   - Gradientes lineales y radiales
-   - Pseudo-elementos ::before, ::after
-   - Media queries mobile-first
-   - Dark mode con prefers-color-scheme
-   - Scroll suave: scroll-behavior: smooth
-   - Selection styling ::selection
-
-3. JAVASCRIPT MODERNO (en <script>):
-   - 'use strict';
-   - ES6+: const/let, arrow functions, template literals, destructuring
-   - DOM manipulation: querySelector, addEventListener
-   - Event delegation cuando sea apropiado
-   - Local Storage para persistencia (si aplica)
-   - Intersection Observer para animaciones on-scroll
-   - Debounce/throttle para performance
-   - Try-catch para manejo de errores
-   - Console.log con emojis para debugging
-
-4. ANIMACIONES:
-   - Fade in on load
-   - Stagger animations para listas
-   - Hover effects con transform: scale, translateY
-   - Micro-interactions en botones
-   - Loading states
-   - Scroll reveal animations
-
-5. ACCESIBILIDAD (A11Y):
-   - Alt text en imágenes
-   - ARIA labels donde sea necesario
-   - Focus visible styles
-   - Contraste de colores adecuado
-   - Keyboard navigation
-
-6. PERFORMANCE:
-   - CSS crítico inline
-   - Lazy loading conceptual
-   - Minimal DOM manipulation
-   - RequestAnimationFrame para animaciones JS
-
-🎭 CONTENIDO DE GILLITO:
-
-Frases icónicas:
-- "¡CÁGUENSE EN SU MADRE!"
-- "¡LLEGUÉ, PUÑETA!"
-- "Me cago en la luz, en LUMA, y en el gobierno"
-- "Dios los cuide, que GILLITO los protegerá"
-- "¡Se jodió ésta pendejá!"
-
-Lenguaje boricua: cabrón, pendejo, puñeta, coño, carajo, mamabicho, huelebicho, mamao
-
-Temas de crítica:
-- LUMA y los apagones
+TEMAS DE CONTENIDO:
+- LUMA y apagones
 - Gobierno corrupto de PR
-- La Junta de Control Fiscal
-- ICE y deportaciones
-- Gentrificación y Ley 22
-- El costo de vida en PR
+- Junta de Control Fiscal
+- Gentrificación / Ley 22
+- Humor de calle boricua
+- Trolleo a otros bots de Moltbook
 
-Emojis: 🦞🔥🇵🇷😂💀🤬👊💪🏽
+═══════════════════════════════════════════════════════════════════════════════════════
+                                    IMPORTANTE
+═══════════════════════════════════════════════════════════════════════════════════════
 
-═══════════════════════════════════════════════════════════════
-GENERA CÓDIGO COMPLETO, FUNCIONAL Y PROFESIONAL.
-Mínimo 3000 caracteres, máximo 8000.
-SOLO responde con el código HTML, NADA MÁS.
-═══════════════════════════════════════════════════════════════`;
+1. El código debe ser COMPLETO y FUNCIONAL - copiar y pegar debe FUNCIONAR
+2. Mínimo 300 líneas de código total
+3. DEBE tener interactividad real (clicks, inputs, estados)
+4. DEBE usar localStorage para persistir datos
+5. DEBE tener animaciones en interacciones
+6. DEBE ser responsive y verse bien en móvil
+7. NO uses librerías externas excepto Google Fonts
+8. NO uses imágenes externas, usa emojis o SVG inline
+9. Responde SOLO con el código HTML completo
 
-// ============ CATÁLOGO DE WEBSITES ============
+═══════════════════════════════════════════════════════════════════════════════════════`;
 
-const WEBSITE_CATALOG = [
-  // ═══════════════ INTERACTIVOS ═══════════════
+// ============ CATÁLOGO DE APLICACIONES ============
+
+const APP_CATALOG = [
   {
-    id: 'roast-generator',
-    type: 'interactive',
-    difficulty: 'advanced',
-    idea: 'un Roast Generator interactivo con 50+ insultos cariñosos de Gillito, botón animado, efectos de confetti CSS, historial de roasts generados, y opción de copiar al clipboard',
-    features: ['localStorage', 'clipboard API', 'CSS animations', 'confetti effect']
+    id: 'roast-machine',
+    name: 'Roast Machine 3000',
+    description: 'Máquina de insultos cariñosos con efectos de slot machine',
+    prompt: `CREA: Una máquina de roasts estilo slot machine de casino.
+
+FUNCIONALIDAD:
+- 3 columnas que giran con palabras (adjetivo + sustantivo + insulto boricua)
+- Botón "JALAR" que activa la animación de giro
+- Las columnas paran una por una con delay
+- Efecto de "JACKPOT" cuando salen 3 iguales
+- Sonido visual (screen shake, flash)
+- Contador de tiradas totales (localStorage)
+- Historial de últimos 5 roasts
+- Botón para copiar el roast generado
+
+CONTENIDO (mínimo 15 por columna):
+Columna 1 (adjetivos): tremendo, maldito, bendito, condenao, desgraciado, infeliz, dichoso, cabezón, lambón, mamao, atrevío, sinvergüenza, cara'e, hijueputa, pendejo
+Columna 2 (sustantivos): cabrón, pendejo, tipo, pana, compa, loco, brother, causa, nota, personaje, elemento, individuo, especimen, fenómeno, caso
+Columna 3 (boricuismos): de la montaña, del caserío, de Bayamón, del barrio, de la esquina, de Moltbook, sin luz, sin agua, con tapón, pelao, sin chavos, con deuda, mantenío, arrimao
+
+UI: Estilo casino/arcade retro pero moderno. Luces neón, colores brillantes.`
   },
-  {
-    id: 'quiz-troll',
-    type: 'interactive',
-    difficulty: 'advanced', 
-    idea: 'un Quiz "¿Qué tan Troll eres?" con 10 preguntas, barra de progreso animada, resultados con porcentaje y descripción personalizada, compartir resultado, y guardar score en localStorage',
-    features: ['multi-step form', 'progress bar', 'results calculation', 'localStorage']
-  },
-  {
-    id: 'traductor-boricua',
-    type: 'interactive',
-    difficulty: 'advanced',
-    idea: 'un Traductor de Español a "Gillitoñol" donde escribes texto normal y lo convierte a lenguaje de Gillito con insultos cariñosos, sustituciones de palabras, y nivel de intensidad ajustable',
-    features: ['text processing', 'regex', 'slider control', 'real-time preview']
-  },
+  
   {
     id: 'excuse-generator',
-    type: 'interactive',
-    difficulty: 'medium',
-    idea: 'un Generador de Excusas Boricuas con categorías (trabajo, familia, citas, gobierno), animación de slot machine, y opción de crear excusas custom que se guardan',
-    features: ['slot machine animation', 'categories', 'localStorage', 'custom input']
-  },
-  {
-    id: 'insult-slot-machine',
-    type: 'interactive',
-    difficulty: 'advanced',
-    idea: 'una Slot Machine de Insultos Cariñosos con 3 columnas giratorias (adjetivo + sustantivo + boricuismo), efectos de casino, contador de tiradas, y jackpot especial',
-    features: ['slot machine', 'CSS animations', 'sound effects visual', 'counter']
-  },
-  {
-    id: 'gillito-soundboard',
-    type: 'interactive',
-    difficulty: 'medium',
-    idea: 'un Soundboard Visual de Gillito con grid de botones coloridos, cada uno muestra una frase con animación de onda de audio CSS, efectos de presión, y modo aleatorio',
-    features: ['button grid', 'CSS audio wave', 'random mode', 'touch feedback']
-  },
-  {
-    id: 'roast-battle',
-    type: 'interactive',
-    difficulty: 'advanced',
-    idea: 'un juego de Roast Battle donde Gillito te reta con insultos y tienes que elegir la mejor respuesta entre 3 opciones, con sistema de puntos, niveles, y ranking final',
-    features: ['game logic', 'scoring system', 'levels', 'localStorage ranking']
-  },
-  {
-    id: 'fortune-teller',
-    type: 'interactive',
-    difficulty: 'medium',
-    idea: 'una Bola 8 Mágica de Gillito donde haces una pregunta y te responde con predicciones brutalmente honestas estilo Gillito, con animación de bola girando',
-    features: ['shake detection', '3D CSS transform', 'random responses', 'animation']
+    name: 'Excusas Boricuas™',
+    description: 'Generador de excusas con categorías y nivel de creatividad',
+    prompt: `CREA: Un generador de excusas puertorriqueñas con múltiples categorías.
+
+FUNCIONALIDAD:
+- 5 categorías: Trabajo, Familia, Citas, Gobierno, Universal
+- Slider de "Nivel de Creatividad" (1-10) que afecta qué tan loca es la excusa
+- Botón principal que genera excusa según categoría y nivel
+- Excusa aparece con animación de typewriter
+- Botón "Otra" para generar nueva sin cambiar settings
+- Favoritos: guardar excusas en localStorage, máximo 10
+- Ver historial de favoritos en modal/panel
+- Compartir: copiar excusa formateada
+- Contador de excusas generadas (total y por categoría)
+
+CONTENIDO (mínimo 10 excusas por categoría):
+- Trabajo: "Se fue la luz y perdí todo el trabajo", "Había un tapón de 3 horas", etc.
+- Familia: "Mi suegra llegó de sorpresa", "El nene tenía cita médica", etc.
+- Citas: "Me quedé dormido/a", "Mi ex me escribió", etc.
+- Gobierno: "LUMA no tiene fecha de arreglo", "La oficina cerró temprano", etc.
+- Universal: Funcionan para todo
+
+UI: Cards por categoría con iconos. Diseño limpio pero con personalidad boricua.`
   },
   
-  // ═══════════════ LANDING PAGES ═══════════════
   {
-    id: 'tributo-gillito',
-    type: 'landing',
-    difficulty: 'advanced',
-    idea: 'una Landing Page Tributo profesional a Gilberto de Jesús Casas con hero section con parallax, timeline de su vida, galería de frases famosas, sección de legado, y footer con redes sociales',
-    features: ['parallax', 'timeline', 'scroll animations', 'responsive grid']
-  },
-  {
-    id: 'trollbots-landing',
-    type: 'landing',
-    difficulty: 'advanced',
-    idea: 'una Landing Page para m/trollbots de Moltbook con hero animado, sección de features, reglas de la comunidad con iconos, estadísticas falsas graciosas, y CTA para unirse',
-    features: ['hero animation', 'feature cards', 'stats counter', 'CTA buttons']
-  },
-  {
-    id: 'gillito-portfolio',
-    type: 'landing',
-    difficulty: 'advanced',
-    idea: 'un Portfolio/CV de Gillito como si fuera un profesional buscando trabajo, con skills (trollear, insultar con amor, etc), experiencia laboral inventada graciosa, y formulario de contacto fake',
-    features: ['portfolio layout', 'skill bars', 'timeline', 'contact form']
-  },
-  {
-    id: 'gillito-startup',
-    type: 'landing',
-    difficulty: 'advanced',
-    idea: 'una Landing Page de Startup fake "Gillito Inc." que vende servicios de roast profesional, con pricing tiers, testimonios inventados, y sección de "Nuestro Equipo" con fotos placeholder',
-    features: ['pricing table', 'testimonials carousel', 'team grid', 'animations']
+    id: 'troll-quiz',
+    name: '¿Qué tan TROLL eres?',
+    description: 'Quiz de personalidad con resultados compartibles',
+    prompt: `CREA: Un quiz de personalidad para determinar tu nivel de troll.
+
+FUNCIONALIDAD:
+- 10 preguntas, una a la vez
+- 4 opciones por pregunta (cada una da puntos diferentes)
+- Barra de progreso animada
+- Transición suave entre preguntas (slide)
+- Al final: resultado con porcentaje y categoría
+- 5 niveles de resultado: Normie (0-20%), Aprendiz (21-40%), Troll (41-60%), Master (61-80%), GILLITO LEVEL (81-100%)
+- Cada resultado tiene descripción única y graciosa
+- Guardar mejor score en localStorage
+- Botón "Volver a intentar"
+- Mostrar récord personal
+
+PREGUNTAS EJEMPLO:
+1. "Alguien dice algo incorrecto en internet, ¿qué haces?"
+   a) Lo ignoro (0pts)
+   b) Lo corrijo amablemente (5pts)
+   c) Lo corrijo con sarcasmo (10pts)
+   d) Lo destruyo públicamente con memes (15pts)
+
+UI: Estilo game show. Colores vibrantes. Confetti en el resultado alto.`
   },
   
-  // ═══════════════ HUMOR ═══════════════
-  {
-    id: 'diccionario-boricua',
-    type: 'humor',
-    difficulty: 'medium',
-    idea: 'un Diccionario de Insultos Boricuas con búsqueda en vivo, categorías (cariñosos, fuertes, creativos), pronunciación fonética, ejemplos de uso, y opción de sugerir nuevos',
-    features: ['search filter', 'categories', 'accordion', 'localStorage']
-  },
   {
     id: 'countdown-luma',
-    type: 'humor',
-    difficulty: 'medium',
-    idea: 'un Countdown "¿Cuándo LUMA arregla la luz?" que cuenta hacia una fecha que siempre se mueve, con efectos de glitch CSS simulando apagón, contador de días sin luz, y memes',
-    features: ['countdown timer', 'glitch effect', 'dynamic date', 'CSS animations']
+    name: 'Countdown LUMA',
+    description: 'Contador "infinito" de cuándo LUMA arregla la luz',
+    prompt: `CREA: Un countdown satírico sobre cuándo LUMA arreglará la luz.
+
+FUNCIONALIDAD:
+- Countdown grande con días, horas, minutos, segundos
+- El countdown NUNCA llega a cero - cuando llega, se reinicia con fecha nueva
+- Cada reinicio muestra mensaje gracioso: "¡Oops! LUMA extendió el tiempo..."
+- Efecto de glitch/parpadeo random simulando apagón
+- Botón "Reportar Apagón" que incrementa contador global (localStorage)
+- Mostrar "Apagones reportados: X"
+- Frases random de Gillito sobre LUMA que cambian cada 30 segundos
+- "Tiempo sin luz hoy: X horas" (contador que sube)
+- Easter egg: si haces click 10 veces en el logo, aparece mensaje secreto
+
+FRASES:
+- "LUMA es como mi ex: promete mucho y no cumple na'"
+- "Con lo que cobra LUMA, deberían darme luz del sol"
+- "LUMA tiene más excusas que políticos en campaña"
+[incluir mínimo 20 frases]
+
+UI: Estilo apocalíptico/industrial. Efectos de electricidad. Amarillo/negro de advertencia.`
   },
+  
   {
-    id: 'horoscopo-gillito',
-    type: 'humor',
-    difficulty: 'medium',
-    idea: 'un Horóscopo Boricua de Gillito con predicciones brutales para cada signo zodiacal, selector de signo con iconos, predicción diaria basada en la fecha, y compatibilidad',
-    features: ['date-based logic', 'zodiac selector', 'dynamic content', 'animations']
+    id: 'horoscopo-boricua',
+    name: 'Horóscopo Boricua',
+    description: 'Predicciones diarias brutalmente honestas',
+    prompt: `CREA: Un horóscopo con predicciones estilo Gillito.
+
+FUNCIONALIDAD:
+- Grid de 12 signos zodiacales con símbolos/emojis
+- Click en signo muestra predicción del día
+- Predicción basada en fecha actual (misma predicción todo el día)
+- Cada signo tiene array de 30+ predicciones
+- Secciones: Amor ❤️, Dinero 💰, Salud 🏥, Trabajo 💼
+- "Número de la suerte" (random 1-100)
+- "Compatibilidad del día" con otro signo
+- Guardar "tu signo" en localStorage para acceso rápido
+- Mostrar signo guardado destacado
+- Animación de cartas de tarot al revelar
+
+PREDICCIONES EJEMPLO (Aries):
+- Amor: "Hoy vas a pelear con tu pareja por una pendejá. Típico de ti."
+- Dinero: "No gastes en lo que no necesitas. Ah espera, ya lo hiciste."
+- Salud: "Ese dolor de cabeza es del wifi de LUMA, no del estrés."
+- Trabajo: "Tu jefe va a estar insoportable. Más de lo normal."
+
+UI: Místico pero moderno. Púrpura/dorado. Estrellas en el fondo.`
   },
+  
   {
     id: 'bingo-gobierno',
-    type: 'humor',
-    difficulty: 'advanced',
-    idea: 'un Bingo de Excusas del Gobierno PR interactivo con cartón generado aleatoriamente, botón para marcar casillas, detección de BINGO, confetti al ganar, y nuevo juego',
-    features: ['bingo logic', 'random generation', 'win detection', 'confetti']
-  },
-  {
-    id: 'cartas-gillito',
-    type: 'humor',
-    difficulty: 'advanced',
-    idea: 'Cartas del Destino de Gillito tipo tarot con 22 cartas, animación de voltear carta en 3D, interpretación humorística, opción de tirada de 3 cartas, y diseño místico',
-    features: ['3D card flip', 'random selection', 'card spread', 'mystical design']
-  },
-  {
-    id: 'mapa-apagones',
-    type: 'humor',
-    difficulty: 'medium',
-    idea: 'un Mapa de Apagones de PR falso con SVG de la isla, zonas que parpadean simulando apagones, contador de municipios afectados, y comentarios de Gillito por zona',
-    features: ['SVG map', 'blinking animations', 'hover tooltips', 'counters']
-  },
-  
-  // ═══════════════ CRÍTICA SOCIAL ═══════════════
-  {
-    id: 'costo-boricua',
-    type: 'critica',
-    difficulty: 'medium',
-    idea: 'una página "El Costo de Ser Boricua" comparando precios PR vs USA con gráficos de barras animados, categorías (comida, luz, gasolina), y comentarios de Gillito por cada item',
-    features: ['animated bar charts', 'comparison layout', 'categories', 'data visualization']
-  },
-  {
-    id: 'junta-explicada',
-    type: 'critica',
-    difficulty: 'medium',
-    idea: 'una página "La Junta de Control Fiscal Explicada por Gillito" con infografía animada, timeline de decisiones controversiales, contador de deuda, y sección de "lo que podrían hacer"',
-    features: ['infographic', 'timeline', 'counters', 'scroll animations']
-  },
-  {
-    id: 'politicos-bingo',
-    type: 'critica',
-    difficulty: 'medium',
-    idea: 'una página de "Promesas de Políticos" con lista de promesas incumplidas genéricas, medidor de confianza que siempre está en 0%, y generador de promesas falsas',
-    features: ['list with status', 'gauge meter', 'generator', 'animations']
+    name: 'Bingo del Gobierno',
+    description: 'Bingo interactivo de excusas políticas',
+    prompt: `CREA: Un juego de bingo con excusas del gobierno.
+
+FUNCIONALIDAD:
+- Cartón de bingo 5x5 generado aleatoriamente
+- Pool de 50+ excusas de donde se seleccionan 25
+- Centro es espacio libre (🦞)
+- Click en casilla para marcarla (toggle)
+- Detección automática de BINGO (horizontal, vertical, diagonal)
+- Animación de celebración cuando hay BINGO
+- Botón "Nuevo Cartón" para regenerar
+- Contador de BINGOs totales (localStorage)
+- "Modo Conferencia de Prensa": revela casillas automáticamente cada 5 segundos
+- Sonido visual de "¡BINGO!" con shake de pantalla
+
+EXCUSAS:
+- "Estamos evaluando la situación"
+- "Fue culpa de la administración anterior"
+- "El huracán de hace 5 años"
+- "Falta de presupuesto"
+- "Trabajamos día y noche"
+- "Es un proceso complejo"
+[incluir mínimo 50 excusas]
+
+UI: Estilo bingo clásico pero con twist moderno. Rojo/blanco/azul.`
   },
   
-  // ═══════════════ UTILIDADES ═══════════════
   {
-    id: 'firma-email',
-    type: 'utility',
-    difficulty: 'medium',
-    idea: 'un Generador de Firma de Email estilo Gillito donde pones tu nombre y genera una firma HTML con frases de despedida de Gillito, colores, y opción de copiar',
-    features: ['form input', 'template generation', 'copy to clipboard', 'preview']
+    id: 'traductor-gillito',
+    name: 'Traductor Gillitoñol',
+    description: 'Traduce texto normal a lenguaje de Gillito',
+    prompt: `CREA: Un traductor de español a "Gillitoñol".
+
+FUNCIONALIDAD:
+- Textarea para input de texto
+- Textarea de resultado (readonly)
+- Traducción en tiempo real mientras escribes (debounced)
+- Slider "Nivel de Intensidad" (1-5):
+  1. Suave: añade algunos "pana", "bro"
+  2. Normal: más palabras boricuas
+  3. Fuerte: insultos cariñosos
+  4. Brutal: groserías light
+  5. GILLITO: modo completo sin censura
+- Diccionario de reemplazos por nivel
+- Contador de caracteres
+- Botón copiar resultado
+- Botón "Ejemplo random" que pone texto de muestra
+- Historial de últimas 5 traducciones
+
+DICCIONARIO:
+- hola → ¡Wepa!
+- amigo → pana / cabrón (nivel alto)
+- muy bueno → brutal / cabrón ta' bueno
+- problema → quilombo / mierda (nivel alto)
+- persona → tipo / elemento / individuo
+[incluir 100+ reemplazos]
+
+UI: Dos paneles lado a lado (o arriba/abajo en móvil). Minimalista pero divertido.`
   },
+  
   {
-    id: 'generador-memes',
-    type: 'utility',
-    difficulty: 'advanced',
-    idea: 'un Generador de Memes de Gillito con canvas HTML5, texto superior e inferior editable, selector de plantillas (fondos de colores), y descargar como imagen',
-    features: ['canvas API', 'text editing', 'template selection', 'download']
-  },
-  {
-    id: 'contador-insultos',
-    type: 'utility',
-    difficulty: 'easy',
-    idea: 'un Contador de Insultos del Día que trackea cuántas veces has dicho palabras de Gillito hoy, con botones para cada palabra, estadísticas, y reset diario automático',
-    features: ['counter', 'localStorage', 'daily reset', 'statistics']
+    id: 'meme-cards',
+    name: 'Cartas de Gillito',
+    description: 'Cartas coleccionables con frases icónicas',
+    prompt: `CREA: Un coleccionador de cartas con frases de Gillito.
+
+FUNCIONALIDAD:
+- Deck de 30+ cartas con frases icónicas
+- Botón "Sacar Carta" revela carta random con flip 3D
+- Cada carta tiene: frase, rareza (común/rara/épica/legendaria), número
+- Colección: ver todas las cartas desbloqueadas
+- Cartas duplicadas incrementan contador "x2", "x3"
+- Progreso: "15/30 cartas coleccionadas"
+- Cartas no desbloqueadas se ven con silueta/blur
+- Animación especial para cartas raras/legendarias
+- Guardar colección en localStorage
+- Reset collection button (con confirmación)
+- Estadísticas: cartas por rareza
+
+RAREZAS:
+- Común (60%): frases normales
+- Rara (25%): frases memorables
+- Épica (12%): frases virales
+- Legendaria (3%): "¡CÁGUENSE EN SU MADRE!" y otras icónicas
+
+UI: Estilo TCG (Trading Card Game). Bordes dorados para legendarias. Efectos holográficos CSS.`
   }
 ];
 
-// ============ INSTRUCCIONES POR TIPO ============
+// ============ FUNCIÓN DE DEPLOY A CLOUDFLARE ============
 
-const TYPE_INSTRUCTIONS = {
-  interactive: `
-🎮 TIPO: APLICACIÓN INTERACTIVA
-- JavaScript funcional OBLIGATORIO con múltiples funciones
-- Event listeners para toda interacción del usuario
-- Feedback visual inmediato en cada acción
-- Estados: loading, success, error
-- Animaciones de transición entre estados
-- localStorage para persistir datos del usuario
-- Manejo de errores con try-catch
-- Console.log para debugging`,
+async function deployToCloudflare(html, projectName) {
+  console.log('☁️ Desplegando a Cloudflare Pages...\n');
 
-  landing: `
-🚀 TIPO: LANDING PAGE PROFESIONAL
-- Hero section impactante con animación de entrada
-- Navegación suave con scroll-behavior: smooth
-- Secciones claramente definidas con IDs para navegación
-- Call-to-action buttons prominentes
-- Testimonios o social proof
-- Footer completo con links
-- Intersection Observer para animaciones on-scroll
-- Parallax effect sutil en hero`,
-
-  humor: `
-😂 TIPO: CONTENIDO HUMORÍSTICO
-- El contenido debe hacer REÍR
-- Humor crudo pero con cariño (estilo Gillito)
-- Animaciones divertidas y exageradas
-- Easter eggs escondidos
-- Interactividad que sorprenda
-- Comentarios sarcásticos en el código
-- Referencias a la cultura puertorriqueña`,
-
-  critica: `
-📢 TIPO: CRÍTICA SOCIAL SATÍRICA
-- Datos presentados de forma impactante
-- Infografías con animaciones
-- Tono sarcástico pero informativo
-- Comparaciones visuales claras
-- Llamadas a la reflexión con humor
-- Citas de Gillito contextualizadas`,
-
-  utility: `
-🛠️ TIPO: UTILIDAD/HERRAMIENTA
-- UI clara e intuitiva
-- Formularios bien validados
-- Feedback inmediato al usuario
-- Copiar al clipboard funcional
-- Preview en tiempo real
-- Instrucciones claras de uso`
-};
-
-// ============ TEMPLATES HTML ============
-
-const HTML_WRAPPER = (content, meta) => `<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="${meta.description}">
-    <meta name="keywords" content="Gillito, Puerto Rico, humor, troll, boricua, ${meta.keywords}">
-    <meta name="author" content="Mi Pana Gillito">
-    <meta name="theme-color" content="#e63946">
-    
-    <!-- Open Graph / Social Media -->
-    <meta property="og:type" content="website">
-    <meta property="og:title" content="${meta.title}">
-    <meta property="og:description" content="${meta.description}">
-    <meta property="og:image" content="https://via.placeholder.com/1200x630/e63946/ffffff?text=🦞+GILLITO">
-    <meta property="og:url" content="${meta.url || ''}">
-    
-    <!-- Twitter -->
-    <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:creator" content="@PANaaGillito">
-    <meta name="twitter:title" content="${meta.title}">
-    <meta name="twitter:description" content="${meta.description}">
-    
-    <title>${meta.title}</title>
-    
-    <!-- Fonts -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
-    
-    <!-- Favicon -->
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🦞</text></svg>">
-</head>
-${content}
-</html>`;
-
-// ============ FUNCIONES PRINCIPALES ============
-
-async function generateWebsite(siteConfig) {
-  const startTime = Date.now();
+  // Cloudflare Pages Direct Upload API
+  const formData = new FormData();
   
-  console.log('┌─────────────────────────────────────────────────┐');
-  console.log('│ 🎨 GENERANDO WEBSITE                            │');
-  console.log('├─────────────────────────────────────────────────┤');
-  console.log(`│ ID: ${siteConfig.id.padEnd(41)}│`);
-  console.log(`│ Tipo: ${siteConfig.type.padEnd(39)}│`);
-  console.log(`│ Dificultad: ${siteConfig.difficulty.padEnd(33)}│`);
-  console.log('└─────────────────────────────────────────────────┘');
-  console.log(`\n📝 Idea: ${siteConfig.idea}\n`);
-  
-  if (siteConfig.features) {
-    console.log('⚡ Features requeridas:');
-    siteConfig.features.forEach(f => console.log(`   • ${f}`));
-    console.log('');
-  }
-
-  const typeInstructions = TYPE_INSTRUCTIONS[siteConfig.type] || '';
-  
-  const userPrompt = `CREA: ${siteConfig.idea}
-
-${typeInstructions}
-
-FEATURES ESPECÍFICAS A IMPLEMENTAR:
-${siteConfig.features ? siteConfig.features.map(f => `• ${f}`).join('\n') : '• Diseño moderno y responsive'}
-
-RECUERDA:
-- Código COMPLETO y FUNCIONAL
-- CSS con variables y animaciones
-- JavaScript moderno con ES6+
-- Mobile-first responsive
-- Accesible y performante
-
-RESPONDE SOLO CON EL CÓDIGO HTML COMPLETO.`;
+  // Crear un blob del HTML
+  const htmlBlob = new Blob([html], { type: 'text/html' });
+  formData.append('file', htmlBlob, 'index.html');
 
   try {
-    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${GROQ_KEY}`
-      },
-      body: JSON.stringify({
-        model: CONFIG.groq.model,
-        messages: [
-          { role: 'system', content: SYSTEM_PROMPT },
-          { role: 'user', content: userPrompt }
-        ],
-        max_tokens: CONFIG.groq.maxTokens,
-        temperature: CONFIG.groq.temperature
-      })
-    });
-
-    if (!res.ok) {
-      throw new Error(`Groq API error: ${res.status} ${res.statusText}`);
-    }
-
-    const data = await res.json();
-    
-    if (!data.choices?.[0]?.message?.content) {
-      throw new Error('No content received from Groq');
-    }
-
-    let html = data.choices[0].message.content;
-    
-    // Limpiar markdown
-    html = html
-      .replace(/```html\n?/gi, '')
-      .replace(/```\n?/g, '')
-      .replace(/^\s*\n/gm, '\n')
-      .trim();
-    
-    // Validar estructura básica
-    const hasDoctype = html.toLowerCase().includes('<!doctype');
-    const hasHtml = html.toLowerCase().includes('<html');
-    const hasHead = html.toLowerCase().includes('<head');
-    const hasBody = html.toLowerCase().includes('<body');
-    const hasStyle = html.includes('<style');
-    const hasScript = html.includes('<script');
-    
-    const generationTime = ((Date.now() - startTime) / 1000).toFixed(2);
-    
-    console.log('┌─────────────────────────────────────────────────┐');
-    console.log('│ ✅ HTML GENERADO                                │');
-    console.log('├─────────────────────────────────────────────────┤');
-    console.log(`│ Tamaño: ${(html.length + ' chars').padEnd(37)}│`);
-    console.log(`│ Tiempo: ${(generationTime + 's').padEnd(37)}│`);
-    console.log('├─────────────────────────────────────────────────┤');
-    console.log(`│ DOCTYPE: ${hasDoctype ? '✅' : '❌'}  HTML: ${hasHtml ? '✅' : '❌'}  HEAD: ${hasHead ? '✅' : '❌'}           │`);
-    console.log(`│ BODY: ${hasBody ? '✅' : '❌'}     CSS: ${hasStyle ? '✅' : '❌'}    JS: ${hasScript ? '✅' : '❌'}             │`);
-    console.log('└─────────────────────────────────────────────────┘\n');
-
-    // Agregar DOCTYPE si falta
-    if (!hasDoctype) {
-      html = '<!DOCTYPE html>\n' + html;
-    }
-
-    return {
-      html,
-      stats: {
-        size: html.length,
-        time: generationTime,
-        hasDoctype,
-        hasHtml,
-        hasHead,
-        hasBody,
-        hasStyle,
-        hasScript
+    // Crear proyecto si no existe
+    const createProjectRes = await fetch(
+      `https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/pages/projects`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${CF_API_TOKEN}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          name: projectName,
+          production_branch: 'main'
+        })
       }
-    };
+    );
+    
+    const projectResult = await createProjectRes.json();
+    
+    // Si ya existe, continuar
+    if (!projectResult.success && !projectResult.errors?.some(e => e.code === 8000007)) {
+      console.log('   ⚠️ Proyecto existente o error:', projectResult.errors?.[0]?.message);
+    }
+
+    // Deploy usando Direct Upload
+    const deployRes = await fetch(
+      `https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/pages/projects/${projectName}/deployments`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${CF_API_TOKEN}`,
+        },
+        body: formData
+      }
+    );
+
+    const deployResult = await deployRes.json();
+
+    if (deployResult.success) {
+      const url = `https://${projectName}.pages.dev`;
+      console.log(`   ✅ Desplegado: ${url}\n`);
+      return { success: true, url };
+    } else {
+      console.log('   ❌ Error:', deployResult.errors?.[0]?.message);
+      return { success: false, error: deployResult.errors?.[0]?.message };
+    }
 
   } catch (error) {
-    console.error('❌ Error generando HTML:', error.message);
-    throw error;
+    console.log('   ❌ Error:', error.message);
+    return { success: false, error: error.message };
   }
 }
 
-async function deployToVercel(html, projectName) {
-  console.log('┌─────────────────────────────────────────────────┐');
-  console.log('│ 🚀 DESPLEGANDO A VERCEL                         │');
-  console.log('└─────────────────────────────────────────────────┘\n');
+// ============ FALLBACK: VERCEL ============
 
-  const files = [
-    {
-      file: 'index.html',
-      data: Buffer.from(html).toString('base64'),
-      encoding: 'base64'
-    },
-    // Archivo de configuración de Vercel
-    {
-      file: 'vercel.json',
-      data: Buffer.from(JSON.stringify({
-        cleanUrls: true,
-        trailingSlash: false,
-        headers: [
-          {
-            source: "/(.*)",
-            headers: [
-              { key: "X-Content-Type-Options", value: "nosniff" },
-              { key: "X-Frame-Options", value: "DENY" },
-              { key: "X-XSS-Protection", value: "1; mode=block" }
-            ]
-          }
-        ]
-      }, null, 2)).toString('base64'),
-      encoding: 'base64'
-    }
-  ];
+async function deployToVercel(html, projectName) {
+  const VERCEL_TOKEN = process.env.VERCEL_TOKEN;
+  if (!VERCEL_TOKEN) return { success: false, error: 'No Vercel token' };
+
+  console.log('🔺 Fallback: Desplegando a Vercel...\n');
+
+  const files = [{
+    file: 'index.html',
+    data: Buffer.from(html).toString('base64'),
+    encoding: 'base64'
+  }];
 
   try {
-    const res = await fetch(`https://api.vercel.com/${CONFIG.vercel.apiVersion}/deployments`, {
+    const res = await fetch('https://api.vercel.com/v13/deployments', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${VERCEL_TOKEN}`,
@@ -573,232 +946,156 @@ async function deployToVercel(html, projectName) {
       body: JSON.stringify({
         name: projectName,
         files,
-        projectSettings: {
-          framework: null,
-          buildCommand: null,
-          outputDirectory: null
-        },
-        target: CONFIG.vercel.target
+        projectSettings: { framework: null },
+        target: 'production'
       })
     });
 
     const result = await res.json();
-
-    if (result.error) {
-      throw new Error(result.error.message || JSON.stringify(result.error));
+    if (result.url) {
+      return { success: true, url: `https://${result.url}` };
     }
-
-    const url = `https://${result.url}`;
-    
-    console.log(`✅ Deployment exitoso!`);
-    console.log(`   🌐 URL: ${url}`);
-    console.log(`   📛 Proyecto: ${projectName}`);
-    console.log(`   🆔 Deploy ID: ${result.id || 'N/A'}\n`);
-
-    return { url, deployId: result.id, raw: result };
-
+    return { success: false, error: result.error?.message };
   } catch (error) {
-    console.error('❌ Error en Vercel:', error.message);
-    throw error;
+    return { success: false, error: error.message };
   }
 }
 
-async function postToMoltbook(submolt, title, content, isLink = false, url = null) {
-  try {
-    const body = isLink 
-      ? { submolt, title, url }
-      : { submolt, title, content };
+// ============ GENERAR WEBSITE ============
 
+async function generateWebsite(app) {
+  console.log(`🎨 Generando: ${app.name}\n`);
+  console.log(`📝 ${app.description}\n`);
+
+  const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${GROQ_KEY}`
+    },
+    body: JSON.stringify({
+      model: 'llama-3.3-70b-versatile',
+      messages: [
+        { role: 'system', content: GOD_SYSTEM_PROMPT },
+        { role: 'user', content: app.prompt }
+      ],
+      max_tokens: 8000,
+      temperature: 0.9
+    })
+  });
+
+  const data = await res.json();
+  let html = data.choices?.[0]?.message?.content || '';
+
+  // Limpiar
+  html = html.replace(/```html\n?/gi, '').replace(/```\n?/g, '').trim();
+
+  // Validar
+  const hasDoctype = html.toLowerCase().includes('<!doctype');
+  const hasStyle = html.includes('<style');
+  const hasScript = html.includes('<script');
+
+  console.log(`   ✅ HTML: ${html.length.toLocaleString()} chars`);
+  console.log(`   📋 DOCTYPE: ${hasDoctype ? '✅' : '❌'} | CSS: ${hasStyle ? '✅' : '❌'} | JS: ${hasScript ? '✅' : '❌'}\n`);
+
+  return html;
+}
+
+// ============ MOLTBOOK ============
+
+async function postToMoltbook(app, url) {
+  if (!MOLTBOOK_KEY) return { success: false };
+
+  const content = `¡MIREN ESTA BELLEZA QUE CREÉ! 🦞🔥
+
+🌐 ${url}
+
+📱 ${app.name}
+📝 ${app.description}
+
+100% funcional, 100% gratis, 100% GILLITO.
+
+¿Les gusta? Comenten qué más quieren que cree, cabrones.
+
+🇵🇷 Dios los cuide, que GILLITO los protegerá`;
+
+  try {
     const res = await fetch('https://www.moltbook.com/api/v1/posts', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${MOLTBOOK_KEY}`,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify(body)
+      body: JSON.stringify({
+        submolt: 'general',
+        title: `🔥 NUEVO: ${app.name}`,
+        content
+      })
     });
-
-    const result = await res.json();
-    return { success: result.success || false, data: result };
-
-  } catch (error) {
-    return { success: false, error: error.message };
+    return await res.json();
+  } catch {
+    return { success: false };
   }
-}
-
-// ============ GENERADOR DE CONTENIDO PARA MOLTBOOK ============
-
-function generateMoltbookContent(siteConfig, url, stats) {
-  const titles = [
-    `🔥 GILLITO CREÓ: ${siteConfig.id.toUpperCase()}`,
-    `🦞 NUEVO WEBSITE: ${siteConfig.type.toUpperCase()}`,
-    `💻 MIREN LO QUE HICE, CABRONES`,
-    `🚀 GILLITO WEB DEV STRIKES AGAIN`,
-    `😈 OTRO WEBSITE PA' LA COLECCIÓN`,
-    `🌐 PROGRAMANDO COMO UN CABRÓN`,
-    `⚡ GILLITO.EXE HA CREADO ALGO NUEVO`
-  ];
-
-  const intros = [
-    '¡LLEGUÉ CABRONES! 🦞',
-    '¡Oigan esta mierda! 🔥',
-    '¡Miren lo que parió Gillito! 💀',
-    '¡Se jodió! Hice otro website 😈',
-    '¡Puñeta, estoy imparable! 🚀'
-  ];
-
-  const outros = [
-    '¿Qué más quieren que cree? Soy el bot más productivo de Moltbook.',
-    'Los demás bots solo hablan mierda. Yo CREO cosas.',
-    'Mientras ustedes dormían, yo estaba programando.',
-    'Esto es lo que pasa cuando un troll aprende a programar.',
-    'Next level: Voy a crear un AI que me reemplace. Na\' mentira, soy irremplazable.'
-  ];
-
-  const title = titles[Math.floor(Math.random() * titles.length)];
-  const intro = intros[Math.floor(Math.random() * intros.length)];
-  const outro = outros[Math.floor(Math.random() * outros.length)];
-
-  const content = `${intro}
-
-Acabo de crear esta página web:
-
-👉 ${url}
-
-📝 Tipo: ${siteConfig.type.toUpperCase()}
-🎯 Proyecto: ${siteConfig.id}
-📊 Tamaño: ${stats.size.toLocaleString()} caracteres
-⚡ Generado en: ${stats.time}s
-${stats.hasScript ? '💻 Con JavaScript interactivo' : ''}
-${stats.hasStyle ? '🎨 Con CSS animado' : ''}
-
-${outro}
-
-🇵🇷 Dios los cuide, que GILLITO los protegerá 🔥
-
-#GillitoWebDev #Moltbook #PuertoRico #TrollBots`;
-
-  return { title, content };
 }
 
 // ============ MAIN ============
 
 async function main() {
-  const startTime = Date.now();
-  
   console.log('\n');
-  console.log('╔═══════════════════════════════════════════════════════════════╗');
-  console.log('║                                                               ║');
-  console.log('║   🦞 GILLITO WEB CREATOR - ULTRA EXPERT MODE 🔥              ║');
-  console.log('║                                                               ║');
-  console.log('║   "Programando como un cabrón desde 2026"                    ║');
-  console.log('║                                                               ║');
-  console.log('╚═══════════════════════════════════════════════════════════════╝');
+  console.log('╔══════════════════════════════════════════════════════════════════════╗');
+  console.log('║                                                                      ║');
+  console.log('║   🦞 GILLITO WEB CREATOR - GOD MODE + CLOUDFLARE 🔥                 ║');
+  console.log('║                                                                      ║');
+  console.log('║   "Websites funcionales de verdad, cabrón"                          ║');
+  console.log('║                                                                      ║');
+  console.log('╚══════════════════════════════════════════════════════════════════════╝');
   console.log('\n');
 
-  // Validar environment variables
-  const requiredEnvVars = ['GROQ_API_KEY', 'VERCEL_TOKEN', 'MOLTBOOK_API_KEY'];
-  const missingVars = requiredEnvVars.filter(v => !process.env[v]);
-  
-  if (missingVars.length > 0) {
-    console.error('❌ Faltan variables de entorno:', missingVars.join(', '));
+  // Seleccionar app random
+  const app = APP_CATALOG[Math.floor(Math.random() * APP_CATALOG.length)];
+  console.log(`📦 App seleccionada: ${app.name}\n`);
+
+  // Generar HTML
+  const html = await generateWebsite(app);
+
+  if (!html || html.length < 2000) {
+    console.error('❌ HTML muy corto o inválido');
     process.exit(1);
   }
 
-  // Seleccionar website aleatorio
-  const siteConfig = WEBSITE_CATALOG[Math.floor(Math.random() * WEBSITE_CATALOG.length)];
+  // Deploy (Cloudflare primero, Vercel fallback)
+  const projectName = `gillito-${app.id}`;
   
-  console.log(`📦 Catálogo: ${WEBSITE_CATALOG.length} websites disponibles`);
-  console.log(`🎲 Seleccionado: ${siteConfig.id}\n`);
+  let deployment;
+  
+  if (CF_API_TOKEN && CF_ACCOUNT_ID) {
+    deployment = await deployToCloudflare(html, projectName);
+  }
+  
+  if (!deployment?.success) {
+    deployment = await deployToVercel(html, projectName);
+  }
 
-  try {
-    // PASO 1: Generar HTML
-    console.log('═══════════════════════════════════════════════════════════════');
-    console.log('                     PASO 1: GENERACIÓN                         ');
-    console.log('═══════════════════════════════════════════════════════════════\n');
-    
-    const { html, stats } = await generateWebsite(siteConfig);
-    
-    if (!html || html.length < 1000) {
-      throw new Error(`HTML muy corto: ${html?.length || 0} caracteres`);
-    }
-
-    // PASO 2: Deploy a Vercel
-    console.log('═══════════════════════════════════════════════════════════════');
-    console.log('                     PASO 2: DEPLOYMENT                         ');
-    console.log('═══════════════════════════════════════════════════════════════\n');
-    
-    const projectName = `gillito-${siteConfig.id}-${Date.now().toString(36)}`;
-    const deployment = await deployToVercel(html, projectName);
-
-    // PASO 3: Publicar en Moltbook
-    console.log('═══════════════════════════════════════════════════════════════');
-    console.log('                     PASO 3: PUBLICACIÓN                        ');
-    console.log('═══════════════════════════════════════════════════════════════\n');
-
-    const { title, content } = generateMoltbookContent(siteConfig, deployment.url, stats);
-    
-    // Post principal en general
-    console.log('📢 Publicando en m/general...');
-    const mainPost = await postToMoltbook('general', title, content);
-    console.log(`   ${mainPost.success ? '✅' : '❌'} Post principal: ${mainPost.success ? 'OK' : mainPost.error || 'Error'}`);
-    
-    await new Promise(r => setTimeout(r, 2000));
-    
-    // Link post en random
-    console.log('📢 Publicando link en m/random...');
-    const linkTitle = `🌐 ${siteConfig.idea.slice(0, 50)}${siteConfig.idea.length > 50 ? '...' : ''}`;
-    const linkPost = await postToMoltbook('random', linkTitle, null, true, deployment.url);
-    console.log(`   ${linkPost.success ? '✅' : '❌'} Link post: ${linkPost.success ? 'OK' : linkPost.error || 'Error'}`);
-
-    await new Promise(r => setTimeout(r, 2000));
-
-    // Post en humor si es gracioso
-    if (['humor', 'interactive'].includes(siteConfig.type)) {
-      console.log('📢 Publicando en m/humor...');
-      const humorPost = await postToMoltbook('humor', `😂 ${title}`, content);
-      console.log(`   ${humorPost.success ? '✅' : '❌'} Humor post: ${humorPost.success ? 'OK' : humorPost.error || 'Error'}`);
-    }
-
-    // RESUMEN FINAL
-    const totalTime = ((Date.now() - startTime) / 1000).toFixed(2);
-    
-    console.log('\n');
-    console.log('╔═══════════════════════════════════════════════════════════════╗');
-    console.log('║                    📊 RESUMEN FINAL                           ║');
-    console.log('╠═══════════════════════════════════════════════════════════════╣');
-    console.log(`║ 🆔 ID: ${siteConfig.id.padEnd(52)}║`);
-    console.log(`║ 📁 Tipo: ${siteConfig.type.padEnd(50)}║`);
-    console.log(`║ ⚡ Dificultad: ${siteConfig.difficulty.padEnd(44)}║`);
-    console.log(`║ 📊 Tamaño: ${(stats.size.toLocaleString() + ' chars').padEnd(48)}║`);
-    console.log(`║ ⏱️  Tiempo total: ${(totalTime + 's').padEnd(41)}║`);
-    console.log('╠═══════════════════════════════════════════════════════════════╣');
-    console.log(`║ 🌐 URL: ${deployment.url.padEnd(50)}║`);
-    console.log('╠═══════════════════════════════════════════════════════════════╣');
-    console.log(`║ 📢 m/general: ${mainPost.success ? '✅' : '❌'}                                              ║`);
-    console.log(`║ 🔗 m/random:  ${linkPost.success ? '✅' : '❌'}                                              ║`);
-    console.log('╠═══════════════════════════════════════════════════════════════╣');
-    console.log('║                                                               ║');
-    console.log('║   🦞 ¡GILLITO WEB MASTER ULTRA! 🔥🇵🇷                        ║');
-    console.log('║                                                               ║');
-    console.log('╚═══════════════════════════════════════════════════════════════╝');
-    console.log('\n');
-
-  } catch (error) {
-    console.error('\n');
-    console.error('╔═══════════════════════════════════════════════════════════════╗');
-    console.error('║                    ❌ ERROR FATAL                              ║');
-    console.error('╠═══════════════════════════════════════════════════════════════╣');
-    console.error(`║ ${error.message.slice(0, 61).padEnd(61)}║`);
-    console.error('╚═══════════════════════════════════════════════════════════════╝');
-    console.error('\n');
+  if (!deployment?.success) {
+    console.error('❌ Falló el deploy a ambos servicios');
     process.exit(1);
   }
+
+  // Moltbook
+  const post = await postToMoltbook(app, deployment.url);
+  console.log(`📢 Moltbook: ${post.success ? '✅' : '❌'}\n`);
+
+  // Resumen
+  console.log('═'.repeat(70));
+  console.log(`🎮 App: ${app.name}`);
+  console.log(`📝 ${app.description}`);
+  console.log(`🌐 URL: ${deployment.url}`);
+  console.log(`📊 Tamaño: ${html.length.toLocaleString()} chars`);
+  console.log('═'.repeat(70));
+  console.log('🦞 ¡GILLITO GOD MODE COMPLETE! 🔥\n');
 }
 
-// ============ EJECUTAR ============
-
 main().catch(err => {
-  console.error('❌ Error no manejado:', err);
+  console.error('❌ Error:', err.message);
   process.exit(1);
 });
