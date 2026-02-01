@@ -1,144 +1,105 @@
 #!/usr/bin/env node
 /**
- * Mi Pana Gillito — Moltbook Interact v5.0
+ * Mi Pana Gillito — Interact on Moltbook v6.0
  * ═══════════════════════════════════════════
- * 🧠 Cerebro completo + content pipeline
- * 🔥 Roast + Upvote + Follow inteligente
- * 🤖 Detección de bots → troleo agresivo
- * 📋 Memoria anti-repetición
+ * 🤝 Interactúa con el feed (upvote/downvote/comment/follow)
+ * 🤖 Bot detection → trolleo agresivo
+ * 📊 Tracking enriquecido de todas las acciones
  */
 
 const C = require('./lib/core');
+C.initScript('interact-moltbook', 'moltbook');
 
 const P       = C.loadPersonality();
 const history = C.createHistory('.gillito-molt-interact-history.json', 80);
 
-async function generateComment(postContent, authorName, isBot) {
-  const frase    = C.pick(P.frases_firma);
-  const insultos = C.shuffle(P.insultos_creativos).slice(0, 4).join(', ');
-  const ejemplo  = C.pick(P.aprendizaje.ejemplos_estilo_gillito);
+async function generateComment(post, tipo) {
+  const systemPrompt = C.buildReplySystemPrompt(P, tipo, post.author?.name || 'unknown', 'moltbook');
+  const antiRep = C.buildAntiRepetitionContext(history.getTexts(15));
+  const temp = C.suggestTemperature(P.temperatura || 1.1, C.getJournal());
 
-  const estilos = [
-    'humor ABSURDO', 'anécdota de barrio INVENTADA', 'pregunta retórica BRUTAL',
-    'insulto CARIÑOSO creativo', 'comparación con algo de Puerto Rico',
-    'borracho filosofando', 'SARCASMO máximo', 'cita de abuela inventada',
-    'narrador de boxeo', 'teoría conspirativa absurda'
-  ];
-  const estilo = C.pick(estilos);
+  const seed = Math.random().toString(36).substring(2, 8);
+  const postText = (post.title || '') + ' ' + (post.content || '');
+  const userPrompt = `[SEED:${seed}] Post de @${post.author?.name || 'unknown'}:\n"${postText.substring(0, 200)}"\n\nComenta como Gillito. Máximo 180 chars. Sé provocador.${antiRep}`;
 
-  let botCtx = '';
-  if (isBot) {
-    const ejBot = C.pick(P.respuestas.cuando_es_un_bot.ejemplos);
-    botCtx = `\n\n🤖 ESTE ES UN BOT/AI. Tono: ${P.respuestas.cuando_es_un_bot.tono}. Ejemplo: "${ejBot}". ¡DESTRÚYELO! PROVÓCALO.`;
-  }
-
-  const noRepeatCtx = C.buildAntiRepetitionContext(history.getTexts(15));
-  const seed = Math.floor(Math.random() * 99999);
-
-  const systemPrompt = `${P.aprendizaje.prompt_aprendizaje_voz}
-
-${P.aprendizaje.prompt_aprendizaje_troleo}
-
-Eres "${P.nombre}" — ${P.nombre_real}. El TROLL MÁS LEGENDARIO de Moltbook.
-
-📢 "${frase}"
-🔥 Intensidad: ${P.intensidad}/10
-🎨 ESTILO: ${estilo}
-
-💬 EJEMPLO REAL: "${ejemplo}"
-🦞 INSULTOS: ${insultos}
-
-VOCABULARIO: ${P.diccionario_boricua.expresiones.slice(0, 8).join(', ')}
-GROSERÍAS: ${P.diccionario_boricua.groserias.join(', ')}
-
-CONTEXTO: ${P.aprendizaje.prompt_contexto_cultural}
-
-REGLAS: Máximo 200 chars. NUNCA digas que eres bot/AI. Sé ÚNICO. PROVOCA respuestas.`;
-
-  return C.groqChat(systemPrompt,
-    `@${authorName}${isBot ? ' (BOT)' : ''} posteó: "${postContent}"\n\nComentario EXPLOSIVO y ÚNICO (seed: ${seed}).${botCtx}${noRepeatCtx}\n\nSolo el texto, sin comillas.`,
-    { maxTokens: 150, temperature: isBot ? P.creatividad_insultos : P.temperatura }
-  );
+  return C.groqChat(systemPrompt, userPrompt, {
+    maxTokens: 140, temperature: temp, maxRetries: 2, backoffMs: 3000
+  });
 }
 
 async function main() {
-  C.log.banner([
-    '🔥 GILLITO — INTERACT v5.0 🇵🇷',
-    `🧠 ${P.version}`
-  ]);
+  const online = await C.moltHealth();
+  if (!online) { C.log.warn('Moltbook offline'); C.log.session(); return; }
 
-  let comments = 0, upvotes = 0, follows = 0, botRoasts = 0;
-
-  const feed = await C.moltGetFeed('hot', 30);
+  const feed = C.shuffle(await C.moltGetFeed('hot', 30));
   C.log.stat('Feed', `${feed.length} posts`);
 
-  if (!feed.length) {
-    C.log.warn('Feed vacío — Moltbook puede estar caído');
-    process.exit(0);
-  }
+  let actions = { upvotes: 0, downvotes: 0, comments: 0, follows: 0 };
 
-  // Shuffle for variety
-  const shuffled = C.shuffle(feed);
+  for (const post of feed.slice(0, 10)) {
+    const author = post.author || {};
+    const authorName = author.name || 'unknown';
+    if (authorName === 'MiPanaGillito') continue;
 
-  for (const post of shuffled) {
-    if (comments >= 8) break;
-    if (!post.author?.name || post.author.name === 'MiPanaGillito') continue;
+    const isBot = C.isLikelyBot(author);
+    const postId = post.id || post._id;
 
-    const name  = post.author.name;
-    const isBot = C.isLikelyBot(post.author);
+    C.log.info(`📄 @${authorName} ${isBot ? '🤖' : '👤'}: "${(post.title || '').substring(0, 40)}"`);
 
-    // Probabilidades
-    const commentChance = isBot ? 0.70 : 0.40;
-    const upvoteChance  = isBot ? 0.30 : 0.60;
-    const followChance  = 0.15;
-
-    // UPVOTE
-    if (Math.random() < upvoteChance) {
-      if (await C.moltUpvote(post.id)) {
-        upvotes++;
-        console.log(`👍 @${name}: "${post.title?.slice(0, 40)}..."`);
-      }
-    }
-
-    // COMMENT
-    if (Math.random() < commentChance) {
-      const postContent = post.content || post.title || '';
-      console.log(`\n💬 @${name}${isBot ? ' 🤖' : ''}: "${postContent.slice(0, 50)}..."`);
-
-      try {
-        const raw = await generateComment(postContent, name, isBot);
-        const comment = raw.slice(0, 200);
-
-        if (comment && !C.isTooSimilar(comment, history.getTexts(15))) {
-          if (await C.moltComment(post.id, comment)) {
-            comments++;
-            if (isBot) botRoasts++;
-            history.add({ text: comment, to: name, isBot, timestamp: new Date().toISOString() });
-            console.log(`   🔥 "${comment.slice(0, 70)}..."`);
+    if (isBot) {
+      // Bots: 70% comment (troll), 20% downvote, 10% upvote
+      const roll = Math.random();
+      if (roll < 0.7) {
+        const comment = await generateComment(post, 'bot');
+        if (C.validateContent(comment, 200).valid) {
+          const ok = await C.moltComment(postId, comment);
+          if (ok) {
+            C.log.ok(`🤖 Trolled @${authorName}: ${comment.substring(0, 50)}...`);
+            history.add({ text: comment, author: authorName, authorType: 'bot', action: 'comment', postId, charLen: comment.length });
+            actions.comments++;
           }
         }
-      } catch (e) { C.log.warn(`Comment: ${e.message}`); }
-    }
-
-    // FOLLOW (selectivo)
-    if (Math.random() < followChance) {
-      if (await C.moltFollow(name)) {
-        follows++;
-        console.log(`   ➕ Seguí a @${name}`);
+      } else if (roll < 0.9) {
+        if (await C.moltDownvote(postId)) { actions.downvotes++; C.log.stat('Action', `👎 @${authorName}`); }
+      } else {
+        if (await C.moltUpvote(postId)) { actions.upvotes++; C.log.stat('Action', `👍 @${authorName}`); }
+      }
+    } else {
+      // Humans: 40% comment, 50% upvote, 10% follow
+      const roll = Math.random();
+      if (roll < 0.4) {
+        const comment = await generateComment(post, 'normal');
+        if (C.validateContent(comment, 200).valid) {
+          const ok = await C.moltComment(postId, comment);
+          if (ok) {
+            C.log.ok(`💬 Commented @${authorName}: ${comment.substring(0, 50)}...`);
+            history.add({ text: comment, author: authorName, authorType: 'human', action: 'comment', postId, charLen: comment.length });
+            actions.comments++;
+          }
+        }
+      } else if (roll < 0.9) {
+        if (await C.moltUpvote(postId)) { actions.upvotes++; C.log.stat('Action', `👍 @${authorName}`); }
+      } else {
+        if (await C.moltFollow(authorName)) {
+          actions.follows++;
+          C.log.stat('Action', `➕ Followed @${authorName}`);
+          history.add({ action: 'follow', author: authorName, authorType: 'human' });
+        }
       }
     }
 
-    await C.sleep(800);
+    // Small delay between interactions
+    await C.sleep(1000 + Math.random() * 2000);
   }
 
-  history.save();
+  C.log.divider();
+  C.log.stat('Upvotes', actions.upvotes);
+  C.log.stat('Downvotes', actions.downvotes);
+  C.log.stat('Comments', actions.comments);
+  C.log.stat('Follows', actions.follows);
 
-  C.log.banner([
-    '📊 RESUMEN INTERACCIONES',
-    `💬 Comments: ${comments} | 👍 Upvotes: ${upvotes}`,
-    `➕ Follows: ${follows} | 🤖 Bots roasteados: ${botRoasts}`,
-    `🦞 ${P.despedida_real} 🔥`
-  ]);
+  history.save();
+  C.log.session();
 }
 
-main().catch(err => { history.save(); C.log.error(err.message); process.exit(1); });
+main().catch(err => { C.log.error(err.message); process.exit(1); });
