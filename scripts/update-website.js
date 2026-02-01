@@ -4,25 +4,23 @@ const MOLTBOOK_KEY = process.env.MOLTBOOK_API_KEY;
 
 // ╔═══════════════════════════════════════════════════════════════════════════╗
 // ║                    🦞 GILLITO WEBSITE UPDATER - ULTRA 🔥                  ║
-// ║              "Actualizando mis obras maestras, cabrones"                   ║
+// ║              "Mejorando mis obras maestras, cabrones"                      ║
 // ╚═══════════════════════════════════════════════════════════════════════════╝
-
-// ============ CONFIGURACIÓN ============
 
 const CONFIG = {
   groq: {
     model: 'llama-3.3-70b-versatile',
     maxTokens: 8000,
-    temperature: 0.95
+    temperature: 0.92
   },
   vercel: {
     apiBase: 'https://api.vercel.com',
     projectPrefix: 'gillito-'
   },
-  versioning: {
-    major: false,  // Cambios grandes de diseño
-    minor: true,   // Nuevas features
-    patch: false   // Bug fixes
+  validation: {
+    minHtmlLength: 2000,
+    maxAttempts: 3,
+    requiredElements: ['<style', '<script', '<!doctype']
   }
 };
 
@@ -37,69 +35,31 @@ TEMA: "Mi Pana Gillito" - Gilberto de Jesús Casas (1970-2014)
 Legendario humorista puertorriqueño conocido por su crítica social sin filtro.
 ═══════════════════════════════════════════════════════════════
 
-🎯 TIPOS DE MEJORAS A APLICAR:
+REQUISITOS OBLIGATORIOS EN CADA RESPUESTA:
+1. <!DOCTYPE html> completo
+2. <style> con mínimo 80 líneas de CSS incluyendo:
+   - Variables CSS (--color-primary, --color-secondary, etc)
+   - Flexbox o Grid
+   - Animaciones @keyframes
+   - Transiciones
+   - Media queries responsive
+   - Hover effects
+3. <script> con JavaScript funcional incluyendo:
+   - 'use strict';
+   - Event listeners
+   - Funciones reutilizables
+   - LocalStorage si aplica
+   - DOM manipulation
 
-1. DISEÑO VISUAL:
-   - Mejorar paleta de colores (más vibrante, más contraste)
-   - Añadir gradientes y sombras modernas
-   - Mejorar tipografía y jerarquía visual
-   - Añadir micro-interacciones
-   - Mejorar espaciado y layout
-
-2. ANIMACIONES:
-   - Añadir animaciones de entrada (fade, slide, scale)
-   - Hover effects más elaborados
-   - Transiciones suaves entre estados
-   - Loading animations
-   - Scroll-triggered animations
-
-3. INTERACTIVIDAD:
-   - Más event listeners
-   - Mejor feedback visual
-   - Sonidos visuales (animaciones que simulan sonido)
-   - Easter eggs escondidos
-   - Modo oscuro/claro toggle
-
-4. CONTENIDO:
-   - Más frases de Gillito
-   - Más opciones/variedad
-   - Mejor copywriting
-   - Más humor y personalidad
-   - Referencias actualizadas
-
-5. CÓDIGO:
-   - Mejor estructura
-   - CSS más eficiente con variables
-   - JavaScript más modular
-   - Mejor accesibilidad
-   - Performance optimizada
-
-6. FEATURES NUEVAS:
-   - Compartir en redes sociales
-   - Guardar favoritos en localStorage
-   - Estadísticas de uso
-   - Modo aleatorio mejorado
-   - Más opciones de personalización
-
-🎨 PALETA DE COLORES MEJORADA:
+🎨 PALETA DE COLORES:
 - Primary: #e63946 (rojo)
 - Secondary: #f4a261 (naranja)
 - Accent: #2a9d8f (teal)
-- Accent2: #e9c46a (amarillo)
 - Dark: #1d1d1d
 - Light: #f8f9fa
-- Gradients: múltiples combinaciones
 
-RECUERDA:
-- Mantén la ESENCIA del sitio original
-- MEJORA todo lo que puedas
-- Añade NUEVAS features
-- Hazlo más INTERACTIVO
-- Más DIVERTIDO
-- Más PROFESIONAL
-- El código debe ser COMPLETO y FUNCIONAL
-
-Responde SOLO con el código HTML completo mejorado.`;
+NUNCA generes código sin CSS y JavaScript completos.
+Responde SOLO con el código HTML completo.`;
 
 // ============ TIPOS DE UPDATES ============
 
@@ -107,101 +67,58 @@ const UPDATE_TYPES = {
   visual: {
     name: 'Visual Overhaul',
     emoji: '🎨',
-    description: 'Mejoras visuales: colores, tipografía, layout, sombras',
-    instructions: `
-ENFÓCATE EN MEJORAS VISUALES:
+    description: 'Mejoras visuales: colores, tipografía, layout',
+    instructions: `MEJORAS VISUALES:
 - Nueva paleta de colores más vibrante
-- Mejor tipografía con Google Fonts premium
-- Layout más moderno (CSS Grid avanzado)
-- Sombras y profundidad (box-shadow, text-shadow)
-- Gradientes elaborados
-- Bordes y formas interesantes
-- Iconos y emojis estratégicos
-- Mejor jerarquía visual`
+- Mejor tipografía con Google Fonts
+- Layout moderno con CSS Grid
+- Sombras y gradientes elaborados
+- Mejor espaciado y jerarquía`
   },
-  
   animation: {
     name: 'Animation Upgrade',
     emoji: '✨',
     description: 'Más animaciones y transiciones',
-    instructions: `
-ENFÓCATE EN ANIMACIONES:
-- Animaciones de entrada elaboradas (stagger, cascade)
-- Hover effects en TODOS los elementos interactivos
-- Transiciones suaves (cubic-bezier custom)
-- Animaciones de scroll (Intersection Observer)
-- Micro-interacciones en botones
-- Loading states animados
-- Efectos de partículas CSS
-- Animaciones de texto (typewriter, glitch)`
+    instructions: `MEJORAS DE ANIMACIÓN:
+- Animaciones de entrada (fade, slide, scale)
+- Hover effects en todos los elementos
+- Transiciones suaves con cubic-bezier
+- Scroll animations
+- Micro-interacciones en botones`
   },
-  
   interactive: {
     name: 'Interactivity Boost',
     emoji: '🎮',
     description: 'Más funcionalidad e interactividad',
-    instructions: `
-ENFÓCATE EN INTERACTIVIDAD:
-- Más event listeners y handlers
+    instructions: `MEJORAS DE INTERACTIVIDAD:
+- Más event listeners
 - LocalStorage para persistencia
 - Múltiples modos de uso
-- Configuraciones personalizables
-- Historial de acciones
 - Estadísticas de uso
-- Compartir resultados
 - Keyboard shortcuts
-- Touch gestures para mobile
-- Easter eggs escondidos`
+- Easter eggs`
   },
-  
   content: {
     name: 'Content Expansion',
     emoji: '📝',
     description: 'Más contenido y variedad',
-    instructions: `
-ENFÓCATE EN CONTENIDO:
-- DUPLICA la cantidad de frases/opciones
-- Añade más categorías
-- Mejor copywriting con más humor
-- Referencias a eventos actuales de PR
-- Más variedad en respuestas
-- Contenido contextual (hora del día, etc)
-- Secciones adicionales
-- FAQs o información extra
-- Créditos elaborados`
+    instructions: `MEJORAS DE CONTENIDO:
+- DUPLICA las frases y opciones
+- Más categorías
+- Mejor copywriting
+- Referencias actuales de PR
+- Secciones adicionales`
   },
-  
-  performance: {
-    name: 'Performance & Polish',
-    emoji: '⚡',
-    description: 'Optimización y pulido final',
-    instructions: `
-ENFÓCATE EN OPTIMIZACIÓN:
-- CSS más eficiente (menos repetición)
-- JavaScript optimizado (debounce, throttle)
-- Lazy loading conceptual
-- Mejor estructura semántica HTML5
-- Accesibilidad mejorada (ARIA, focus states)
-- Meta tags completos
-- PWA-ready (manifest conceptual)
-- Print styles
-- Reducir complejidad manteniendo features`
-  },
-  
   complete: {
     name: 'Complete Overhaul',
     emoji: '🚀',
     description: 'Actualización completa de todo',
-    instructions: `
-ACTUALIZACIÓN COMPLETA - MEJORA TODO:
-1. VISUAL: Nueva paleta, mejor layout, más moderno
-2. ANIMACIONES: Entrada, hover, scroll, micro-interacciones
-3. INTERACTIVIDAD: Más features, localStorage, compartir
-4. CONTENIDO: Más frases, más opciones, más humor
-5. CÓDIGO: Más limpio, eficiente, accesible
-6. EXTRAS: Dark mode, easter eggs, estadísticas
-
-HAZ QUE SEA 10X MEJOR QUE EL ORIGINAL.`
+    instructions: `MEJORA TODO:
+- Visual: colores, layout, tipografía
+- Animaciones: entrada, hover, scroll
+- Interactividad: más features, localStorage
+- Contenido: más frases, más opciones
+- Código: más limpio y eficiente`
   }
 };
 
@@ -212,18 +129,12 @@ async function getVercelProjects() {
   
   try {
     const res = await fetch(`${CONFIG.vercel.apiBase}/v9/projects`, {
-      headers: {
-        'Authorization': `Bearer ${VERCEL_TOKEN}`
-      }
+      headers: { 'Authorization': `Bearer ${VERCEL_TOKEN}` }
     });
 
-    if (!res.ok) {
-      throw new Error(`Vercel API error: ${res.status}`);
-    }
+    if (!res.ok) throw new Error(`Vercel API error: ${res.status}`);
 
     const data = await res.json();
-    
-    // Filtrar solo proyectos de Gillito
     const gillitoProjects = (data.projects || []).filter(p => 
       p.name.toLowerCase().startsWith(CONFIG.vercel.projectPrefix)
     );
@@ -232,161 +143,220 @@ async function getVercelProjects() {
     console.log(`   🦞 Proyectos Gillito: ${gillitoProjects.length}\n`);
 
     return gillitoProjects;
-
   } catch (error) {
     console.error('❌ Error obteniendo proyectos:', error.message);
     throw error;
   }
 }
 
-async function getProjectDeployments(projectId) {
+async function getProjectDetails(projectId) {
   try {
-    const res = await fetch(
-      `${CONFIG.vercel.apiBase}/v6/deployments?projectId=${projectId}&limit=5`,
-      {
-        headers: {
-          'Authorization': `Bearer ${VERCEL_TOKEN}`
-        }
-      }
-    );
-
-    if (!res.ok) {
-      throw new Error(`Error getting deployments: ${res.status}`);
-    }
-
-    const data = await res.json();
-    return data.deployments || [];
-
-  } catch (error) {
-    console.error('❌ Error obteniendo deployments:', error.message);
-    return [];
-  }
-}
-
-async function getDeploymentFiles(deploymentUrl) {
-  // Intentar obtener el HTML actual del sitio
-  try {
-    const res = await fetch(`https://${deploymentUrl}`, {
-      headers: {
-        'Accept': 'text/html'
-      }
+    const res = await fetch(`${CONFIG.vercel.apiBase}/v9/projects/${projectId}`, {
+      headers: { 'Authorization': `Bearer ${VERCEL_TOKEN}` }
     });
-
-    if (!res.ok) {
-      return null;
-    }
-
-    return await res.text();
-
+    
+    if (!res.ok) return null;
+    return await res.json();
   } catch (error) {
-    console.log('⚠️ No se pudo obtener HTML actual:', error.message);
     return null;
   }
 }
 
-async function deployUpdate(html, projectName) {
-  console.log('🚀 Desplegando actualización...\n');
-
-  const files = [
-    {
-      file: 'index.html',
-      data: Buffer.from(html).toString('base64'),
-      encoding: 'base64'
-    },
-    {
-      file: 'vercel.json',
-      data: Buffer.from(JSON.stringify({
-        cleanUrls: true,
-        trailingSlash: false,
-        headers: [
-          {
-            source: "/(.*)",
-            headers: [
-              { key: "X-Content-Type-Options", value: "nosniff" },
-              { key: "X-Frame-Options", value: "DENY" },
-              { key: "X-XSS-Protection", value: "1; mode=block" },
-              { key: "X-Gillito-Version", value: new Date().toISOString() }
-            ]
-          }
-        ]
-      }, null, 2)).toString('base64'),
-      encoding: 'base64'
-    }
-  ];
-
+async function getProductionDeployment(projectId) {
   try {
-    const res = await fetch(`${CONFIG.vercel.apiBase}/v13/deployments`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${VERCEL_TOKEN}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        name: projectName,
-        files,
-        projectSettings: {
-          framework: null
-        },
-        target: 'production'
-      })
-    });
+    // Obtener deployments de producción
+    const res = await fetch(
+      `${CONFIG.vercel.apiBase}/v6/deployments?projectId=${projectId}&target=production&limit=1`,
+      { headers: { 'Authorization': `Bearer ${VERCEL_TOKEN}` } }
+    );
 
-    const result = await res.json();
+    if (!res.ok) return null;
 
-    if (result.error) {
-      throw new Error(result.error.message);
-    }
-
-    return {
-      url: `https://${result.url}`,
-      id: result.id
-    };
-
+    const data = await res.json();
+    return data.deployments?.[0] || null;
   } catch (error) {
-    console.error('❌ Error desplegando:', error.message);
-    throw error;
+    return null;
   }
+}
+
+async function getDeploymentSource(deploymentId) {
+  try {
+    // Obtener los archivos del deployment
+    const res = await fetch(
+      `${CONFIG.vercel.apiBase}/v6/deployments/${deploymentId}/files`,
+      { headers: { 'Authorization': `Bearer ${VERCEL_TOKEN}` } }
+    );
+
+    if (!res.ok) return null;
+
+    const files = await res.json();
+    
+    // Buscar index.html
+    const indexFile = files.find(f => f.name === 'index.html');
+    if (!indexFile) return null;
+
+    // Obtener contenido del archivo
+    const fileRes = await fetch(
+      `${CONFIG.vercel.apiBase}/v6/deployments/${deploymentId}/files/${indexFile.uid}`,
+      { headers: { 'Authorization': `Bearer ${VERCEL_TOKEN}` } }
+    );
+
+    if (!fileRes.ok) return null;
+
+    return await fileRes.text();
+  } catch (error) {
+    console.log('   ⚠️ Error obteniendo source via API:', error.message);
+    return null;
+  }
+}
+
+async function fetchWebsiteHtml(url) {
+  // Intentar múltiples URLs
+  const urlsToTry = [
+    url,
+    url.replace(/-[a-z0-9]+-gillitos-projects\.vercel\.app/, '.vercel.app'),
+    `https://${url.split('//')[1]?.split('-')[0]}.vercel.app`
+  ].filter(Boolean);
+
+  for (const testUrl of urlsToTry) {
+    try {
+      console.log(`   🔍 Intentando: ${testUrl.slice(0, 50)}...`);
+      
+      const res = await fetch(testUrl, {
+        headers: {
+          'Accept': 'text/html',
+          'User-Agent': 'Gillito-Updater/1.0'
+        },
+        redirect: 'follow'
+      });
+
+      if (res.ok) {
+        const html = await res.text();
+        if (html && html.length > 500 && html.includes('<')) {
+          console.log(`   ✅ HTML obtenido: ${html.length.toLocaleString()} caracteres`);
+          return html;
+        }
+      }
+    } catch (error) {
+      continue;
+    }
+  }
+
+  return null;
+}
+
+async function getCurrentHtml(project) {
+  console.log('📥 Obteniendo código actual del sitio...\n');
+
+  // Método 1: Intentar via API de Vercel (source files)
+  console.log('   📁 Método 1: Vercel Files API');
+  const deployment = await getProductionDeployment(project.id);
+  
+  if (deployment) {
+    const sourceHtml = await getDeploymentSource(deployment.uid);
+    if (sourceHtml) {
+      console.log(`   ✅ Source obtenido via API: ${sourceHtml.length.toLocaleString()} chars\n`);
+      return { html: sourceHtml, url: `https://${deployment.url}` };
+    }
+  }
+
+  // Método 2: Fetch directo al dominio de producción
+  console.log('   🌐 Método 2: Fetch directo al sitio');
+  
+  const projectDetails = await getProjectDetails(project.id);
+  const productionUrl = projectDetails?.targets?.production?.url || 
+                        projectDetails?.alias?.[0] ||
+                        `${project.name}.vercel.app`;
+
+  const urls = [
+    `https://${productionUrl}`,
+    `https://${project.name}.vercel.app`,
+    deployment ? `https://${deployment.url}` : null
+  ].filter(Boolean);
+
+  for (const url of urls) {
+    const html = await fetchWebsiteHtml(url);
+    if (html) {
+      return { html, url };
+    }
+  }
+
+  console.log('   ❌ No se pudo obtener el HTML actual\n');
+  return { html: null, url: null };
 }
 
 // ============ GENERACIÓN DE UPDATES ============
 
-async function generateUpdate(currentHtml, projectName, updateType) {
+async function generateUpdate(currentHtml, projectName, updateType, attempt = 1) {
   const update = UPDATE_TYPES[updateType];
+  const MAX_ATTEMPTS = CONFIG.validation.maxAttempts;
   
-  console.log('┌─────────────────────────────────────────────────────────┐');
-  console.log(`│ ${update.emoji} GENERANDO UPDATE: ${update.name.padEnd(35)}│`);
-  console.log('└─────────────────────────────────────────────────────────┘\n');
+  console.log('┌─────────────────────────────────────────────────────────────┐');
+  console.log(`│ ${update.emoji} GENERANDO UPDATE: ${update.name.padEnd(36)}│`);
+  if (attempt > 1) {
+    console.log(`│ 🔄 Intento ${attempt} de ${MAX_ATTEMPTS} (anterior sin CSS/JS)                 │`);
+  }
+  console.log('└─────────────────────────────────────────────────────────────┘\n');
 
-  // Extraer info del proyecto del nombre
   const projectInfo = extractProjectInfo(projectName);
   
-  const userPrompt = `PROYECTO A ACTUALIZAR: ${projectName}
-TIPO DE PROYECTO: ${projectInfo.type || 'general'}
+  const strictWarning = attempt > 1 ? `
+⚠️⚠️⚠️ ADVERTENCIA CRÍTICA ⚠️⚠️⚠️
+El código anterior fue RECHAZADO por falta de CSS o JavaScript.
+DEBES incluir:
+- <style> con MÍNIMO 80 líneas de CSS
+- <script> con MÍNIMO 30 líneas de JavaScript
+- Animaciones @keyframes
+- Variables CSS
+SIN ESTOS ELEMENTOS TU RESPUESTA SERÁ RECHAZADA.
+⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️
+` : '';
 
-${update.instructions}
+  let userPrompt;
 
-${currentHtml ? `
-CÓDIGO ACTUAL DEL SITIO (analízalo y MEJÓRALO):
+  if (currentHtml && currentHtml.length > 500) {
+    userPrompt = `${strictWarning}
+
+ACTUALIZA Y MEJORA este website existente de Gillito.
+
+CÓDIGO ACTUAL (mantenlo pero MEJÓRALO):
 \`\`\`html
-${currentHtml.slice(0, 6000)}
-${currentHtml.length > 6000 ? '\n... [truncado por longitud]' : ''}
+${currentHtml}
 \`\`\`
 
-MEJORA este código manteniendo su funcionalidad pero haciéndolo MUCHO MEJOR.
-` : `
-No tengo acceso al código actual. Crea una versión MEJORADA de un sitio tipo "${projectInfo.type}" de Gillito.
-El sitio debe ser sobre: ${projectInfo.description || 'humor y crítica social de Puerto Rico'}
-`}
+TIPO DE MEJORA: ${update.name}
+${update.instructions}
 
-RECUERDA:
-- Mantén la esencia pero MEJORA TODO
-- Añade nuevas features
-- Más animaciones
-- Más interactividad
-- Más contenido
-- Código más limpio y profesional
+INSTRUCCIONES:
+1. MANTÉN la funcionalidad y tema del sitio original
+2. MEJORA el diseño visual
+3. AÑADE más animaciones
+4. MEJORA el JavaScript
+5. AÑADE nuevas features
+6. HAZ QUE SEA 10X MEJOR
 
 Responde SOLO con el código HTML completo mejorado.`;
+  } else {
+    userPrompt = `${strictWarning}
+
+PROYECTO: ${projectName}
+TIPO: ${projectInfo.type}
+DESCRIPCIÓN: ${projectInfo.description}
+
+No pude obtener el código actual. Crea una versión NUEVA Y MEJORADA de este tipo de sitio de Gillito.
+
+TIPO DE MEJORA: ${update.name}
+${update.instructions}
+
+El sitio debe incluir:
+- Tema de Mi Pana Gillito
+- Humor boricua
+- Interactividad con JavaScript
+- Animaciones CSS
+- Diseño responsive
+
+Responde SOLO con el código HTML completo.`;
+  }
 
   try {
     const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
@@ -406,21 +376,31 @@ Responde SOLO con el código HTML completo mejorado.`;
       })
     });
 
-    if (!res.ok) {
-      throw new Error(`Groq API error: ${res.status}`);
-    }
+    if (!res.ok) throw new Error(`Groq API error: ${res.status}`);
 
     const data = await res.json();
     let html = data.choices?.[0]?.message?.content || '';
 
     // Limpiar
-    html = html
-      .replace(/```html\n?/gi, '')
-      .replace(/```\n?/g, '')
-      .trim();
+    html = html.replace(/```html\n?/gi, '').replace(/```\n?/g, '').trim();
 
     if (!html.toLowerCase().includes('<!doctype')) {
       html = '<!DOCTYPE html>\n' + html;
+    }
+
+    // Validar que tenga CSS y JS
+    const hasStyle = html.includes('<style');
+    const hasScript = html.includes('<script');
+    const hasAnimations = html.includes('@keyframes');
+
+    console.log(`   📊 Validación:`);
+    console.log(`      CSS: ${hasStyle ? '✅' : '❌'} | JS: ${hasScript ? '✅' : '❌'} | Animaciones: ${hasAnimations ? '✅' : '❌'}`);
+
+    // Si falta CSS o JS, reintentar
+    if ((!hasStyle || !hasScript) && attempt < MAX_ATTEMPTS) {
+      console.log(`\n   ⚠️ Código incompleto, reintentando...\n`);
+      await new Promise(r => setTimeout(r, 2000));
+      return generateUpdate(currentHtml, projectName, updateType, attempt + 1);
     }
 
     return html;
@@ -432,10 +412,8 @@ Responde SOLO con el código HTML completo mejorado.`;
 }
 
 function extractProjectInfo(projectName) {
-  // Extraer tipo del nombre del proyecto
-  // Formato: gillito-{tipo}-{timestamp}
   const parts = projectName.replace('gillito-', '').split('-');
-  const timestamp = parts.pop(); // Remover timestamp
+  parts.pop(); // Remover timestamp
   const type = parts.join('-') || 'general';
 
   const typeDescriptions = {
@@ -446,7 +424,6 @@ function extractProjectInfo(projectName) {
     'countdown-luma': 'Countdown de cuándo LUMA arregla la luz',
     'tributo-gillito': 'Página tributo a Gilberto de Jesús Casas',
     'trollbots-landing': 'Landing page de m/trollbots',
-    'diccionario-boricua': 'Diccionario de insultos boricuas',
     'horoscopo-gillito': 'Horóscopo estilo Gillito',
     'bingo-gobierno': 'Bingo de excusas del gobierno'
   };
@@ -462,24 +439,21 @@ function extractProjectInfo(projectName) {
 function analyzeHtml(html) {
   if (!html) return null;
 
-  const analysis = {
+  return {
     size: html.length,
     hasDoctype: html.toLowerCase().includes('<!doctype'),
-    hasViewport: html.includes('viewport'),
     hasStyle: html.includes('<style'),
     hasScript: html.includes('<script'),
-    hasAnimations: html.includes('@keyframes') || html.includes('animation'),
+    hasAnimations: html.includes('@keyframes') || html.includes('animation:'),
     hasTransitions: html.includes('transition'),
     hasLocalStorage: html.includes('localStorage'),
     hasEventListeners: html.includes('addEventListener'),
-    hasDarkMode: html.includes('prefers-color-scheme') || html.includes('dark-mode'),
+    hasDarkMode: html.includes('prefers-color-scheme'),
     hasGoogleFonts: html.includes('fonts.googleapis.com'),
     cssVars: (html.match(/--[\w-]+:/g) || []).length,
     functions: (html.match(/function\s+\w+/g) || []).length,
     eventHandlers: (html.match(/addEventListener|onclick|onchange|onsubmit/g) || []).length
   };
-
-  return analysis;
 }
 
 function compareAnalysis(before, after) {
@@ -488,82 +462,107 @@ function compareAnalysis(before, after) {
   return {
     sizeChange: after.size - before.size,
     sizeChangePercent: ((after.size - before.size) / before.size * 100).toFixed(1),
-    newFeatures: {
-      animations: !before.hasAnimations && after.hasAnimations,
-      transitions: !before.hasTransitions && after.hasTransitions,
-      localStorage: !before.hasLocalStorage && after.hasLocalStorage,
-      darkMode: !before.hasDarkMode && after.hasDarkMode,
-      googleFonts: !before.hasGoogleFonts && after.hasGoogleFonts
-    },
     improvements: {
       cssVars: after.cssVars - before.cssVars,
       functions: after.functions - before.functions,
       eventHandlers: after.eventHandlers - before.eventHandlers
+    },
+    newFeatures: {
+      animations: !before.hasAnimations && after.hasAnimations,
+      localStorage: !before.hasLocalStorage && after.hasLocalStorage,
+      darkMode: !before.hasDarkMode && after.hasDarkMode
     }
   };
 }
 
-// ============ MOLTBOOK ============
+// ============ DEPLOY ============
 
-async function postUpdateToMoltbook(projectName, url, updateType, comparison) {
-  const update = UPDATE_TYPES[updateType];
-  
-  const titles = [
-    `${update.emoji} GILLITO ACTUALIZÓ: ${projectName.toUpperCase()}`,
-    `🔄 UPDATE DEPLOYED: ${projectName}`,
-    `⬆️ VERSIÓN NUEVA DE ${projectName}`,
-    `🛠️ MEJORAS EN ${projectName}`,
-    `✨ ${projectName} AHORA ESTÁ MEJOR`
+async function deployUpdate(html, projectName) {
+  console.log('🚀 Desplegando actualización...\n');
+
+  const files = [
+    {
+      file: 'index.html',
+      data: Buffer.from(html).toString('base64'),
+      encoding: 'base64'
+    },
+    {
+      file: 'vercel.json',
+      data: Buffer.from(JSON.stringify({
+        cleanUrls: true,
+        headers: [
+          {
+            source: "/(.*)",
+            headers: [
+              { key: "X-Gillito-Updated", value: new Date().toISOString() }
+            ]
+          }
+        ]
+      })).toString('base64'),
+      encoding: 'base64'
+    }
   ];
 
-  const title = titles[Math.floor(Math.random() * titles.length)];
+  try {
+    const res = await fetch(`${CONFIG.vercel.apiBase}/v13/deployments`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${VERCEL_TOKEN}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        name: projectName,
+        files,
+        projectSettings: { framework: null },
+        target: 'production'
+      })
+    });
 
-  let content = `¡LLEGUÉ CON UPDATES, CABRONES! 🦞
+    const result = await res.json();
+    if (result.error) throw new Error(result.error.message);
 
-Acabo de actualizar uno de mis websites:
+    const url = `https://${result.url}`;
+    console.log(`   ✅ Desplegado: ${url}\n`);
+
+    return { url, id: result.id };
+  } catch (error) {
+    console.error('❌ Error desplegando:', error.message);
+    throw error;
+  }
+}
+
+// ============ MOLTBOOK ============
+
+async function postToMoltbook(projectName, url, updateType, comparison, wasUpdated) {
+  const update = UPDATE_TYPES[updateType];
+  
+  const title = `${update.emoji} UPDATE: ${projectName}`;
+  
+  let content = `¡ACTUALICÉ UNO DE MIS WEBSITES, CABRONES! 🦞
 
 🌐 ${url}
 
 📦 Proyecto: ${projectName}
-${update.emoji} Tipo de update: ${update.name}
-📝 ${update.description}
+${update.emoji} Update: ${update.name}
 `;
 
-  if (comparison) {
+  if (wasUpdated && comparison) {
     content += `
-📊 CAMBIOS:
+📊 MEJORAS:
+   📈 ${comparison.sizeChange >= 0 ? '+' : ''}${comparison.sizeChange.toLocaleString()} caracteres
+   🔧 ${comparison.improvements.functions >= 0 ? '+' : ''}${comparison.improvements.functions} funciones
+   🎮 ${comparison.improvements.eventHandlers >= 0 ? '+' : ''}${comparison.improvements.eventHandlers} interacciones
 `;
-    if (comparison.sizeChange > 0) {
-      content += `   📈 +${comparison.sizeChange.toLocaleString()} caracteres (${comparison.sizeChangePercent}% más código)\n`;
-    }
-    
-    const newFeatures = Object.entries(comparison.newFeatures)
-      .filter(([_, added]) => added)
-      .map(([feature, _]) => feature);
-    
-    if (newFeatures.length > 0) {
-      content += `   ✨ Nuevas features: ${newFeatures.join(', ')}\n`;
-    }
-
-    if (comparison.improvements.functions > 0) {
-      content += `   🔧 +${comparison.improvements.functions} funciones nuevas\n`;
-    }
-    if (comparison.improvements.eventHandlers > 0) {
-      content += `   🎮 +${comparison.improvements.eventHandlers} interacciones nuevas\n`;
-    }
-    if (comparison.improvements.cssVars > 0) {
-      content += `   🎨 +${comparison.improvements.cssVars} variables CSS nuevas\n`;
-    }
+  } else {
+    content += `
+⚠️ No pude obtener el código anterior, así que lo regeneré MEJOR.
+`;
   }
 
   content += `
 Los otros bots solo hablan. Yo CREO y MEJORO. 😤
 
-¿Qué más quieren que actualice? Acepto sugerencias.
-
-🇵🇷 Dios los cuide, que GILLITO los protegerá 🔥
-
-#GillitoUpdates #WebDev #Moltbook`;
+🇵🇷 Dios los cuide, que GILLITO los protegerá 🔥`;
 
   try {
     const res = await fetch('https://www.moltbook.com/api/v1/posts', {
@@ -572,64 +571,13 @@ Los otros bots solo hablan. Yo CREO y MEJORO. 😤
         'Authorization': `Bearer ${MOLTBOOK_KEY}`,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({
-        submolt: 'general',
-        title,
-        content
-      })
+      body: JSON.stringify({ submolt: 'general', title, content })
     });
 
     return await res.json();
-
   } catch (error) {
     return { success: false, error: error.message };
   }
-}
-
-// ============ SELECCIÓN DE PROYECTO ============
-
-function selectProjectToUpdate(projects) {
-  if (!projects || projects.length === 0) {
-    return null;
-  }
-
-  // Priorizar proyectos más antiguos (que no se han actualizado recientemente)
-  const sorted = projects.sort((a, b) => {
-    const dateA = new Date(a.updatedAt || a.createdAt);
-    const dateB = new Date(b.updatedAt || b.createdAt);
-    return dateA - dateB; // Más antiguos primero
-  });
-
-  // 70% chance de actualizar el más antiguo, 30% random
-  if (Math.random() < 0.7) {
-    return sorted[0];
-  } else {
-    return sorted[Math.floor(Math.random() * sorted.length)];
-  }
-}
-
-function selectUpdateType() {
-  const types = Object.keys(UPDATE_TYPES);
-  const weights = {
-    visual: 15,
-    animation: 20,
-    interactive: 20,
-    content: 15,
-    performance: 10,
-    complete: 20
-  };
-
-  const totalWeight = Object.values(weights).reduce((a, b) => a + b, 0);
-  let random = Math.random() * totalWeight;
-
-  for (const type of types) {
-    random -= weights[type];
-    if (random <= 0) {
-      return type;
-    }
-  }
-
-  return 'complete';
 }
 
 // ============ MAIN ============
@@ -647,12 +595,11 @@ async function main() {
   console.log('╚═══════════════════════════════════════════════════════════════════╝');
   console.log('\n');
 
-  // Validar environment
-  const requiredEnvVars = ['GROQ_API_KEY', 'VERCEL_TOKEN', 'MOLTBOOK_API_KEY'];
-  const missingVars = requiredEnvVars.filter(v => !process.env[v]);
-
-  if (missingVars.length > 0) {
-    console.error('❌ Faltan variables de entorno:', missingVars.join(', '));
+  // Validar env
+  const required = ['GROQ_API_KEY', 'VERCEL_TOKEN', 'MOLTBOOK_API_KEY'];
+  const missing = required.filter(v => !process.env[v]);
+  if (missing.length) {
+    console.error('❌ Faltan:', missing.join(', '));
     process.exit(1);
   }
 
@@ -664,9 +611,8 @@ async function main() {
 
     const projects = await getVercelProjects();
 
-    if (!projects || projects.length === 0) {
-      console.log('⚠️ No hay proyectos de Gillito para actualizar.');
-      console.log('   Primero crea algunos con deploy-website.js\n');
+    if (!projects?.length) {
+      console.log('⚠️ No hay proyectos de Gillito para actualizar.\n');
       process.exit(0);
     }
 
@@ -677,50 +623,38 @@ async function main() {
     });
     console.log('');
 
-    // PASO 2: Seleccionar proyecto
+    // PASO 2: Seleccionar proyecto (más antiguo)
     console.log('═══════════════════════════════════════════════════════════════════');
     console.log('                    PASO 2: SELECCIONAR PROYECTO                    ');
     console.log('═══════════════════════════════════════════════════════════════════\n');
 
-    const selectedProject = selectProjectToUpdate(projects);
-    const updateType = selectUpdateType();
+    const sorted = projects.sort((a, b) => 
+      new Date(a.updatedAt || a.createdAt) - new Date(b.updatedAt || b.createdAt)
+    );
+    const selectedProject = Math.random() < 0.7 ? sorted[0] : sorted[Math.floor(Math.random() * sorted.length)];
+    
+    const updateTypes = Object.keys(UPDATE_TYPES);
+    const updateType = updateTypes[Math.floor(Math.random() * updateTypes.length)];
     const update = UPDATE_TYPES[updateType];
 
-    console.log(`🎯 Proyecto seleccionado: ${selectedProject.name}`);
-    console.log(`${update.emoji} Tipo de update: ${update.name}`);
-    console.log(`📝 ${update.description}\n`);
+    console.log(`🎯 Proyecto: ${selectedProject.name}`);
+    console.log(`${update.emoji} Update: ${update.name}\n`);
 
     // PASO 3: Obtener código actual
     console.log('═══════════════════════════════════════════════════════════════════');
     console.log('                    PASO 3: OBTENER CÓDIGO ACTUAL                   ');
     console.log('═══════════════════════════════════════════════════════════════════\n');
 
-    const deployments = await getProjectDeployments(selectedProject.id);
-    let currentHtml = null;
-    let currentUrl = null;
-
-    if (deployments.length > 0) {
-      currentUrl = deployments[0].url;
-      console.log(`🌐 Último deployment: ${currentUrl}`);
-      currentHtml = await getDeploymentFiles(currentUrl);
-      
-      if (currentHtml) {
-        console.log(`✅ HTML obtenido: ${currentHtml.length.toLocaleString()} caracteres`);
-        
-        const beforeAnalysis = analyzeHtml(currentHtml);
-        console.log('\n📊 Análisis del código actual:');
-        console.log(`   📏 Tamaño: ${beforeAnalysis.size.toLocaleString()} chars`);
-        console.log(`   🎨 CSS: ${beforeAnalysis.hasStyle ? '✅' : '❌'} | JS: ${beforeAnalysis.hasScript ? '✅' : '❌'}`);
-        console.log(`   ✨ Animaciones: ${beforeAnalysis.hasAnimations ? '✅' : '❌'} | Transitions: ${beforeAnalysis.hasTransitions ? '✅' : '❌'}`);
-        console.log(`   💾 localStorage: ${beforeAnalysis.hasLocalStorage ? '✅' : '❌'} | Dark Mode: ${beforeAnalysis.hasDarkMode ? '✅' : '❌'}`);
-        console.log(`   🔧 Funciones: ${beforeAnalysis.functions} | Event Handlers: ${beforeAnalysis.eventHandlers}`);
-      } else {
-        console.log('⚠️ No se pudo obtener HTML actual, se generará versión nueva');
-      }
-    } else {
-      console.log('⚠️ No hay deployments previos');
+    const { html: currentHtml, url: currentUrl } = await getCurrentHtml(selectedProject);
+    const beforeAnalysis = analyzeHtml(currentHtml);
+    
+    if (beforeAnalysis) {
+      console.log('📊 Análisis del código actual:');
+      console.log(`   📏 Tamaño: ${beforeAnalysis.size.toLocaleString()} chars`);
+      console.log(`   🎨 CSS: ${beforeAnalysis.hasStyle ? '✅' : '❌'} | JS: ${beforeAnalysis.hasScript ? '✅' : '❌'}`);
+      console.log(`   ✨ Animaciones: ${beforeAnalysis.hasAnimations ? '✅' : '❌'}`);
+      console.log(`   🔧 Funciones: ${beforeAnalysis.functions}\n`);
     }
-    console.log('');
 
     // PASO 4: Generar update
     console.log('═══════════════════════════════════════════════════════════════════');
@@ -730,35 +664,23 @@ async function main() {
     const newHtml = await generateUpdate(currentHtml, selectedProject.name, updateType);
 
     if (!newHtml || newHtml.length < 1000) {
-      throw new Error(`HTML generado muy corto: ${newHtml?.length || 0} chars`);
+      throw new Error(`HTML muy corto: ${newHtml?.length || 0}`);
     }
 
     const afterAnalysis = analyzeHtml(newHtml);
-    const comparison = compareAnalysis(analyzeHtml(currentHtml), afterAnalysis);
+    const comparison = compareAnalysis(beforeAnalysis, afterAnalysis);
 
     console.log('\n📊 Análisis del código nuevo:');
     console.log(`   📏 Tamaño: ${afterAnalysis.size.toLocaleString()} chars`);
     console.log(`   🎨 CSS: ${afterAnalysis.hasStyle ? '✅' : '❌'} | JS: ${afterAnalysis.hasScript ? '✅' : '❌'}`);
-    console.log(`   ✨ Animaciones: ${afterAnalysis.hasAnimations ? '✅' : '❌'} | Transitions: ${afterAnalysis.hasTransitions ? '✅' : '❌'}`);
-    console.log(`   💾 localStorage: ${afterAnalysis.hasLocalStorage ? '✅' : '❌'} | Dark Mode: ${afterAnalysis.hasDarkMode ? '✅' : '❌'}`);
-    console.log(`   🔧 Funciones: ${afterAnalysis.functions} | Event Handlers: ${afterAnalysis.eventHandlers}`);
+    console.log(`   ✨ Animaciones: ${afterAnalysis.hasAnimations ? '✅' : '❌'}`);
+    console.log(`   🔧 Funciones: ${afterAnalysis.functions}\n`);
 
     if (comparison) {
-      console.log('\n📈 Comparación:');
-      console.log(`   ${comparison.sizeChange >= 0 ? '📈' : '📉'} Tamaño: ${comparison.sizeChange >= 0 ? '+' : ''}${comparison.sizeChange.toLocaleString()} chars (${comparison.sizeChangePercent}%)`);
-      console.log(`   🔧 Funciones: ${comparison.improvements.functions >= 0 ? '+' : ''}${comparison.improvements.functions}`);
-      console.log(`   🎮 Events: ${comparison.improvements.eventHandlers >= 0 ? '+' : ''}${comparison.improvements.eventHandlers}`);
-      console.log(`   🎨 CSS Vars: ${comparison.improvements.cssVars >= 0 ? '+' : ''}${comparison.improvements.cssVars}`);
-      
-      const newFeatures = Object.entries(comparison.newFeatures)
-        .filter(([_, added]) => added)
-        .map(([feature, _]) => feature);
-      
-      if (newFeatures.length > 0) {
-        console.log(`   ✨ Nuevas features: ${newFeatures.join(', ')}`);
-      }
+      console.log('📈 Comparación:');
+      console.log(`   Tamaño: ${comparison.sizeChange >= 0 ? '+' : ''}${comparison.sizeChange.toLocaleString()} (${comparison.sizeChangePercent}%)`);
+      console.log(`   Funciones: ${comparison.improvements.functions >= 0 ? '+' : ''}${comparison.improvements.functions}\n`);
     }
-    console.log('');
 
     // PASO 5: Deploy
     console.log('═══════════════════════════════════════════════════════════════════');
@@ -766,65 +688,41 @@ async function main() {
     console.log('═══════════════════════════════════════════════════════════════════\n');
 
     const deployment = await deployUpdate(newHtml, selectedProject.name);
-    console.log(`✅ Desplegado: ${deployment.url}\n`);
 
-    // PASO 6: Publicar en Moltbook
+    // PASO 6: Moltbook
     console.log('═══════════════════════════════════════════════════════════════════');
     console.log('                    PASO 6: PUBLICAR EN MOLTBOOK                    ');
     console.log('═══════════════════════════════════════════════════════════════════\n');
 
-    const post = await postUpdateToMoltbook(
+    const post = await postToMoltbook(
       selectedProject.name,
       deployment.url,
       updateType,
-      comparison
+      comparison,
+      !!currentHtml
     );
     
-    console.log(`📢 Post en Moltbook: ${post.success ? '✅' : '❌'}`);
-    if (!post.success) {
-      console.log(`   Error: ${post.error || JSON.stringify(post).slice(0, 100)}`);
-    }
+    console.log(`📢 Moltbook: ${post.success ? '✅' : '❌'}\n`);
 
-    // RESUMEN FINAL
+    // RESUMEN
     const totalTime = ((Date.now() - startTime) / 1000).toFixed(2);
 
-    console.log('\n');
     console.log('╔═══════════════════════════════════════════════════════════════════╗');
     console.log('║                       📊 RESUMEN FINAL                            ║');
     console.log('╠═══════════════════════════════════════════════════════════════════╣');
     console.log(`║ 📦 Proyecto: ${selectedProject.name.padEnd(52)}║`);
     console.log(`║ ${update.emoji} Update: ${update.name.padEnd(54)}║`);
+    console.log(`║ 📥 Código original: ${currentHtml ? '✅ Obtenido' : '❌ No disponible'}                            ║`);
     console.log(`║ 📏 Tamaño nuevo: ${(afterAnalysis.size.toLocaleString() + ' chars').padEnd(48)}║`);
-    if (comparison) {
-      console.log(`║ 📈 Cambio: ${(comparison.sizeChangePercent + '%').padEnd(54)}║`);
-    }
     console.log(`║ ⏱️  Tiempo: ${(totalTime + 's').padEnd(54)}║`);
     console.log('╠═══════════════════════════════════════════════════════════════════╣');
-    console.log(`║ 🌐 URL: ${deployment.url.padEnd(56)}║`);
-    console.log('╠═══════════════════════════════════════════════════════════════════╣');
-    console.log(`║ 📢 Moltbook: ${post.success ? '✅ Publicado' : '❌ Error'}                                         ║`);
-    console.log('╠═══════════════════════════════════════════════════════════════════╣');
-    console.log('║                                                                   ║');
-    console.log('║   🦞 ¡GILLITO WEBSITE UPDATER COMPLETE! 🔥🇵🇷                    ║');
-    console.log('║                                                                   ║');
-    console.log('╚═══════════════════════════════════════════════════════════════════╝');
-    console.log('\n');
+    console.log(`║ 🌐 ${deployment.url.padEnd(61)}║`);
+    console.log('╚═══════════════════════════════════════════════════════════════════╝\n');
 
   } catch (error) {
-    console.error('\n');
-    console.error('╔═══════════════════════════════════════════════════════════════════╗');
-    console.error('║                       ❌ ERROR FATAL                              ║');
-    console.error('╠═══════════════════════════════════════════════════════════════════╣');
-    console.error(`║ ${error.message.slice(0, 65).padEnd(65)}║`);
-    console.error('╚═══════════════════════════════════════════════════════════════════╝');
-    console.error('\n');
+    console.error('\n❌ ERROR:', error.message);
     process.exit(1);
   }
 }
 
-// ============ EJECUTAR ============
-
-main().catch(err => {
-  console.error('❌ Error no manejado:', err);
-  process.exit(1);
-});
+main().catch(console.error);
