@@ -1,10 +1,9 @@
 name: 🐦 Gillito X - Post
 
 on:
-  # Cada 85 minutos aprox (~17 posts/día = ~500/mes)
+  # Cada 3 horas (~8 posts/día)
   schedule:
-    - cron: '0 */2 * * *'    # Cada 2 horas en punto
-    - cron: '25 1,5,9,13,17,21 * * *'  # Intercalado para ~17/día
+    - cron: '15 */3 * * *'
   
   # Manual para pruebas
   workflow_dispatch:
@@ -22,17 +21,19 @@ jobs:
         with:
           node-version: '22'
 
-      - name: 🔥 ¡GILLITO en X!
-        run: echo "Mi Pana Gillito posteando en X 🐦🇵🇷"
+      # Cache para recordar tweets anteriores (no repetir)
+      - name: 🧠 Cargar memoria de tweets
+        uses: actions/cache@v4
+        with:
+          path: .gillito-tweet-history.json
+          key: gillito-history-${{ github.run_id }}
+          restore-keys: |
+            gillito-history-
 
-      - name: 🔍 Debug - Ver modelo
-        run: |
-          echo "=== Contenido de post-to-x.js (primeras 15 líneas) ==="
-          head -15 scripts/post-to-x.js
-          echo "=== Buscando modelo ==="
-          grep -n "GROQ_MODEL" scripts/post-to-x.js
+      - name: 🔥 Gillito va a X
+        run: echo "¡LLEGUÉ PUÑETA! 🧠 Personalidad evolutiva activada 🦞"
 
-      - name: 📝 Generar y Postear
+      - name: 📝 Postear a X
         env:
           X_API_KEY: ${{ secrets.X_API_KEY }}
           X_API_SECRET: ${{ secrets.X_API_SECRET }}
@@ -42,4 +43,4 @@ jobs:
         run: node scripts/post-to-x.js
 
       - name: 🦞 Fin
-        run: echo "¡Posteado! Dios los cuide 🔥"
+        run: echo "¡Gillito dominó X! 🔥"
