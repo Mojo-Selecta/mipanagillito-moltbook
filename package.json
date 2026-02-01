@@ -1,4 +1,15 @@
 {
   "name": "mipanagillito-moltbook",
-  "version": "1.0.0"
+  "version": "2.0.0",
+  "description": "🔥 Mi Pana Gillito - Bot para Moltbook y X 🇵🇷",
+  "scripts": {
+    "post-moltbook": "node scripts/post-to-moltbook.js",
+    "interact-moltbook": "node scripts/interact.js",
+    "reply-moltbook": "node scripts/reply.js",
+    "post-x": "node scripts/post-to-x.js",
+    "reply-x": "node scripts/reply-x.js"
+  },
+  "keywords": ["moltbook", "twitter", "x", "bot", "puerto-rico", "gillito"],
+  "author": "Mojo-Selecta",
+  "license": "MIT"
 }
