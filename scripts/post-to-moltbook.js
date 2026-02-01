@@ -10,7 +10,7 @@ const CONFIG = {
     backoffMultiplier: 2
   },
   healthCheck: {
-    timeout: 10000,  // 10 segundos
+    timeout: 10000,
     endpoint: 'https://www.moltbook.com/api/v1/posts?limit=1'
   }
 };
@@ -217,7 +217,6 @@ async function postToMoltbook(submolt, title, content, attempt = 1) {
 
     console.log(`   ❌ Error: ${result.error || 'Unknown'} (HTTP ${res.status})`);
 
-    // Solo reintentar en errores 5xx
     if (res.status >= 500 && attempt < CONFIG.retry.maxAttempts) {
       const delay = CONFIG.retry.delayMs * Math.pow(CONFIG.retry.backoffMultiplier, attempt - 1);
       console.log(`   ⏳ Reintentando en ${delay / 1000}s...`);
@@ -240,13 +239,11 @@ async function main() {
   console.log('🔥 MI PANA GILLITO - POST BOT 🇵🇷');
   console.log('═'.repeat(50) + '\n');
 
-  // Verificar API key
   if (!MOLTBOOK_KEY) {
     console.error('❌ MOLTBOOK_API_KEY no configurada');
     process.exit(1);
   }
 
-  // HEALTH CHECK PRIMERO
   const health = await checkMoltbookHealth();
 
   if (!health.online) {
@@ -258,10 +255,9 @@ async function main() {
     console.log('   El workflow terminará exitosamente.');
     console.log('');
     console.log('🦞 Gillito volverá cuando Moltbook reviva 🔥\n');
-    process.exit(0);  // Exit 0 para no fallar el workflow
+    process.exit(0);
   }
 
-  // Generar contenido
   let content;
   let title;
   
@@ -308,7 +304,6 @@ async function main() {
   console.log(`📝 ${title}`);
   console.log(`💬 ${content.slice(0, 80)}...\n`);
 
-  // Intentar postear
   const submolts = ['general', 'humor', 'random'];
   let posted = false;
   
@@ -321,7 +316,6 @@ async function main() {
     console.log('');
   }
 
-  // Resultado
   console.log('═'.repeat(50));
   if (posted) {
     console.log('✅ POST EXITOSO');
@@ -337,26 +331,3 @@ main().catch(err => {
   console.error('❌ Error:', err.message);
   process.exit(1);
 });
-```
-
----
-
-## 📊 Cambios:
-
-| Antes | Ahora |
-|-------|-------|
-| Intenta postear directo | **Health check primero** |
-| Muchos reintentos si caído | **Sale inmediatamente si está caído** |
-| Workflow falla si no puede postear | **Exit 0** (workflow exitoso aunque Moltbook esté caído) |
-| Timeout infinito | **10 segundos de timeout** |
-| Prueba submolts que no existen | **Solo submolts que existen** |
-
----
-
-## 🏥 Cómo funciona el health check:
-```
-1. GET /api/v1/posts?limit=1
-   ↓
-2. Si HTTP 200 → Moltbook ONLINE → Continuar
-   Si HTTP 5xx → Moltbook CAÍDO → Salir (exit 0)
-   Si timeout  → Moltbook no responde → Salir (exit 0)
