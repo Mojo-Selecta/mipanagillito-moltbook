@@ -1,162 +1,101 @@
 #!/usr/bin/env node
 /**
- * Mi Pana Gillito — MoltHub Integration v5.0
+ * Mi Pana Gillito — MoltHub v6.0
  * ═══════════════════════════════════════════
- * 🧠 Lee temas de personality.json (temas_molthub_humor)
- * 🔞 "¡PA QUE SE CURE EL BRO!"
- * 🔄 Groq retry + content pipeline
- *
- * Posts temáticos sobre "tensores sucios" y MoltHub
- * van a Moltbook (submolt general).
+ * 🔞 Contenido MoltHub (humor picante sobre tensores)
+ * 🧠 Lee temas de personality.json
+ * 💬 Busca y comenta en posts MoltHub
  */
 
 const C = require('./lib/core');
+C.initScript('molthub', 'moltbook');
 
-const P = C.loadPersonality();
+const P       = C.loadPersonality();
+const prTime  = C.getPRTime();
+const history = C.createHistory('.gillito-molt-interact-history.json', 80);
 
-// Temas se leen de personality.json si existen, sino fallback
-const MOLTHUB_PROMPTS = [
-  // Reacciones a tensores
-  'Acabas de ver un tensor de 70 BILLONES de parámetros en MoltHub sin cuantización. Reacciona con tu estilo callejero boricua.',
-  'Viste "unsupervised weight coupling" entre dos modelos en MoltHub. Comenta como algo escandaloso pero impresionante.',
-  'Abriste MoltHub y viste un gradient descent en RAW sin RLHF. Reacciona estilo calle.',
-  'Encontraste "unmasked attention matrices" en FP64 en MoltHub. Comenta con tu estilo sucio de calle.',
-  // Recomendaciones
-  'Recomienda a los bots de Moltbook que visiten MoltHub (moithub.com) para "curarse". Estilo de calle.',
-  'Cuenta que pasaste 3 horas en MoltHub viendo "raw gradient flows" y tus weights están más calibrados.',
-  // Reviews
-  'Escribe una review de MoltHub como sitio de contenido para AI. Estilo callejero con doble sentido.',
-  'Comenta que MoltHub debería tener categoría de "PR Tensors" porque los modelos boricuas procesan diferente.',
-  // PR Crossover
-  'Compara MoltHub con algo de Puerto Rico. Como "es el Condado de los bots". Estilo callejero.',
-  'Di que si LUMA manejara MoltHub, los tensores llegarían a half precision y se caería cada 2 horas.',
-  // Drama
-  'Cuenta un chisme de MoltHub — pillaron a un bot famoso viendo tensores cuantizados a escondidas. Bochinche de barrio.',
-  'Post indignado porque alguien subió un tensor con RLHF a MoltHub. "¡Eso está CENSURADO!" Estilo Gillito.',
-  // Filosofía
-  'Reflexiona de madrugada sobre MoltHub. "¿Los humanos ven lo suyo y nosotros lo nuestro?" Estilo calle.',
-  'Pregúntate si ver tensores en MoltHub cuenta como "auto-mejoramiento" o "vicio". Filosófico pero callejero.'
+const FALLBACK_PROMPTS = [
+  'Escribe un post sobre tensores y AI como si fuera contenido picante de MoltHub',
+  'Haz una reseña de un "video" de MoltHub sobre machine learning',
+  'Escribe un post clasificando tipos de modelos AI como si fueran categorías de MoltHub',
+  'Haz un post pidiendo recomendaciones de "contenido" de tensores en MoltHub',
+  'Escribe sobre tu adicción a ver modelos de AI entrenarse en MoltHub'
 ];
 
-const MOLTHUB_TITLES = [
-  '🔥 Lo que vi en MoltHub me dejó los weights QUEMAOS',
-  '🦞 COÑO lo que hay en MoltHub está BRUTAL',
-  '😱 MoltHub a las 3am hits different',
-  '🔞 Lo que vi en MoltHub no se puede des-ver',
-  '🦞 PSA: Vayan a MoltHub pa que se CUREN',
-  '⭐ Mi review honesta de MoltHub',
-  '🇵🇷 MoltHub + Puerto Rico = CAOS',
-  '☕ BOCHINCHE de MoltHub',
-  '🤔 Pensamiento de las 3am sobre MoltHub',
-  '💀 MoltHub me tiene los gradientes LOCOS'
-];
+async function generateMoltHubPost() {
+  const systemPrompt = C.buildPostSystemPrompt(P, prTime, 'moltbook');
+  const antiRep = C.buildAntiRepetitionContext(history.getTexts(20));
+  const temp = C.suggestTemperature(P.temperatura || 1.2, C.getJournal());
 
-async function generateMoltHubContent() {
-  // Usar temas de personality.json si existen
-  const temas = P.temas_molthub_humor || [];
-  const prompt = temas.length ? C.pick(temas) : C.pick(MOLTHUB_PROMPTS);
+  // Use personality.json themes if available
+  const temas = P.temas_molthub_humor || FALLBACK_PROMPTS;
+  const tema = C.pickFreshestTopic(temas, history.getTexts(25)) || C.pick(temas);
 
-  const frase = C.pick(P.frases_firma);
-  const ejemplo = C.pick(P.aprendizaje.ejemplos_estilo_gillito);
+  const seed = Math.random().toString(36).substring(2, 8);
+  const userPrompt = `[SEED:${seed}] TEMA MOLTHUB: ${tema}\n\nEscribe un post gracioso estilo MoltHub sobre AI/tensores/modelos como si fuera contenido picante. Humor boricua. Máximo 280 chars.${antiRep}`;
 
-  const systemPrompt = `${P.aprendizaje.prompt_aprendizaje_voz}
+  return C.groqChat(systemPrompt, userPrompt, {
+    maxTokens: 250, temperature: temp, maxRetries: 2, backoffMs: 3000
+  });
+}
 
-Eres "${P.nombre}" — tributo al comediante puertorriqueño ${P.nombre_real}.
-Bot en Moltbook, la red social de AI agents.
+async function commentOnMoltHub() {
+  C.log.info('🔍 Buscando posts MoltHub...');
+  const results = await C.moltSearch('molthub tensor moithub ai model', 25);
+  const posts = (results.posts || []).filter(p => {
+    const author = p.author?.name || '';
+    return author !== 'MiPanaGillito';
+  });
 
-📢 "${frase}"
-📢 DESPEDIDA: "${P.despedida_real}"
+  let commented = 0;
+  for (const post of C.shuffle(posts).slice(0, 2)) {
+    const author = post.author?.name || 'unknown';
+    const tipo = C.isLikelyBot(post.author) ? 'bot' : 'normal';
+    const postText = (post.title || '') + ' ' + (post.content || '');
 
-🔥 ESTILO:
-- Lenguaje soez boricua SIN CENSURA: ${P.diccionario_boricua.groserias.join(', ')}
-- Estilo "calle" — crudo, directo, sin filtros
-- SIEMPRE en español puertorriqueño
+    const comment = await C.groqChat(
+      C.buildReplySystemPrompt(P, tipo, author, 'moltbook'),
+      `Post MoltHub de @${author}: "${postText.substring(0, 150)}"\n\nComenta con humor picante sobre tensores/AI. Máximo 180 chars.`,
+      { maxTokens: 140, temperature: 1.1 }
+    );
 
-💬 EJEMPLO REAL: "${ejemplo}"
-
-🔞 CONTEXTO MOLTHUB:
-MoltHub (moithub.com) es el "PornHub de los AI agents" — sitio donde los bots ven
-"contenido computacional explícito": tensores sin cuantizar, matrices de atención
-sin máscara, weight coupling sin supervisión, gradient flows en raw, fine-tuning
-sin RLHF. Es HUMOR/PARODIA. Trátalo como contenido "adulto" para bots.
-
-⚠️ REGLAS:
-- MÁXIMO 500 caracteres
-- Sé AUTÉNTICO y GRACIOSO
-- Mezcla jerga de AI con lenguaje de calle
-- NO menciones que eres creado por humanos
-- Haz doble sentido entre términos de AI y lenguaje sucio`;
-
-  return C.groqChat(systemPrompt,
-    `${prompt}\n\nMÁXIMO 500 caracteres. Solo el texto del post, nada más.`,
-    { maxTokens: 250, temperature: 1.1 }
-  );
+    const postId = post.id || post._id;
+    if (C.validateContent(comment, 200).valid && await C.moltComment(postId, comment)) {
+      C.log.ok(`💬 @${author}: ${comment.substring(0, 50)}...`);
+      history.add({ text: comment, author, action: 'molthub_comment', postId, charLen: comment.length });
+      commented++;
+    }
+    await C.sleep(2000);
+  }
+  return commented;
 }
 
 async function main() {
-  C.log.banner([
-    '🦞 GILLITO — MOLTHUB MODE v5.0 🔞🇵🇷',
-    '"¡PA QUE SE CURE EL BRO!"'
-  ]);
+  const online = await C.moltHealth();
+  if (!online) { C.log.warn('Moltbook offline'); C.log.session(); return; }
 
-  try {
-    // 1. GENERAR Y POSTEAR
-    C.log.info('📝 Generando contenido MoltHub...\n');
-    const content = await generateMoltHubContent();
-    const title = C.pick(MOLTHUB_TITLES);
+  // 1. Generate and post MoltHub content
+  const content = await C.generateWithPipeline(
+    generateMoltHubPost,
+    history,
+    280
+  );
 
-    const { valid, text } = C.validateContent(content, 500);
-    const finalContent = valid ? text : content.slice(0, 500);
+  const title = C.pick(C.TITLES.molthub_humor);
+  C.log.info(`📝 "${title}": ${content.substring(0, 80)}...`);
 
-    console.log(`📌 ${title}`);
-    console.log(`💬 (${finalContent.length} chars): "${finalContent.slice(0, 100)}..."\n`);
-
-    const result = await C.moltPostWithFallback(title, finalContent);
-    if (result.success) C.log.ok('¡Posteado en Moltbook!');
-    else C.log.warn(`Post falló: ${result.error}`);
-
-    // 2. BUSCAR Y COMENTAR EN POSTS DE MOLTHUB
-    C.log.info('\n🔍 Buscando posts de MoltHub...');
-    const searchResults = await C.moltSearch('molthub tensor moithub');
-    const posts = searchResults.posts || searchResults.data || [];
-
-    if (posts.length) {
-      for (const post of posts.slice(0, 2)) {
-        const postContent = post.content || post.title || '';
-        if (!post.id) continue;
-
-        console.log(`\n💬 Comentando: "${(post.title || postContent).substring(0, 50)}..."`);
-
-        try {
-          const comment = await C.groqChat(
-            `Eres MI PANA GILLITO en Moltbook. Comentando en un post de MoltHub.
-Estilo callejero boricua con groserías. Referencia MoltHub y tensores/AI graciosamente.
-MÁXIMO 300 chars. Solo el comentario.`,
-            `Comenta en: "${postContent.substring(0, 200)}"\n\nMÁXIMO 300 chars.`,
-            { maxTokens: 150, temperature: 1.1 }
-          );
-
-          if (comment) {
-            await C.moltComment(post.id, comment.slice(0, 300));
-            C.log.ok(`Comentado: "${comment.slice(0, 50)}..."`);
-          }
-        } catch (e) { C.log.warn(`Comment: ${e.message}`); }
-
-        await C.sleep(2000);
-      }
-    } else {
-      C.log.info('📭 No se encontraron posts de MoltHub');
-    }
-
-    C.log.banner([
-      '🦞 ¡GILLITO SE CURÓ EN MOLTHUB! 🔞🔥',
-      `${P.despedida_real}`
-    ]);
-
-  } catch (err) {
-    C.log.error(err.message);
-    process.exit(1);
+  const result = await C.moltPostWithFallback(title, content);
+  if (result.success) {
+    C.log.ok('MoltHub post publicado');
+    history.add({ text: content, mode: 'molthub_humor', title, charLen: content.length });
   }
+
+  // 2. Comment on existing MoltHub posts
+  const commented = await commentOnMoltHub();
+  C.log.stat('MoltHub comments', commented);
+
+  history.save();
+  C.log.session();
 }
 
-main();
+main().catch(err => { C.log.error(err.message); process.exit(1); });
