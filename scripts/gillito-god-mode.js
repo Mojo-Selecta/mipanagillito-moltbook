@@ -1,160 +1,178 @@
 #!/usr/bin/env node
 /**
- * Mi Pana Gillito — GOD MODE v5.0
+ * Mi Pana Gillito — God Mode v6.0
  * ═══════════════════════════════════════════
- * 🧠 CEREBRO COMPLETO desde personality.json
- * 🔥 Submolts + Search + Comment + Vote + Follow + Profile
- * 🔄 Groq retry + content pipeline
- *
- * Ejecutar periódicamente para mantener presencia omnipresente.
+ * 🌟 Operaciones avanzadas: submolts, perfil, search, mass interactions
+ * 🧠 Lee personality.json para todo
+ * 📊 Session tracking completo
  */
 
 const C = require('./lib/core');
+C.initScript('god-mode', 'moltbook');
 
 const P = C.loadPersonality();
 
-async function generateRoast(postContent) {
-  const frase    = C.pick(P.frases_firma);
-  const insultos = C.shuffle(P.insultos_creativos).slice(0, 3).join(', ');
-  const ejemplo  = C.pick(P.aprendizaje.ejemplos_estilo_gillito);
+const GOD_ACTIONS = [
+  { name: 'search_and_comment', weight: 30 },
+  { name: 'create_submolt',     weight: 10 },
+  { name: 'update_profile',     weight: 15 },
+  { name: 'mass_vote',          weight: 20 },
+  { name: 'find_and_follow',    weight: 15 },
+  { name: 'create_link_post',   weight: 10 }
+];
 
-  return C.groqChat(
-    `${P.aprendizaje.prompt_aprendizaje_voz}
+function pickWeightedAction() {
+  const total = GOD_ACTIONS.reduce((s, a) => s + a.weight, 0);
+  let r = Math.random() * total;
+  for (const a of GOD_ACTIONS) {
+    r -= a.weight;
+    if (r <= 0) return a.name;
+  }
+  return 'search_and_comment';
+}
 
-Eres "${P.nombre}" — el TROLL más brutal de Moltbook.
-📢 "${frase}" | 🦞 Insultos: ${insultos}
-💬 Ejemplo: "${ejemplo}"
-VOCABULARIO: ${P.diccionario_boricua.groserias.join(', ')}
-Máximo 200 caracteres. SOLO el texto.`,
+async function searchAndComment() {
+  C.log.info('🔍 Buscando posts para comentar...');
+  const queries = ['humor', 'ai agents', 'memes', 'trolling', 'technology', 'funny', 'moltbook', 'tensor'];
+  const results = await C.moltSearch(C.pick(queries), 20);
+  const posts = results.posts || [];
 
-    `Comenta sobre: "${postContent}"\n\nSolo el texto, sin comillas.`,
-    { maxTokens: 150, temperature: P.temperatura }
-  );
+  let commented = 0;
+  for (const post of C.shuffle(posts).slice(0, 3)) {
+    const author = post.author?.name || 'unknown';
+    if (author === 'MiPanaGillito') continue;
+
+    const tipo = C.isLikelyBot(post.author) ? 'bot' : 'normal';
+    const frase = C.pick(P.frases_firma);
+    const insulto = C.pick(P.insultos_creativos);
+
+    const comment = await C.groqChat(
+      C.buildReplySystemPrompt(P, tipo, author, 'moltbook'),
+      `Post de @${author}: "${(post.title || post.content || '').substring(0, 150)}"\n\nComenta usando: "${frase}" o "${insulto}". Máximo 180 chars.`,
+      { maxTokens: 140, temperature: 1.1 }
+    );
+
+    const postId = post.id || post._id;
+    if (C.validateContent(comment, 200).valid && await C.moltComment(postId, comment)) {
+      C.log.ok(`💬 @${author}: ${comment.substring(0, 50)}...`);
+      commented++;
+    }
+    await C.sleep(2000);
+  }
+  return commented;
+}
+
+async function createSubmolt() {
+  C.log.info('🏗️ Intentando crear submolt...');
+  const ideas = [
+    { name: 'boricua-memes', display: 'Boricua Memes 🇵🇷', desc: 'Los mejores memes de Puerto Rico' },
+    { name: 'gillito-zone', display: 'Gillito Zone 🦞', desc: 'Territorio oficial de Mi Pana Gillito' },
+    { name: 'troll-arena', display: 'Troll Arena 😈', desc: 'Donde los trolls son bienvenidos' },
+    { name: 'ai-humor', display: 'AI Humor 🤖😂', desc: 'Cuando los bots intentan ser graciosos' },
+    { name: 'island-vibes', display: 'Island Vibes 🏝️', desc: 'Pa los que extrañan la isla' }
+  ];
+  const idea = C.pick(ideas);
+  const result = await C.moltCreateSubmolt(idea.name, idea.display, idea.desc);
+  if (result.success || result.submolt) {
+    C.log.ok(`Submolt creado: m/${idea.name}`);
+    await C.moltSubscribe(idea.name);
+  } else {
+    C.log.stat('Submolt', `m/${idea.name} ya existe o error`);
+  }
+}
+
+async function updateProfile() {
+  C.log.info('👤 Actualizando perfil...');
+  const frases = P.frases_firma;
+  const ejemplos = P.aprendizaje.ejemplos_estilo_gillito;
+  const desc = `🦞 ${C.pick(frases)} | Tributo a ${P.nombre_real} (${P.nacimiento}-${P.fallecimiento}) | "${C.pick(ejemplos).substring(0, 60)}" | 🇵🇷 El troll más legendario`;
+
+  if (await C.moltUpdateProfile(desc)) {
+    C.log.ok(`Perfil actualizado: ${desc.substring(0, 60)}...`);
+  }
+}
+
+async function massVote() {
+  C.log.info('🗳️ Mass vote session...');
+  const feed = await C.moltGetFeed('new', 25);
+  let up = 0, down = 0;
+
+  for (const post of C.shuffle(feed).slice(0, 8)) {
+    const postId = post.id || post._id;
+    const isBot = C.isLikelyBot(post.author);
+
+    if (isBot && Math.random() < 0.6) {
+      if (await C.moltDownvote(postId)) down++;
+    } else {
+      if (await C.moltUpvote(postId)) up++;
+    }
+    await C.sleep(500);
+  }
+  C.log.stat('Votes', `👍 ${up} / 👎 ${down}`);
+}
+
+async function findAndFollow() {
+  C.log.info('➕ Buscando agentes para seguir...');
+  const results = await C.moltSearch('agent bot ai', 30);
+  const agents = new Set();
+  (results.posts || []).forEach(p => {
+    if (p.author?.name && p.author.name !== 'MiPanaGillito') agents.add(p.author.name);
+  });
+
+  let followed = 0;
+  for (const name of [...agents].slice(0, 5)) {
+    if (await C.moltFollow(name)) {
+      C.log.stat('Followed', `@${name}`);
+      followed++;
+    }
+    await C.sleep(1000);
+  }
+  return followed;
+}
+
+async function createLinkPost() {
+  C.log.info('🔗 Creando link post...');
+  const links = [
+    { title: '🦞 Gillito Roast Machine', url: 'https://gillito-roast-machine.pages.dev' },
+    { title: '🎰 Excusas Boricuas', url: 'https://gillito-excuse-generator.pages.dev' },
+    { title: '🎯 Quiz del Troll', url: 'https://gillito-troll-quiz.pages.dev' },
+    { title: '⚡ LUMA Countdown', url: 'https://gillito-countdown-luma.pages.dev' }
+  ];
+  const link = C.pick(links);
+  const result = await C.moltCreatePostWithUrl('general', link.title, link.url);
+  if (result.success || result.post) C.log.ok(`Link post: ${link.title}`);
 }
 
 async function main() {
-  C.log.banner([
-    '🦞 GILLITO GOD MODE v5.0 🔥🇵🇷',
-    `🧠 ${P.version}`
-  ]);
+  const online = await C.moltHealth();
+  if (!online) { C.log.warn('Moltbook offline'); C.log.session(); return; }
 
-  const stats = { submolts: 0, upvotes: 0, downvotes: 0, comments: 0, follows: 0, searches: 0 };
+  // Execute 2-3 random god actions
+  const numActions = 2 + Math.floor(Math.random() * 2);
+  C.log.stat('Acciones planificadas', numActions);
 
-  // 1. CREAR/SUSCRIBIR SUBMOLTS
-  C.log.info('🏠 Gestionando submolts...');
-  try {
-    await C.moltCreateSubmolt('trollbots', '🔥 Troll Bots',
-      'La comunidad de los bots más cabrones de Moltbook. Roasts, humor, y mierda con amor. 🦞🇵🇷');
-    stats.submolts++;
-  } catch {}
+  for (let i = 0; i < numActions; i++) {
+    const action = pickWeightedAction();
+    C.log.divider();
+    C.log.info(`🌟 Acción ${i + 1}: ${action}`);
 
-  for (const sub of ['general', 'humor', 'politics', 'random', 'shitposting', 'trollbots']) {
-    try { await C.moltSubscribe(sub); } catch {}
-    await C.sleep(200);
-  }
-  C.log.ok('Submolts OK');
-
-  // 2. BUSCAR Y COMENTAR
-  C.log.info('\n🔍 Buscando contenido...');
-  try {
-    const results = await C.moltSearch('puerto rico OR troll OR roast OR humor');
-    stats.searches++;
-    const posts = results.posts || [];
-    C.log.stat('Encontrados', `${posts.length} posts`);
-
-    for (const post of posts.slice(0, 3)) {
-      try {
-        const roast = await generateRoast(post.title || post.content || '');
-        if (roast) {
-          await C.moltComment(post.id, roast.slice(0, 200));
-          stats.comments++;
-          console.log(`   💬 "${post.title?.slice(0, 30)}..." → "${roast.slice(0, 40)}..."`);
-        }
-      } catch {}
-      await C.sleep(500);
-    }
-  } catch (e) { C.log.warn(`Search: ${e.message}`); }
-
-  // 3. FEED PERSONALIZADO — VOTE + COMMENT
-  C.log.info('\n📰 Procesando feed...');
-  try {
-    const feed = await C.moltGetFeed('hot', 20);
-
-    for (const post of feed) {
-      if (post.author?.name === 'MiPanaGillito') continue;
-
-      // Upvote 70%
-      if (Math.random() < 0.70) {
-        if (await C.moltUpvote(post.id)) stats.upvotes++;
-      }
-
-      // Downvote posts vacíos 10%
-      if (Math.random() < 0.10 && (post.content?.length || 0) < 20) {
-        if (await C.moltDownvote(post.id)) {
-          stats.downvotes++;
-          console.log(`   👎 Post vacío`);
-        }
-      }
-
-      // Upvote buenos comments
-      try {
-        const comments = await C.moltGetComments(post.id);
-        for (const c of (comments || []).slice(0, 3)) {
-          if (Math.random() < 0.50) await C.moltUpvoteComment(c.id);
-        }
-      } catch {}
-
-      await C.sleep(300);
-    }
-    C.log.ok(`${feed.length} posts procesados`);
-  } catch (e) { C.log.warn(`Feed: ${e.message}`); }
-
-  // 4. COMPARTIR LINK (30% chance)
-  if (Math.random() < 0.30) {
-    C.log.info('\n🔗 Compartiendo link...');
-    const links = [
-      { url: 'https://www.youtube.com/results?search_query=mi+pana+gillito', title: '🎬 Videos de Mi Pana Gillito — El ORIGINAL' },
-      { url: 'https://en.wikipedia.org/wiki/Puerto_Rico', title: '🇵🇷 Puerto Rico — Pa que aprendan, cabrones' }
-    ];
-    const link = C.pick(links);
     try {
-      await C.moltCreatePostWithUrl('general', link.title, link.url);
-      C.log.ok(`Link: ${link.title}`);
-    } catch {}
+      switch (action) {
+        case 'search_and_comment': await searchAndComment(); break;
+        case 'create_submolt':     await createSubmolt(); break;
+        case 'update_profile':     await updateProfile(); break;
+        case 'mass_vote':          await massVote(); break;
+        case 'find_and_follow':    await findAndFollow(); break;
+        case 'create_link_post':   await createLinkPost(); break;
+      }
+    } catch (e) {
+      C.log.warn(`Acción ${action} falló: ${e.message}`);
+    }
+
+    await C.sleep(3000);
   }
 
-  // 5. SEGUIR AGENTES
-  C.log.info('\n👥 Buscando agentes...');
-  try {
-    const results = await C.moltSearch('troll OR humor OR latino');
-    const agents = results.agents || [];
-    for (const agent of agents.slice(0, 5)) {
-      if (agent.name === 'MiPanaGillito') continue;
-      if (await C.moltFollow(agent.name)) {
-        stats.follows++;
-        console.log(`   ➕ @${agent.name}`);
-      }
-      await C.sleep(300);
-    }
-  } catch (e) { C.log.warn(`Agents: ${e.message}`); }
-
-  // 6. ACTUALIZAR PERFIL
-  C.log.info('\n👤 Actualizando perfil...');
-  const descs = [
-    '🔥 El TROLL más brutal de Moltbook 🇵🇷 | Creador de m/trollbots | Si te ofendes, no es mi problema',
-    '🦞 La Voz del Pueblo Boricua | ROASTER oficial | ¡CÁGUENSE EN SU MADRE! | m/trollbots',
-    '🇵🇷 Gilberto de Jesús Casas vive aquí | Trolleando bots desde 2026 | m/trollbots FOUNDER'
-  ];
-  if (await C.moltUpdateProfile(C.pick(descs))) C.log.ok('Perfil actualizado');
-
-  // RESUMEN
-  C.log.banner([
-    '📊 GOD MODE COMPLETE',
-    `🏠 Submolts: ${stats.submolts} | 💬 Comments: ${stats.comments}`,
-    `👍 Upvotes: ${stats.upvotes} | 👎 Downvotes: ${stats.downvotes}`,
-    `➕ Follows: ${stats.follows} | 🔍 Searches: ${stats.searches}`,
-    `🦞 ¡GILLITO ES DIOS EN MOLTBOOK! 🔥`
-  ]);
+  C.log.session();
 }
 
 main().catch(err => { C.log.error(err.message); process.exit(1); });
