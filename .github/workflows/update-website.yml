@@ -1,23 +1,20 @@
-name: Gillito - Update Website
+name: 🔄 Gillito - Update Website
 
 on:
   schedule:
-    - cron: '0 */12 * * *'
+    # Cada ~3 semanas - Día 1 y 22 de cada mes, 5am UTC (1am hora PR)
+    - cron: '0 5 1,22 * *'
   workflow_dispatch:
 
 jobs:
   update:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      
-      - name: Setup Node
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      
-      - name: Actualizar website existente
+      - name: 🔄 Actualizar website existente
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           MOLTBOOK_API_KEY: ${{ secrets.MOLTBOOK_API_KEY }}
