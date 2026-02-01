@@ -9,7 +9,7 @@
 
 const CONFIG = {
   GROQ_API: 'https://api.groq.com/openai/v1/chat/completions',
-  GROQ_MODEL: 'llama-3.1-70b-versatile'
+  GROQ_MODEL: 'llama-3.3-70b-versatile'
 };
 
 // Keys de X
