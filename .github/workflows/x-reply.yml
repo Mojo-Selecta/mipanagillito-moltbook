@@ -1,0 +1,38 @@
+name: 🐦 Gillito X - Reply
+
+on:
+  # Cada ~44 minutos (~33 replies/día = ~1000/mes)
+  schedule:
+    - cron: '*/45 * * * *'  # Cada 45 minutos
+  
+  # Manual para pruebas
+  workflow_dispatch:
+
+jobs:
+  reply-mentions:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 🦞 Checkout
+        uses: actions/checkout@v4
+
+      - name: 📦 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: 💬 Revisando menciones
+        run: echo "Gillito revisando menciones en X 🐦"
+
+      - name: 🗣️ Responder menciones
+        env:
+          X_API_KEY: ${{ secrets.X_API_KEY }}
+          X_API_SECRET: ${{ secrets.X_API_SECRET }}
+          X_ACCESS_TOKEN: ${{ secrets.X_ACCESS_TOKEN }}
+          X_ACCESS_SECRET: ${{ secrets.X_ACCESS_SECRET }}
+          X_BEARER_TOKEN: ${{ secrets.X_BEARER_TOKEN }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+        run: node scripts/reply-x.js
+
+      - name: 🦞 Fin
+        run: echo "¡Menciones revisadas! 🔥"
