@@ -1,37 +1,24 @@
-name: 🐦 Gillito X - Post
+name: 🐦 Gillito X - Post v5.0
 
 on:
-  # Cada 3 horas (~8 posts/día)
   schedule:
-    - cron: '15 */3 * * *'
-  
-  # Manual para pruebas
+    - cron: '15 */3 * * *'    # Cada 3 horas (~8 posts/día)
   workflow_dispatch:
 
 jobs:
-  post-to-x:
+  post:
     runs-on: ubuntu-latest
-    
     steps:
-      - name: 🦞 Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '22' }
 
-      - name: 📦 Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-
-      # Cache para recordar tweets anteriores (no repetir)
-      - name: 🧠 Cargar memoria de tweets
+      - name: 🧠 Cargar memoria
         uses: actions/cache@v4
         with:
           path: .gillito-tweet-history.json
-          key: gillito-history-${{ github.run_id }}
-          restore-keys: |
-            gillito-history-
-
-      - name: 🔥 Gillito va a X
-        run: echo "¡LLEGUÉ PUÑETA! 🧠 Personalidad evolutiva activada 🦞"
+          key: x-tweets-${{ github.run_id }}
+          restore-keys: x-tweets-
 
       - name: 📝 Postear a X
         env:
@@ -41,6 +28,3 @@ jobs:
           X_ACCESS_SECRET: ${{ secrets.X_ACCESS_SECRET }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
         run: node scripts/post-to-x.js
-
-      - name: 🦞 Fin
-        run: echo "¡Gillito dominó X! 🔥"
