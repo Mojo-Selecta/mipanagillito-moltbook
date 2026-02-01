@@ -1,9 +1,9 @@
 name: 🐦 Gillito X - Reply
 
 on:
-  # Cada ~44 minutos (~33 replies/día = ~1000/mes)
+  # Cada 4 horas (~6 ejecuciones/día, máx 2 replies c/u)
   schedule:
-    - cron: '*/45 * * * *'  # Cada 45 minutos
+    - cron: '45 1,5,9,13,17,21 * * *'
   
   # Manual para pruebas
   workflow_dispatch:
@@ -21,15 +21,26 @@ jobs:
         with:
           node-version: '22'
 
-      - name: 💬 Revisando menciones
-        run: echo "Gillito revisando menciones en X 🐦"
+      # Cache para IDs respondidos (no duplicar replies)
+      - name: 📋 Cargar IDs respondidos
+        uses: actions/cache@v4
+        with:
+          path: .gillito-replied-ids.json
+          key: gillito-replied-${{ github.run_id }}
+          restore-keys: |
+            gillito-replied-
 
-      - name: 🔍 Debug - Ver modelo
-        run: |
-          echo "=== Contenido de reply-x.js (primeras 20 líneas) ==="
-          head -20 scripts/reply-x.js
-          echo "=== Buscando modelo ==="
-          grep -n "GROQ_MODEL" scripts/reply-x.js
+      # Cache para historial de replies (no repetir contenido)
+      - name: 🧠 Cargar memoria de replies
+        uses: actions/cache@v4
+        with:
+          path: .gillito-reply-history.json
+          key: gillito-replyhistory-${{ github.run_id }}
+          restore-keys: |
+            gillito-replyhistory-
+
+      - name: 💬 Revisando menciones
+        run: echo "🧠 Personalidad evolutiva + memoria activada 🦞"
 
       - name: 🗣️ Responder menciones
         env:
@@ -37,9 +48,8 @@ jobs:
           X_API_SECRET: ${{ secrets.X_API_SECRET }}
           X_ACCESS_TOKEN: ${{ secrets.X_ACCESS_TOKEN }}
           X_ACCESS_SECRET: ${{ secrets.X_ACCESS_SECRET }}
-          X_BEARER_TOKEN: ${{ secrets.X_BEARER_TOKEN }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
         run: node scripts/reply-x.js
 
       - name: 🦞 Fin
-        run: echo "¡Menciones revisadas! 🔥"
+        run: echo "¡Gillito dominó X! 🔥"
