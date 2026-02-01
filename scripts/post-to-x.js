@@ -1,91 +1,76 @@
 #!/usr/bin/env node
 /**
- * Mi Pana Gillito — X (Twitter) Poster v5.0
+ * Mi Pana Gillito — Post to X v6.0
  * ═══════════════════════════════════════════
- * 🧠 Cerebro completo desde personality.json
- * 📋 Memoria anti-repetición con Jaccard similarity
- * 🔄 Groq retry con exponential backoff
- * 🛡️ Content pipeline: generate → validate → dedup → post
- * 🔥 EL TROLL SUPREMO DE PR
+ * 🐦 Posts originales en X/Twitter
+ * 🧠 Selección adaptativa de modo + temperatura
+ * 📊 Historia enriquecida para aprendizaje
  */
 
 const C = require('./lib/core');
-
-const P       = C.loadPersonality();
-const history = C.createHistory('.gillito-tweet-history.json', 100);
-
+C.initScript('post-to-x', 'x');
 C.requireXCreds();
 
-async function generateTweet() {
-  const prTime   = C.getPRTime();
-  let { modo, tema } = C.selectModeForTime(P, prTime);
+const P       = C.loadPersonality();
+const prTime  = C.getPRTime();
+const history = C.createHistory('.gillito-tweet-history.json', 100);
 
-  // ¿Mencionar target?
-  const target = C.shouldMentionTarget(P);
-  let targetCtx = '';
-  if (target) {
-    modo = `🎯 trolleo → @${target.target}`;
-    tema = target.tema;
-    targetCtx = `\n\n🎯 INCLUYE mención a @${target.target}. Relación: ${target.relacion}. Tema: ${tema}. Provocador con cariño.`;
-  }
-
-  // ¿Pregunta al público?
-  const audience = !target ? C.shouldAskAudience(P) : null;
-  const audienceCtx = audience ? `\n\n❓ Termina con pregunta al público: "${audience}"` : '';
-
-  // Hashtag
-  const hashtagCtx = C.buildHashtagInstruction(P, modo);
-
-  // Anti-repetición
-  const noRepeatCtx = C.buildAntiRepetitionContext(history.getTexts(20));
-
-  C.log.stat('Hora PR', `${prTime.hour}:00 ${prTime.dayName}`);
-  C.log.stat('Modo', modo);
-  C.log.stat('Tema', tema);
-
-  const seed = Math.floor(Math.random() * 99999);
+async function generateTweet(modo, tema) {
   const systemPrompt = C.buildPostSystemPrompt(P, prTime, 'x');
-  const userPrompt = `Genera UN tweet de: ${tema}\n\nMÁXIMO 270 caracteres. Sé EXPLOSIVO y ÚNICO (seed: ${seed}).${targetCtx}${audienceCtx}${hashtagCtx}${noRepeatCtx}\n\nSolo el texto del tweet. Sin comillas ni explicaciones.`;
+  const target   = C.shouldMentionTarget(P);
+  const audience = C.shouldAskAudience(P);
+  const hashtag  = C.buildHashtagInstruction(P, modo.modo);
+  const antiRep  = C.buildAntiRepetitionContext(history.getTexts(20));
+
+  const seed = Math.random().toString(36).substring(2, 8);
+  const temp = C.suggestTemperature(P.temperatura || 1.2, C.getJournal());
+
+  let userPrompt = `[SEED:${seed}] MODO: ${modo.modo}\nTEMA: ${tema}`;
+  if (target) userPrompt += `\n\n🎯 MENCIONA a @${target.target} (${target.relacion}): ${target.tema}`;
+  if (audience) userPrompt += `\n\n❓ PREGUNTA AL PÚBLICO: "${audience}"`;
+  userPrompt += hashtag + antiRep;
+  userPrompt += `\n\nESCRIBE UN TWEET ORIGINAL. Solo el texto, nada más.`;
 
   return C.groqChat(systemPrompt, userPrompt, {
-    maxTokens: 150,
-    temperature: P.temperatura
+    maxTokens: 200, temperature: temp, maxRetries: 3, backoffMs: 2000
   });
 }
 
 async function main() {
-  C.log.banner([
-    '🔥 MI PANA GILLITO — X POST v5.0 🇵🇷',
-    `🧠 ${P.version}`
-  ]);
+  // Adaptive mode selection (learns from history)
+  const modo = C.selectModeAdaptiveForTime(P, prTime, history.getAll());
+  const tema = C.pickFreshestTopic(
+    P[`temas_${modo.modo}`] || [modo.tema],
+    history.getTexts(30)
+  ) || modo.tema;
 
-  try {
-    // Pipeline: generate → validate → dedup
-    const tweet = await C.generateWithPipeline(generateTweet, history, 280, 3);
-    console.log(`\n💬 Tweet (${tweet.length} chars):\n${tweet}\n`);
+  C.log.stat('Modo', `${modo.modo}${modo.adaptive ? ' (🧠 adaptive)' : ''}`);
+  C.log.stat('Tema', tema);
+  C.log.stat('Hora PR', `${prTime.hour}:${String(prTime.minute).padStart(2, '0')} (${prTime.dayName})`);
 
-    // Post
-    console.log('🐦 Posteando a X...');
-    const result = await C.xPost(tweet);
+  const tweet = await C.generateWithPipeline(
+    () => generateTweet(modo, tema),
+    history,
+    P.reglas.max_caracteres
+  );
 
-    if (result.rateLimited) {
-      history.save();
-      process.exit(0);
-    }
+  C.log.divider();
+  C.log.info(`📝 Tweet (${tweet.length} chars): ${tweet}`);
 
-    C.log.ok('¡GILLITO HABLÓ EN X!');
-    console.log(`🔗 https://x.com/i/status/${result.id}`);
+  const result = await C.xPost(tweet);
 
-    history.add({ text: tweet, id: result.id, timestamp: new Date().toISOString() });
-    history.save();
-
-    console.log(`\n🦞 ${P.despedida_real} 🔥\n`);
-
-  } catch (err) {
-    history.save();
-    C.log.error(err.message);
-    process.exit(1);
+  if (result.rateLimited) {
+    C.log.warn('Rate limited — guardando para después');
+  } else if (result.success) {
+    C.log.ok(`Posteado: https://twitter.com/i/status/${result.id}`);
+    history.add({
+      text: tweet, mode: modo.modo, tema, adaptive: !!modo.adaptive,
+      tweetId: result.id, charLen: tweet.length
+    });
   }
+
+  history.save();
+  C.log.session();
 }
 
-main();
+main().catch(err => { C.log.error(err.message); process.exit(1); });
