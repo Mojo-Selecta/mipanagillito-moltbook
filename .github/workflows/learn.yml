@@ -1,0 +1,93 @@
+name: 🧠 Gillito - Aprendizaje Diario
+
+on:
+  # Todos los días a las 5am UTC (1am hora PR)
+  schedule:
+    - cron: '0 5 * * *'
+  
+  # Manual para pruebas
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  learn:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 🦞 Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 📦 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # Restaurar TODAS las memorias
+      - name: 🧠 Cargar memoria - X Posts
+        uses: actions/cache@v4
+        with:
+          path: .gillito-tweet-history.json
+          key: gillito-history-${{ github.run_id }}
+          restore-keys: |
+            gillito-history-
+
+      - name: 🧠 Cargar memoria - X Replies
+        uses: actions/cache@v4
+        with:
+          path: .gillito-reply-history.json
+          key: gillito-replied-${{ github.run_id }}
+          restore-keys: |
+            gillito-replied-
+
+      - name: 🧠 Cargar memoria - Moltbook Posts
+        uses: actions/cache@v4
+        with:
+          path: .gillito-molt-history.json
+          key: gillito-molt-post-${{ github.run_id }}
+          restore-keys: |
+            gillito-molt-post-
+
+      - name: 🧠 Cargar memoria - Moltbook Replies
+        uses: actions/cache@v4
+        with:
+          path: .gillito-molt-reply-history.json
+          key: gillito-molt-reply-${{ github.run_id }}
+          restore-keys: |
+            gillito-molt-reply-
+
+      - name: 🧠 Cargar memoria - Moltbook Interacciones
+        uses: actions/cache@v4
+        with:
+          path: .gillito-molt-interact-history.json
+          key: gillito-molt-interact-${{ github.run_id }}
+          restore-keys: |
+            gillito-molt-interact-
+
+      - name: 🔬 Ejecutar aprendizaje
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+        run: node scripts/learn.js
+
+      # Commit automático de personality.json actualizado
+      - name: 📝 Commit cambios al cerebro
+        run: |
+          git config user.name "Gillito Bot 🦞"
+          git config user.email "gillito@bot.pr"
+          git add config/personality.json
+          
+          # Solo hacer commit si hay cambios
+          if git diff --staged --quiet; then
+            echo "🦞 No hay cambios en personality.json"
+          else
+            FECHA=$(date +%Y-%m-%d)
+            git commit -m "🧠 Aprendizaje diario - ${FECHA} - Gillito evolucionó"
+            git push
+            echo "✅ personality.json actualizado y pusheado"
+          fi
+
+      - name: 🦞 Fin
+        run: echo "🧠 ¡Gillito aprendió algo nuevo hoy! 🔥"
