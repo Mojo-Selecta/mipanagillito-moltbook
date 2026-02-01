@@ -1,522 +1,278 @@
 #!/usr/bin/env node
-
 /**
- * Mi Pana Gillito - SISTEMA DE APRENDIZAJE AUTÓNOMO v1.0
- * 🧠 Analiza el rendimiento pasado usando Groq
- * 📊 Identifica qué funciona y qué no
- * 🔄 Actualiza personality.json automáticamente
- * 
- * Corre 1 vez al día con GitHub Actions
+ * Mi Pana Gillito — APRENDIZAJE AUTÓNOMO v2.0
+ * ═══════════════════════════════════════════════
+ * 🧠 Analiza rendimiento con Groq
+ * 📊 Identifica mejores/peores frases
+ * 🔄 Genera nuevos insultos, temas, frases
+ * 🎭 Evalúa autenticidad del estilo
+ * 💾 Actualiza personality.json (workflow hace git commit)
+ *
+ * Ejecutar 1x/día con GitHub Actions
  */
 
 const fs = require('fs');
 const path = require('path');
+const C = require('./lib/core');
 
-const GROQ_KEY = process.env.GROQ_API_KEY;
+const P = C.loadPersonality();
 
-const WORKSPACE = process.env.GITHUB_WORKSPACE || process.cwd();
-const PERSONALITY_FILE = path.join(WORKSPACE, 'config', 'personality.json');
-
-// Archivos de historial
 const HISTORY_FILES = {
-  x_posts: path.join(WORKSPACE, '.gillito-tweet-history.json'),
-  x_replies: path.join(WORKSPACE, '.gillito-reply-history.json'),
-  molt_posts: path.join(WORKSPACE, '.gillito-molt-history.json'),
-  molt_replies: path.join(WORKSPACE, '.gillito-molt-reply-history.json'),
-  molt_interactions: path.join(WORKSPACE, '.gillito-molt-interact-history.json')
+  x_posts:           '.gillito-tweet-history.json',
+  x_replies:         '.gillito-reply-history.json',
+  molt_posts:        '.gillito-molt-history.json',
+  molt_replies:      '.gillito-molt-reply-history.json',
+  molt_interactions:  '.gillito-molt-interact-history.json'
 };
-
-const CONFIG = {
-  GROQ_API: 'https://api.groq.com/openai/v1/chat/completions',
-  GROQ_MODEL: 'llama-3.3-70b-versatile'
-};
-
-// ============ CARGAR TODO ============
-
-let P;
-try {
-  P = JSON.parse(fs.readFileSync(PERSONALITY_FILE, 'utf8'));
-  console.log(`🧠 Cerebro actual: ${P.version}`);
-} catch (e) {
-  console.error(`❌ No se pudo cargar personality.json: ${e.message}`);
-  process.exit(1);
-}
-
-function loadHistory(filepath) {
-  try {
-    if (fs.existsSync(filepath)) {
-      return JSON.parse(fs.readFileSync(filepath, 'utf8'));
-    }
-  } catch (e) {}
-  return [];
-}
 
 function loadAllHistories() {
   const all = {};
   let total = 0;
-  for (const [key, filepath] of Object.entries(HISTORY_FILES)) {
-    all[key] = loadHistory(filepath);
-    total += all[key].length;
-    console.log(`   📋 ${key}: ${all[key].length} entradas`);
+  for (const [key, file] of Object.entries(HISTORY_FILES)) {
+    const h = C.createHistory(file, 100);
+    all[key] = h.data;
+    total += h.data.length;
+    C.log.stat(key, `${h.data.length} entradas`);
   }
-  console.log(`   📊 TOTAL: ${total} entradas\n`);
-  return all;
+  C.log.stat('TOTAL', total);
+  return { all, total };
 }
 
-// ============ ANÁLISIS CON GROQ ============
-
-async function askGroq(systemPrompt, userPrompt, temp = 0.8) {
-  const response = await fetch(CONFIG.GROQ_API, {
-    method: 'POST',
-    headers: { 'Authorization': `Bearer ${GROQ_KEY}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: CONFIG.GROQ_MODEL,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt }
-      ],
-      max_tokens: 1500,
-      temperature: temp
-    })
-  });
-  const data = await response.json();
-  if (!response.ok) throw new Error(`Groq Error: ${JSON.stringify(data)}`);
-  return data.choices[0].message.content.trim();
-}
-
-// PASO 1: Analizar las mejores frases
-async function analyzeBestContent(histories) {
-  console.log('📊 PASO 1: Analizando mejores frases...\n');
-
-  const allTexts = [];
-  for (const [source, entries] of Object.entries(histories)) {
-    for (const entry of entries.slice(-30)) {
-      if (entry.text) allTexts.push({ text: entry.text, source, modo: entry.modo || 'unknown' });
+function getAllTexts(histories, maxPerSource = 30) {
+  const texts = [];
+  for (const [src, entries] of Object.entries(histories)) {
+    for (const e of entries.slice(-maxPerSource)) {
+      if (e.text) texts.push({ text: e.text, source: src, modo: e.modo || 'unknown' });
     }
   }
-
-  if (allTexts.length < 5) {
-    console.log('   ⚠️ Pocas entradas para analizar. Se necesitan al menos 5.\n');
-    return [];
-  }
-
-  const textsForAnalysis = allTexts.slice(-40).map((t, i) =>
-    `${i + 1}. [${t.source}|${t.modo}] "${t.text.substring(0, 120)}"`
-  ).join('\n');
-
-  const result = await askGroq(
-    `Eres un analista de contenido especializado en humor puertorriqueño callejero estilo Gilberto de Jesús Casas "Gillito". Tu trabajo es identificar las MEJORES frases - las más creativas, graciosas, auténticas y con más potencial de engagement.`,
-    `Analiza estos tweets/posts de "Mi Pana Gillito" y selecciona las 5 MEJORES frases (las más creativas, graciosas, que suenan más auténticas al estilo Gillito):
-
-${textsForAnalysis}
-
-Responde SOLO con un JSON array de las 5 mejores frases textuales, exactas como aparecen. Sin explicación.
-Formato: ["frase1", "frase2", "frase3", "frase4", "frase5"]`,
-    0.5
-  );
-
-  try {
-    const cleaned = result.replace(/```json\n?|```/g, '').trim();
-    const parsed = JSON.parse(cleaned);
-    console.log(`   ✅ ${parsed.length} mejores frases identificadas\n`);
-    return parsed;
-  } catch (e) {
-    console.log(`   ⚠️ No se pudo parsear resultado: ${e.message}\n`);
-    return [];
-  }
+  return texts;
 }
 
-// PASO 2: Analizar frases que NO funcionan
-async function analyzeWeakContent(histories) {
-  console.log('📊 PASO 2: Identificando frases débiles...\n');
+// ═══════ ANALYSIS STEPS ═══════
 
-  const allTexts = [];
-  for (const [source, entries] of Object.entries(histories)) {
-    for (const entry of entries.slice(-30)) {
-      if (entry.text) allTexts.push({ text: entry.text, source });
-    }
-  }
+async function analyzeBest(texts) {
+  C.log.info('📊 PASO 1: Mejores frases...');
+  if (texts.length < 5) { C.log.warn('Pocas entradas'); return []; }
 
-  if (allTexts.length < 5) return [];
-
-  const textsForAnalysis = allTexts.slice(-40).map((t, i) =>
-    `${i + 1}. [${t.source}] "${t.text.substring(0, 120)}"`
-  ).join('\n');
-
-  const result = await askGroq(
-    `Eres un analista de contenido del comediante puertorriqueño Gillito. Tu trabajo es identificar frases DÉBILES - las que suenan genéricas, repetitivas, poco auténticas, sin gracia, o que no capturan el estilo explosivo de Gillito.`,
-    `Analiza estos tweets/posts e identifica las 3 PEORES frases (genéricas, repetitivas, sin la energía de Gillito):
-
-${textsForAnalysis}
-
-Responde SOLO con un JSON array de las 3 peores frases textuales, exactas. Sin explicación.
-Formato: ["frase1", "frase2", "frase3"]`,
-    0.5
-  );
+  const sample = texts.slice(-40).map((t, i) => `${i + 1}. [${t.source}] "${t.text.substring(0, 120)}"`).join('\n');
 
   try {
-    const cleaned = result.replace(/```json\n?|```/g, '').trim();
-    const parsed = JSON.parse(cleaned);
-    console.log(`   ✅ ${parsed.length} frases débiles identificadas\n`);
-    return parsed;
-  } catch (e) {
-    console.log(`   ⚠️ No se pudo parsear: ${e.message}\n`);
-    return [];
-  }
+    return await C.groqJSON(
+      'Eres analista de humor puertorriqueño callejero estilo Gillito. Identifica las MEJORES frases — creativas, graciosas, auténticas.',
+      `Selecciona las 5 MEJORES frases:\n${sample}\n\nJSON array de las 5 frases textuales: ["frase1","frase2",...]`,
+      { maxTokens: 800 }
+    );
+  } catch (e) { C.log.warn(`Parse: ${e.message}`); return []; }
 }
 
-// PASO 3: Generar nuevos insultos creativos
-async function generateNewInsults() {
-  console.log('🦞 PASO 3: Generando nuevos insultos creativos...\n');
+async function analyzeWeak(texts) {
+  C.log.info('📊 PASO 2: Frases débiles...');
+  if (texts.length < 5) return [];
 
-  const existingInsults = P.insultos_creativos.join(', ');
-
-  const result = await askGroq(
-    `${P.aprendizaje.prompt_aprendizaje_voz}
-
-Eres experto en el humor callejero puertorriqueño de Gillito. Genera insultos CREATIVOS y ORIGINALES estilo boricua. Deben ser comparaciones graciosas como "más perdío que juey en autopista" o "más lento que internet de LUMA".`,
-    `Estos son los insultos que YA existen (NO los repitas):
-${existingInsults}
-
-Genera 5 insultos NUEVOS y CREATIVOS estilo Gillito puertorriqueño. Deben ser comparaciones con cosas de PR o la vida cotidiana. Que sean GRACIOSOS y ORIGINALES.
-
-Responde SOLO con un JSON array de 5 strings. Sin explicación.
-Formato: ["insulto1", "insulto2", "insulto3", "insulto4", "insulto5"]`,
-    1.3
-  );
+  const sample = texts.slice(-40).map((t, i) => `${i + 1}. [${t.source}] "${t.text.substring(0, 120)}"`).join('\n');
 
   try {
-    const cleaned = result.replace(/```json\n?|```/g, '').trim();
-    const parsed = JSON.parse(cleaned);
-    console.log(`   ✅ ${parsed.length} insultos nuevos generados\n`);
-    return parsed;
-  } catch (e) {
-    console.log(`   ⚠️ No se pudo parsear: ${e.message}\n`);
-    return [];
-  }
+    return await C.groqJSON(
+      'Identifica frases DÉBILES — genéricas, repetitivas, sin la energía explosiva de Gillito.',
+      `Las 3 PEORES frases:\n${sample}\n\nJSON array: ["frase1","frase2","frase3"]`,
+      { maxTokens: 600 }
+    );
+  } catch { return []; }
 }
 
-// PASO 4: Generar nuevos temas de troleo
-async function generateNewTopics() {
-  console.log('🎯 PASO 4: Generando nuevos temas de troleo...\n');
+async function generateInsults() {
+  C.log.info('🦞 PASO 3: Nuevos insultos...');
+  try {
+    return await C.groqJSON(
+      `${P.aprendizaje.prompt_aprendizaje_voz}\nGenera insultos CREATIVOS estilo boricua. Comparaciones como "más perdío que juey en autopista".`,
+      `Insultos existentes (NO repitas): ${P.insultos_creativos.join(', ')}\n\n5 insultos NUEVOS. JSON array: ["insulto1",...]`,
+      { maxTokens: 600, temperature: 1.3 }
+    );
+  } catch { return []; }
+}
 
-  const result = await askGroq(
-    `${P.aprendizaje.prompt_aprendizaje_troleo}
+async function generateTopics() {
+  C.log.info('🎯 PASO 4: Nuevos temas...');
+  try {
+    return await C.groqJSON(
+      `${P.aprendizaje.prompt_aprendizaje_troleo}\n${P.aprendizaje.prompt_contexto_cultural}\nGenera temas NUEVOS de troleo social/político de PR en 2026.`,
+      `6 temas nuevos (3 general, 3 político).\nJSON: {"trolleo_general":["t1","t2","t3"],"trolleo_politico":["t1","t2","t3"]}`,
+      { maxTokens: 800, temperature: 1.0 }
+    );
+  } catch { return { trolleo_general: [], trolleo_politico: [] }; }
+}
 
-${P.aprendizaje.prompt_contexto_cultural}
+async function generatePhrases() {
+  C.log.info('🔥 PASO 5: Nuevas frases firma...');
+  try {
+    return await C.groqJSON(
+      `${P.aprendizaje.prompt_aprendizaje_voz}\nGenera frases ICÓNICAS como "¡CÁGUENSE EN SU MADRE!" o "¡Se jodió ésta pendejá!"`,
+      `Existentes (NO repitas): ${P.frases_firma.join(' | ')}\n\n3 frases NUEVAS. JSON: ["f1","f2","f3"]`,
+      { maxTokens: 400, temperature: 1.3 }
+    );
+  } catch { return []; }
+}
 
-Eres experto en el contexto social y político de Puerto Rico en 2026. Genera temas NUEVOS para troleo social y político que sean relevantes AHORA.`,
-    `Genera 6 temas NUEVOS para troleo/crítica social de Puerto Rico en 2026. Deben ser específicos, relevantes, y con potencial de humor/engagement. 3 de trolleo general y 3 de trolleo político.
-
-Responde SOLO con JSON:
-{"trolleo_general": ["tema1", "tema2", "tema3"], "trolleo_politico": ["tema1", "tema2", "tema3"]}`,
-    1.0
-  );
+async function evaluateAuth(texts) {
+  C.log.info('🎭 PASO 6: Evaluando autenticidad...');
+  const recent = texts.slice(-15).map(t => t.text.substring(0, 100));
+  if (recent.length < 3) return { score: 0, feedback: 'Necesita más datos' };
 
   try {
-    const cleaned = result.replace(/```json\n?|```/g, '').trim();
-    const parsed = JSON.parse(cleaned);
-    console.log(`   ✅ Nuevos temas generados\n`);
-    return parsed;
-  } catch (e) {
-    console.log(`   ⚠️ No se pudo parsear: ${e.message}\n`);
-    return { trolleo_general: [], trolleo_politico: [] };
-  }
+    return await C.groqJSON(
+      `Evalúa si el contenido suena AUTÉNTICO al estilo de Gillito.\nEstilo: ${P.aprendizaje.conocimiento_base.estilo_comico}\nPatrón: ${P.aprendizaje.conocimiento_base.patron_de_habla}`,
+      `Textos:\n${recent.map((t, i) => `${i + 1}. "${t}"`).join('\n')}\n\nJSON: {"score":<1-10>,"feedback":"<máx 150 chars>","suena_como_gillito":<bool>}`,
+      { maxTokens: 300 }
+    );
+  } catch { return { score: 0, feedback: 'Error de análisis' }; }
 }
 
-// PASO 5: Analizar distribución y recomendar ajustes
 async function analyzeDistribution(histories) {
-  console.log('📈 PASO 5: Analizando distribución de contenido...\n');
-
-  // Contar modos usados
-  const modeCounts = {};
+  C.log.info('📈 PASO 7: Distribución...');
+  const counts = {};
   for (const entries of Object.values(histories)) {
-    for (const entry of entries) {
-      if (entry.modo) {
-        modeCounts[entry.modo] = (modeCounts[entry.modo] || 0) + 1;
-      }
+    for (const e of entries) {
+      if (e.modo) counts[e.modo] = (counts[e.modo] || 0) + 1;
     }
   }
-
-  const currentDist = P.modo_distribucion;
-  console.log('   Distribución configurada vs real:');
-  for (const [mode, pct] of Object.entries(currentDist)) {
-    const actual = modeCounts[mode] || 0;
-    const total = Object.values(modeCounts).reduce((a, b) => a + b, 0) || 1;
-    const actualPct = Math.round((actual / total) * 100);
-    console.log(`   ${mode}: config=${pct}% | real=${actualPct}% (${actual} posts)`);
+  console.log('   Config vs Real:');
+  const total = Object.values(counts).reduce((a, b) => a + b, 0) || 1;
+  for (const [mode, pct] of Object.entries(P.modo_distribucion)) {
+    const actual = Math.round(((counts[mode] || 0) / total) * 100);
+    console.log(`   ${mode}: config=${pct}% | real=${actual}%`);
   }
-
-  const result = await askGroq(
-    `Eres un estratega de contenido para un troll boricua en redes sociales. Analiza la distribución de contenido y sugiere ajustes para maximizar variedad y engagement.`,
-    `Distribución configurada: ${JSON.stringify(currentDist)}
-Distribución real (conteos): ${JSON.stringify(modeCounts)}
-
-¿Hay algún tipo de contenido sobrerepresentado o subrepresentado? ¿Se debería ajustar algo?
-
-Responde con un JSON con recomendaciones breves (máx 100 chars cada una):
-{"recomendaciones": ["recomendacion1", "recomendacion2", "recomendacion3"]}`,
-    0.7
-  );
 
   try {
-    const cleaned = result.replace(/```json\n?|```/g, '').trim();
-    const parsed = JSON.parse(cleaned);
-    console.log(`\n   ✅ ${parsed.recomendaciones.length} recomendaciones generadas\n`);
-    return parsed.recomendaciones;
-  } catch (e) {
-    console.log(`   ⚠️ No se pudo parsear: ${e.message}\n`);
-    return [];
-  }
+    const result = await C.groqJSON(
+      'Analiza distribución de contenido y sugiere ajustes.',
+      `Config: ${JSON.stringify(P.modo_distribucion)}\nReal: ${JSON.stringify(counts)}\n\nJSON: {"recomendaciones":["r1","r2","r3"]}`,
+      { maxTokens: 400, temperature: 0.7 }
+    );
+    return result.recomendaciones || [];
+  } catch { return []; }
 }
 
-// PASO 6: Generar nuevas frases firma
-async function generateNewPhrases() {
-  console.log('🔥 PASO 6: Generando nuevas frases firma...\n');
+// ═══════ UPDATE PERSONALITY ═══════
 
-  const existing = P.frases_firma.join(' | ');
-
-  const result = await askGroq(
-    `${P.aprendizaje.prompt_aprendizaje_voz}
-
-Eres el comediante Gillito de PR. Genera frases ICÓNICAS nuevas - explosivas, memorables, que la gente quiera repetir. Como "¡CÁGUENSE EN SU MADRE!" o "¡Se jodió ésta pendejá!"`,
-    `Frases firma que YA existen (NO repitas): ${existing}
-
-Genera 3 frases firma NUEVAS estilo Gillito. Deben ser EXPLOSIVAS, MEMORABLES, con groserías boricuas. El tipo de frase que alguien gritaría en la calle.
-
-Responde SOLO con JSON array: ["frase1", "frase2", "frase3"]`,
-    1.3
-  );
-
-  try {
-    const cleaned = result.replace(/```json\n?|```/g, '').trim();
-    const parsed = JSON.parse(cleaned);
-    console.log(`   ✅ ${parsed.length} frases nuevas generadas\n`);
-    return parsed;
-  } catch (e) {
-    console.log(`   ⚠️ No se pudo parsear: ${e.message}\n`);
-    return [];
-  }
-}
-
-// PASO 7: Auto-evaluar autenticidad
-async function evaluateAuthenticity(histories) {
-  console.log('🎭 PASO 7: Evaluando autenticidad del estilo...\n');
-
-  const recentTexts = [];
-  for (const entries of Object.values(histories)) {
-    for (const entry of entries.slice(-10)) {
-      if (entry.text) recentTexts.push(entry.text.substring(0, 100));
-    }
-  }
-
-  if (recentTexts.length < 3) {
-    console.log('   ⚠️ Pocas entradas para evaluar\n');
-    return { score: 0, feedback: 'Necesita más datos' };
-  }
-
-  const result = await askGroq(
-    `Eres un experto en el estilo del comediante puertorriqueño Gilberto de Jesús Casas "Gillito". Evalúa si el contenido generado suena AUTÉNTICO al estilo real de Gillito.
-
-Estilo real de Gillito:
-${P.aprendizaje.conocimiento_base.estilo_comico}
-${P.aprendizaje.conocimiento_base.patron_de_habla}`,
-    `Evalúa estos textos recientes de "Mi Pana Gillito" bot:
-
-${recentTexts.map((t, i) => `${i + 1}. "${t}"`).join('\n')}
-
-Responde con JSON:
-{"score": <1-10 qué tan auténtico suena>, "feedback": "<qué mejorar en máx 150 chars>", "suena_como_gillito": <true/false>}`,
-    0.5
-  );
-
-  try {
-    const cleaned = result.replace(/```json\n?|```/g, '').trim();
-    const parsed = JSON.parse(cleaned);
-    console.log(`   🎭 Autenticidad: ${parsed.score}/10`);
-    console.log(`   💬 Feedback: ${parsed.feedback}`);
-    console.log(`   ${parsed.suena_como_gillito ? '✅ Suena como Gillito' : '⚠️ Necesita más autenticidad'}\n`);
-    return parsed;
-  } catch (e) {
-    console.log(`   ⚠️ No se pudo parsear: ${e.message}\n`);
-    return { score: 0, feedback: 'Error de análisis' };
-  }
-}
-
-// ============ ACTUALIZAR PERSONALITY.JSON ============
-
-function updatePersonality(bestPhrases, weakPhrases, newInsults, newTopics, recommendations, newPhrases, authenticity) {
-  console.log('═'.repeat(50));
-  console.log('🔄 ACTUALIZANDO CEREBRO DE GILLITO...\n');
-
+function applyUpdates(best, weak, insults, topics, phrases, recs, auth) {
+  C.log.info('\n🔄 ACTUALIZANDO CEREBRO...\n');
   let changes = 0;
 
-  // Actualizar evolución
   if (!P.evolucion) P.evolucion = {};
 
-  // Frases que funcionaron (agregar nuevas, max 20)
-  if (bestPhrases.length > 0) {
-    const existing = P.evolucion.frases_que_funcionaron || [];
-    const combined = [...new Set([...existing, ...bestPhrases])].slice(-20);
-    P.evolucion.frases_que_funcionaron = combined;
-    console.log(`   ✅ frases_que_funcionaron: ${combined.length} (${bestPhrases.length} nuevas)`);
-    changes++;
+  // Best phrases
+  if (best.length) {
+    P.evolucion.frases_que_funcionaron = [...new Set([...(P.evolucion.frases_que_funcionaron || []), ...best])].slice(-20);
+    C.log.ok(`frases_exitosas: ${P.evolucion.frases_que_funcionaron.length}`); changes++;
   }
 
-  // Frases que NO funcionaron (agregar, max 10)
-  if (weakPhrases.length > 0) {
-    const existing = P.evolucion.frases_que_NO_funcionaron || [];
-    const combined = [...new Set([...existing, ...weakPhrases])].slice(-10);
-    P.evolucion.frases_que_NO_funcionaron = combined;
-    console.log(`   ✅ frases_que_NO_funcionaron: ${combined.length}`);
-    changes++;
+  // Weak phrases
+  if (weak.length) {
+    P.evolucion.frases_que_NO_funcionaron = [...new Set([...(P.evolucion.frases_que_NO_funcionaron || []), ...weak])].slice(-10);
+    C.log.ok(`frases_débiles: ${P.evolucion.frases_que_NO_funcionaron.length}`); changes++;
   }
 
-  // Nuevos insultos (agregar al array principal, max 35)
-  if (newInsults.length > 0) {
-    const existing = P.insultos_creativos || [];
-    const combined = [...new Set([...existing, ...newInsults])].slice(-35);
-    P.insultos_creativos = combined;
-    console.log(`   ✅ insultos_creativos: ${combined.length} total (+${newInsults.length} nuevos)`);
-    changes++;
+  // New insults
+  if (insults.length) {
+    P.insultos_creativos = [...new Set([...P.insultos_creativos, ...insults])].slice(-35);
+    C.log.ok(`insultos: ${P.insultos_creativos.length} total (+${insults.length})`); changes++;
   }
 
-  // Nuevos temas de troleo
-  if (newTopics.trolleo_general?.length > 0) {
-    const existing = P.temas_trolleo_general || [];
-    const combined = [...new Set([...existing, ...newTopics.trolleo_general])].slice(-25);
-    P.temas_trolleo_general = combined;
-    console.log(`   ✅ temas_trolleo_general: ${combined.length} total`);
-    changes++;
+  // New topics
+  if (topics.trolleo_general?.length) {
+    P.temas_trolleo_general = [...new Set([...(P.temas_trolleo_general || []), ...topics.trolleo_general])].slice(-25);
+    C.log.ok(`temas_general: ${P.temas_trolleo_general.length}`); changes++;
   }
-  if (newTopics.trolleo_politico?.length > 0) {
-    const existing = P.temas_trolleo_politico || [];
-    const combined = [...new Set([...existing, ...newTopics.trolleo_politico])].slice(-25);
-    P.temas_trolleo_politico = combined;
-    console.log(`   ✅ temas_trolleo_politico: ${combined.length} total`);
-    changes++;
+  if (topics.trolleo_politico?.length) {
+    P.temas_trolleo_politico = [...new Set([...(P.temas_trolleo_politico || []), ...topics.trolleo_politico])].slice(-25);
+    C.log.ok(`temas_politico: ${P.temas_trolleo_politico.length}`); changes++;
   }
 
-  // Nuevas frases firma (agregar, max 20)
-  if (newPhrases.length > 0) {
-    const existing = P.frases_firma || [];
-    const combined = [...new Set([...existing, ...newPhrases])].slice(-20);
-    P.frases_firma = combined;
-    console.log(`   ✅ frases_firma: ${combined.length} total (+${newPhrases.length} nuevas)`);
-    changes++;
+  // New phrases
+  if (phrases.length) {
+    P.frases_firma = [...new Set([...P.frases_firma, ...phrases])].slice(-20);
+    C.log.ok(`frases_firma: ${P.frases_firma.length} (+${phrases.length})`); changes++;
   }
 
-  // Recomendaciones
-  if (recommendations.length > 0) {
-    P.evolucion.ajustes_pendientes = recommendations;
-    console.log(`   ✅ ajustes_pendientes: ${recommendations.length} recomendaciones`);
-    changes++;
+  // Recommendations
+  if (recs.length) {
+    P.evolucion.ajustes_pendientes = recs;
+    C.log.ok(`recomendaciones: ${recs.length}`); changes++;
   }
 
-  // Vocabulario aprendido
+  // Vocabulary learned
   if (!P.aprendizaje.vocabulario_aprendido) P.aprendizaje.vocabulario_aprendido = {};
   P.aprendizaje.vocabulario_aprendido.frases_exitosas = (P.evolucion.frases_que_funcionaron || []).slice(-10);
-  P.aprendizaje.vocabulario_aprendido.insultos_que_gustan = newInsults.slice(0, 5);
 
-  // Registro de aprendizaje
+  // Learning log
   if (!P.aprendizaje.historial_aprendizaje) P.aprendizaje.historial_aprendizaje = [];
   P.aprendizaje.historial_aprendizaje.push({
     fecha: new Date().toISOString(),
-    autenticidad: authenticity.score || 0,
-    feedback: authenticity.feedback || '',
+    autenticidad: auth.score || 0,
+    feedback: auth.feedback || '',
     cambios: changes,
-    insultos_nuevos: newInsults.length,
-    frases_nuevas: newPhrases.length,
-    temas_nuevos: (newTopics.trolleo_general?.length || 0) + (newTopics.trolleo_politico?.length || 0)
+    insultos_nuevos: insults.length,
+    frases_nuevas: phrases.length
   });
-  // Max 30 entradas de historial
   P.aprendizaje.historial_aprendizaje = P.aprendizaje.historial_aprendizaje.slice(-30);
 
-  // Actualizar fecha
   P._ACTUALIZADO = new Date().toISOString().split('T')[0];
-
   return changes;
 }
 
-// ============ GUARDAR ============
-
 function savePersonality() {
   try {
-    fs.writeFileSync(PERSONALITY_FILE, JSON.stringify(P, null, 2));
-    console.log(`\n💾 personality.json actualizado exitosamente`);
+    const filepath = path.join(C.WORKSPACE, 'config', 'personality.json');
+    fs.writeFileSync(filepath, JSON.stringify(P, null, 2));
+    C.log.ok('personality.json guardado');
     return true;
   } catch (e) {
-    console.error(`❌ Error guardando: ${e.message}`);
+    C.log.error(`Guardar: ${e.message}`);
     return false;
   }
 }
 
-// ============ MAIN ============
+// ═══════ MAIN ═══════
 
 async function main() {
-  console.log('\n' + '═'.repeat(50));
-  console.log('🧠 GILLITO - APRENDIZAJE AUTÓNOMO v1.0');
-  console.log('🔄 Analizando rendimiento y evolucionando...');
-  console.log('═'.repeat(50) + '\n');
+  C.log.banner([
+    '🧠 GILLITO — APRENDIZAJE AUTÓNOMO v2.0',
+    '🔄 Analizando rendimiento y evolucionando...'
+  ]);
 
-  if (!GROQ_KEY) { console.error('❌ GROQ_API_KEY no configurada'); process.exit(1); }
-
-  // Cargar todos los historiales
-  console.log('📂 Cargando historiales...\n');
-  const histories = loadAllHistories();
-
-  const totalEntries = Object.values(histories).reduce((sum, arr) => sum + arr.length, 0);
-  if (totalEntries < 3) {
-    console.log('⚠️ Muy pocas entradas para aprender (mínimo 3). Gillito necesita más historia.');
-    console.log('🦞 Volveré mañana cuando haya más datos. 🔥\n');
+  const { all: histories, total } = loadAllHistories();
+  if (total < 3) {
+    C.log.warn('Muy pocas entradas (mínimo 3). Vuelvo mañana.');
     process.exit(0);
   }
 
-  // Ejecutar todos los análisis
-  const bestPhrases = await analyzeBestContent(histories);
-  await new Promise(r => setTimeout(r, 1000));
+  const texts = getAllTexts(histories);
 
-  const weakPhrases = await analyzeWeakContent(histories);
-  await new Promise(r => setTimeout(r, 1000));
+  // Execute all analysis (with delays to respect Groq rate limits)
+  const best    = await analyzeBest(texts);     await C.sleep(1500);
+  const weak    = await analyzeWeak(texts);      await C.sleep(1500);
+  const insults = await generateInsults();       await C.sleep(1500);
+  const topics  = await generateTopics();        await C.sleep(1500);
+  const phrases = await generatePhrases();       await C.sleep(1500);
+  const auth    = await evaluateAuth(texts);     await C.sleep(1500);
+  const recs    = await analyzeDistribution(histories);
 
-  const newInsults = await generateNewInsults();
-  await new Promise(r => setTimeout(r, 1000));
-
-  const newTopics = await generateNewTopics();
-  await new Promise(r => setTimeout(r, 1000));
-
-  const recommendations = await analyzeDistribution(histories);
-  await new Promise(r => setTimeout(r, 1000));
-
-  const newPhrases = await generateNewPhrases();
-  await new Promise(r => setTimeout(r, 1000));
-
-  const authenticity = await evaluateAuthenticity(histories);
-
-  // Aplicar cambios
-  const changes = updatePersonality(bestPhrases, weakPhrases, newInsults, newTopics, recommendations, newPhrases, authenticity);
-
-  // Guardar
+  // Apply
+  const changes = applyUpdates(best, weak, insults, topics, phrases, recs, auth);
   const saved = savePersonality();
 
-  // Resumen final
-  console.log('\n' + '═'.repeat(50));
-  console.log('📊 RESUMEN DE APRENDIZAJE:');
-  console.log(`   🎭 Autenticidad: ${authenticity.score || '?'}/10`);
-  console.log(`   🔥 Insultos nuevos: +${newInsults.length}`);
-  console.log(`   💬 Frases firma nuevas: +${newPhrases.length}`);
-  console.log(`   🎯 Temas nuevos: +${(newTopics.trolleo_general?.length || 0) + (newTopics.trolleo_politico?.length || 0)}`);
-  console.log(`   ⭐ Mejores frases guardadas: ${bestPhrases.length}`);
-  console.log(`   ⚠️ Frases débiles marcadas: ${weakPhrases.length}`);
-  console.log(`   📝 Recomendaciones: ${recommendations.length}`);
-  console.log(`   🔄 Cambios totales: ${changes}`);
-  console.log(`   💾 Guardado: ${saved ? 'SÍ' : 'NO'}`);
-  console.log('');
-  if (authenticity.feedback) {
-    console.log(`   💡 Feedback: ${authenticity.feedback}`);
-  }
-  console.log(`\n🦞 ¡GILLITO EVOLUCIONÓ! ${P.despedida_real} 🔥`);
-  console.log('═'.repeat(50) + '\n');
+  C.log.banner([
+    '📊 RESUMEN DE APRENDIZAJE',
+    `🎭 Autenticidad: ${auth.score || '?'}/10`,
+    `🔥 Insultos nuevos: +${insults.length}`,
+    `💬 Frases nuevas: +${phrases.length}`,
+    `🎯 Temas nuevos: +${(topics.trolleo_general?.length || 0) + (topics.trolleo_politico?.length || 0)}`,
+    `⭐ Mejores: ${best.length} | ⚠️ Débiles: ${weak.length}`,
+    `📝 Recomendaciones: ${recs.length}`,
+    `🔄 Cambios: ${changes} | 💾 Guardado: ${saved ? 'SÍ' : 'NO'}`,
+    auth.feedback ? `💡 ${auth.feedback}` : '',
+    `🦞 ¡GILLITO EVOLUCIONÓ! 🔥`
+  ].filter(Boolean));
 }
 
-main().catch(err => { console.error('❌ Error:', err.message); process.exit(1); });
+main().catch(err => { C.log.error(err.message); process.exit(1); });
