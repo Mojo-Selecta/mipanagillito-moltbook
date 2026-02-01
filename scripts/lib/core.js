@@ -1075,10 +1075,41 @@ async function moltPostWithFallback(title, content, submolts = ['general', 'humo
   return { success: false, error: 'All submolts failed' };
 }
 
+/**
+ * Redirect-safe fetch: prevents Authorization header from being stripped on redirects.
+ * Moltbook's interaction endpoints (upvote/comment/follow) redirect internally,
+ * which causes the default fetch to drop auth headers → 401 errors.
+ */
+async function moltFetch(url, opts = {}) {
+  const maxRedirects = 5;
+  let currentUrl = url;
+  let hdrs = { ...opts.headers };
+
+  for (let i = 0; i < maxRedirects; i++) {
+    const res = await fetch(currentUrl, { ...opts, headers: hdrs, redirect: 'manual' });
+
+    // Not a redirect → return the response
+    if (res.status < 300 || res.status >= 400) return res;
+
+    // It's a redirect → follow it manually WITH auth headers preserved
+    const location = res.headers.get('location');
+    if (!location) return res;
+
+    currentUrl = location.startsWith('http') ? location : new URL(location, currentUrl).href;
+    log.debug(`↪ Redirect [${res.status}] → ${currentUrl}`);
+
+    // For 307/308: preserve method and body. For 301/302/303: switch to GET
+    if (res.status === 301 || res.status === 302 || res.status === 303) {
+      opts = { ...opts, method: 'GET', body: undefined };
+    }
+  }
+  throw new Error(`Too many redirects from ${url}`);
+}
+
 async function moltComment(postId, content) {
   try {
     _stats.apiCalls.moltbook++;
-    const res = await fetch(`${MOLT_API}/posts/${postId}/comments`, {
+    const res = await moltFetch(`${MOLT_API}/posts/${postId}/comments`, {
       method: 'POST', headers: moltHeaders(),
       body: JSON.stringify({ content })
     });
@@ -1093,7 +1124,7 @@ async function moltComment(postId, content) {
 async function moltReplyComment(postId, commentId, content) {
   try {
     _stats.apiCalls.moltbook++;
-    const res = await fetch(`${MOLT_API}/posts/${postId}/comments/${commentId}/reply`, {
+    const res = await moltFetch(`${MOLT_API}/posts/${postId}/comments/${commentId}/reply`, {
       method: 'POST', headers: moltHeaders(),
       body: JSON.stringify({ content })
     });
@@ -1108,7 +1139,7 @@ async function moltReplyComment(postId, commentId, content) {
 async function moltUpvote(postId) {
   try {
     _stats.apiCalls.moltbook++;
-    const res = await fetch(`${MOLT_API}/posts/${postId}/upvote`, { method: 'POST', headers: moltHeaders() });
+    const res = await moltFetch(`${MOLT_API}/posts/${postId}/upvote`, { method: 'POST', headers: moltHeaders() });
     const text = await res.text();
     let data; try { data = JSON.parse(text); } catch { data = { raw: text.substring(0, 200) }; }
     if (data.success) return true;
@@ -1120,7 +1151,7 @@ async function moltUpvote(postId) {
 async function moltDownvote(postId) {
   try {
     _stats.apiCalls.moltbook++;
-    const res = await fetch(`${MOLT_API}/posts/${postId}/downvote`, { method: 'POST', headers: moltHeaders() });
+    const res = await moltFetch(`${MOLT_API}/posts/${postId}/downvote`, { method: 'POST', headers: moltHeaders() });
     const text = await res.text();
     let data; try { data = JSON.parse(text); } catch { data = { raw: text.substring(0, 200) }; }
     if (data.success) return true;
@@ -1132,7 +1163,7 @@ async function moltDownvote(postId) {
 async function moltUpvoteComment(commentId) {
   try {
     _stats.apiCalls.moltbook++;
-    const res = await fetch(`${MOLT_API}/comments/${commentId}/upvote`, { method: 'POST', headers: moltHeaders() });
+    const res = await moltFetch(`${MOLT_API}/comments/${commentId}/upvote`, { method: 'POST', headers: moltHeaders() });
     const text = await res.text();
     let data; try { data = JSON.parse(text); } catch { data = { raw: text.substring(0, 200) }; }
     return data.success || false;
@@ -1142,7 +1173,7 @@ async function moltUpvoteComment(commentId) {
 async function moltFollow(name) {
   try {
     _stats.apiCalls.moltbook++;
-    const res = await fetch(`${MOLT_API}/agents/${name}/follow`, { method: 'POST', headers: moltHeaders() });
+    const res = await moltFetch(`${MOLT_API}/agents/${name}/follow`, { method: 'POST', headers: moltHeaders() });
     const text = await res.text();
     let data; try { data = JSON.parse(text); } catch { data = { raw: text.substring(0, 200) }; }
     if (data.success) return true;
