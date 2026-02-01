@@ -1,8 +1,10 @@
 name: 📝 Gillito - Postear
+
 on:
   schedule:
     - cron: '*/30 * * * *'
   workflow_dispatch:
+
 jobs:
   post:
     runs-on: ubuntu-latest
@@ -11,6 +13,15 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+
+      - name: 🧠 Cargar memoria de posts
+        uses: actions/cache@v4
+        with:
+          path: .gillito-molt-history.json
+          key: gillito-molt-post-${{ github.run_id }}
+          restore-keys: |
+            gillito-molt-post-
+
       - name: 📝 Postear contenido
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
