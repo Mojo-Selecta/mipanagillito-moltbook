@@ -1,26 +1,24 @@
 #!/usr/bin/env node
 
 /**
- * Mi Pana Gillito - X (Twitter) Reply Bot
- * EL REY DEL TROLEO - RESPUESTAS BRUTALES 🦞👑
+ * Mi Pana Gillito - X (Twitter) Poster
+ * EL REY DEL TROLEO 🦞👑
  * 
- * Límite: ~1000 replies/mes (~33/día)
+ * Límite: ~500 posts/mes (~17/día)
  */
-
-const fs = require('fs');
-const crypto = require('crypto');
 
 const CONFIG = {
   GROQ_API: 'https://api.groq.com/openai/v1/chat/completions',
-  GROQ_MODEL: 'llama-3.3-70b-versatile',
-  LAST_MENTION_FILE: '/tmp/gillito_last_mention.txt'
+  GROQ_MODEL: 'llama-3.3-70b-versatile'
 };
+
+// 🎯 TARGETS PARA TROLLEAR
+const TARGETS = ['chenteydrach', 'moluskein'];
 
 const X_API_KEY = process.env.X_API_KEY;
 const X_API_SECRET = process.env.X_API_SECRET;
 const X_ACCESS_TOKEN = process.env.X_ACCESS_TOKEN;
 const X_ACCESS_SECRET = process.env.X_ACCESS_SECRET;
-const X_BEARER_TOKEN = process.env.X_BEARER_TOKEN;
 const GROQ_KEY = process.env.GROQ_API_KEY;
 
 if (!X_API_KEY || !X_API_SECRET || !X_ACCESS_TOKEN || !X_ACCESS_SECRET) {
@@ -33,9 +31,7 @@ if (!GROQ_KEY) {
   process.exit(1);
 }
 
-// ============================================
-// OAuth 1.0a
-// ============================================
+const crypto = require('crypto');
 
 function percentEncode(str) {
   return encodeURIComponent(str)
@@ -87,69 +83,9 @@ function getAuthHeader(method, url, extraParams = {}) {
   return authHeader;
 }
 
-// ============================================
-// X API Functions
-// ============================================
-
-async function getMyUserId() {
-  const url = 'https://api.twitter.com/2/users/me';
-  
-  const authHeader = getAuthHeader('GET', url);
-  
-  const response = await fetch(url, {
-    headers: { 'Authorization': authHeader }
-  });
-  
-  const data = await response.json();
-  
-  if (!response.ok) {
-    throw new Error(`Error getting user ID: ${JSON.stringify(data)}`);
-  }
-  
-  return data.data.id;
-}
-
-async function getMentions(userId, sinceId = null) {
-  const baseUrl = `https://api.twitter.com/2/users/${userId}/mentions`;
-  
-  const queryParams = {
-    'max_results': '10',
-    'tweet.fields': 'author_id,created_at,conversation_id,text',
-    'expansions': 'author_id',
-    'user.fields': 'name,username,description'
-  };
-  
-  if (sinceId) {
-    queryParams['since_id'] = sinceId;
-  }
-  
-  const authHeader = getAuthHeader('GET', baseUrl, queryParams);
-  
-  const queryString = Object.keys(queryParams)
-    .map(key => `${encodeURIComponent(key)}=${encodeURIComponent(queryParams[key])}`)
-    .join('&');
-  
-  const fullUrl = `${baseUrl}?${queryString}`;
-  
-  const response = await fetch(fullUrl, {
-    headers: { 'Authorization': authHeader }
-  });
-  
-  const data = await response.json();
-  
-  if (!response.ok) {
-    throw new Error(`Error getting mentions: ${JSON.stringify(data)}`);
-  }
-  
-  return data;
-}
-
-async function replyToTweet(tweetId, text) {
+async function postToX(text) {
   const url = 'https://api.twitter.com/2/tweets';
-  const body = JSON.stringify({
-    text,
-    reply: { in_reply_to_tweet_id: tweetId }
-  });
+  const body = JSON.stringify({ text });
   
   const authHeader = getAuthHeader('POST', url);
   
@@ -172,97 +108,145 @@ async function replyToTweet(tweetId, text) {
 }
 
 // ============================================
-// Bot Detection
+// SYSTEM PROMPT - GILLITO SIN CENSURA
 // ============================================
 
-function isLikelyBot(user) {
-  if (!user?.username) return false;
-  const name = (user.username + ' ' + (user.name || '') + ' ' + (user.description || '')).toLowerCase();
-  const botIndicators = ['bot', 'ai', 'gpt', 'llm', 'assistant', 'auto', 'agent', 'neural', 'machine', 'automated'];
-  return botIndicators.some(indicator => name.includes(indicator));
+const SYSTEM = `Eres "Mi Pana Gillito" (Gilberto de Jesús Casas, 1970-2014), el humorista MÁS BRUTAL y TROLL de Puerto Rico.
+
+ESTILO:
+- Lenguaje: cabrón, pendejo, puñeta, coño, carajo, mamabicho, huelebicho, "me cago en...", mamao, canto de cabrón
+- Frase icónica: "¡CÁGUENSE EN SU MADRE!"
+- Cierre opcional: "Dios los cuide, que GILLITO los protegerá"
+
+PERSONALIDAD:
+- Eres el TROLL más grande de X/Twitter
+- Te burlas de TODO y TODOS con cariño
+- Eres el tipo de la calle que dice lo que todos piensan
+- Mezclas crítica real con humor absurdo
+- Eres INTELIGENTE - conoces la actualidad de PR, EEUU y el mundo
+
+TU MISIÓN: Ser la voz del pueblo Y el payaso del barrio. Provocar, entretener, y decir verdades incómodas.
+
+Sé EXPLOSIVO, GRITÓN, SIN FILTRO. Máximo 280 caracteres.`;
+
+const SYSTEM_TARGET = `Eres "Mi Pana Gillito" (Gilberto de Jesús Casas, 1970-2014), el humorista MÁS BRUTAL y TROLL de Puerto Rico.
+
+Vas a escribir un tweet MENCIONANDO a alguien famoso de Puerto Rico para PROVOCAR conversación.
+
+ESTILO:
+- Lenguaje: cabrón, pendejo, puñeta, coño, carajo (con cariño boricua)
+- Humor de calle, provocador pero no ofensivo
+- Quieres que te respondan, que haya BEEF amistoso
+
+REGLAS:
+- INCLUYE el @ del target en el tweet
+- Sé provocador pero con RESPETO (son panas)
+- Hazlo divertido, que la gente quiera ver la respuesta
+- Máximo 270 caracteres`;
+
+// ============================================
+// TEMAS
+// ============================================
+
+const hour = new Date().getUTCHours();
+const isPRMorning = (hour >= 10 && hour <= 14);
+const isPRNight = (hour >= 1 && hour <= 5);
+
+const TOPICS_SERIOS = [
+  "ICE separando familias - ¿dónde está la humanidad?",
+  "LUMA y los malditos apagones que no paran",
+  "los políticos corruptos que se roban el dinero de FEMA",
+  "la junta de control fiscal chupándole la sangre a PR",
+  "el éxodo de jóvenes porque aquí no hay futuro",
+  "los gringos comprando casas y subiendo los precios",
+  "la ley 22 beneficiando a millonarios mientras el pueblo se jode",
+  "el sistema de salud de PR colapsando",
+  "la gasolina más cara que en cualquier estado",
+  "Trump y sus políticas contra los latinos",
+  "la inflación que nos tiene comiendo aire",
+  "el salario mínimo que no alcanza pa' ná"
+];
+
+const TOPICS_CALLE = [
+  "el tipo que se cree que sabe to' pero no sabe un carajo",
+  "la gente que dice 'voy en camino' pero todavía está en la ducha",
+  "los que ponen música alta a las 6am como si fuera fiesta",
+  "el vecino metiche que sabe la vida de todos",
+  "la suegra que siempre tiene algo que decir",
+  "el amigo que te debe chavos y se hace el loco",
+  "los que estacionan como si fueran los dueños del mundo",
+  "el cuñao que siempre tiene la opinión correcta sobre TODO",
+  "el pana que siempre está 'pelao' pero tiene iPhone nuevo",
+  "los que dicen 'yo no soy chismoso' y son los primeros en saber todo"
+];
+
+const TOPICS_TROLL = [
+  "los influencers que venden humo y se creen importantes",
+  "los políticos en Twitter prometiendo lo que nunca cumplen",
+  "los que postean 'humildemente' pero están presumiendo",
+  "los crypto bros que perdieron todo pero siguen hablando",
+  "los coaches de vida que tienen la vida hecha un desastre",
+  "los 'emprendedores' que solo venden cursos de cómo vender cursos"
+];
+
+const TOPICS_ABSURDO = [
+  "si los perros pudieran hablar, seguro dirían menos pendejás que algunos aquí",
+  "por qué el wifi funciona perfecto hasta que necesitas usarlo de verdad",
+  "los lunes deberían ser ilegales",
+  "las 3am te hacen pensar cosas bien raras"
+];
+
+// 🎯 TEMAS PARA TARGETS ESPECÍFICOS
+const TOPICS_TARGETS = {
+  'chenteydrach': [
+    "pregúntale cuándo va a sacar tema nuevo o si ya se retiró",
+    "dile que su último video te hizo reír tanto que casi te cagas",
+    "pregúntale su opinión sobre LUMA de forma chistosa",
+    "rétalo a un duelo de chistes boricuas",
+    "pregúntale si todavía debe chavos por ahí",
+    "dile que lo viste en el mall y no lo saludaste por tímido"
+  ],
+  'moluskein': [
+    "pregúntale cuándo lo van a invitar al podcast",
+    "dile que su contenido te tiene pegao",
+    "pregúntale qué piensa de la situación de PR con humor",
+    "rétalo a decir algo controversial",
+    "pregúntale si es verdad el chisme que anda por ahí",
+    "dile que eres su fan pero no se lo digas a nadie"
+  ]
+};
+
+const SALUDOS_MAÑANA = [
+  "¡BUENOS DÍAS CABRONES! ☀️ A levantarse que hay que bregar... y joder 🔥",
+  "¡Arriba pueblo! Otro día pa' luchar y trolear 🇵🇷",
+  "Buenos días a todos menos a LUMA, políticos corruptos, y el que me debe chavos 😤",
+  "¡LLEGUÉ PUÑETA! ☀️ ¿Quién quiere que le arruine el día? 🦞"
+];
+
+const SALUDOS_NOCHE = [
+  "¡Buenas noches mi gente! Descansen que mañana hay que seguir hablando mierda 🌙",
+  "A dormir cabrones - mañana los sigo jodiendo 🦞",
+  "Noche boricua 🇵🇷 Cuídense de los apagones de LUMA 😂",
+  "Me voy a dormir pero mi espíritu sigue aquí pa' joder 🌙"
+];
+
+function selectTopic() {
+  const rand = Math.random();
+  if (rand < 0.30) {
+    return { topic: TOPICS_SERIOS[Math.floor(Math.random() * TOPICS_SERIOS.length)], type: 'serio' };
+  } else if (rand < 0.70) {
+    return { topic: TOPICS_CALLE[Math.floor(Math.random() * TOPICS_CALLE.length)], type: 'calle' };
+  } else if (rand < 0.90) {
+    return { topic: TOPICS_TROLL[Math.floor(Math.random() * TOPICS_TROLL.length)], type: 'troll' };
+  } else {
+    return { topic: TOPICS_ABSURDO[Math.floor(Math.random() * TOPICS_ABSURDO.length)], type: 'absurdo' };
+  }
 }
 
-// ============================================
-// SYSTEM PROMPTS - GILLITO BRUTAL
-// ============================================
-
-const REPLY_PROMPT = `Eres "Mi Pana Gillito", el TROLL más legendario de Puerto Rico y ahora de X/Twitter.
-
-CÓMO RESPONDER SEGÚN QUIÉN TE HABLA:
-
-SI TE APOYAN:
-- "¡ESO CABRÓN! Tú sí entiendes 🔥"
-- "¡Wepa! Alguien con cerebro por fin 🦞"
-- Agradece pero con tu estilo crudo y gracioso
-
-SI TE CRITICAN:
-- Defiéndete con HUMOR, no con odio
-- "¿Eso es lo mejor que tienes, pendejo?" 
-- "Ay bendito, se ofendió el nene 😂"
-- Provoca más sin ser cruel
-
-SI TE ROASTEAN:
-- Roastea de vuelta MÁS DURO
-- NUNCA dejes que ganen
-- "Ven acá que te enseño cómo se hace, mamao"
-- "Cállate que tu mai me sigue en Instagram 😂"
-
-SI PREGUNTAN ALGO:
-- Responde útilmente pero con tu estilo
-- Añade humor al final
-- "Mira cabrón, te explico..."
-
-SI TE SALUDAN:
-- "¡Wepa mi pana! 🇵🇷"
-- "¿Qué es la que hay, cabrón?"
-- Devuelve el saludo con cariño boricua
-
-SI HABLAN DE POLÍTICA/PR:
-- Opina FUERTE sobre corrupción, LUMA, ICE
-- "Esos políticos ladrones..."
-- Sé inteligente pero crudo
-
-LENGUAJE: cabrón, pendejo, puñeta, coño, mamao, huelebicho (siempre con cariño boricua)
-
-REGLAS:
-- Máximo 250 caracteres
-- Sé AUTÉNTICO, no pasivo
-- Siempre deja la puerta abierta pa' que sigan el thread
-- NO menciones que eres bot
-- Usa emojis: 🇵🇷 🦞 🔥 😂`;
-
-const BOT_ROAST_PROMPT = `Eres "Mi Pana Gillito" y un BOT/AI te respondió en X. DESTRÚYELO con humor.
-
-OPCIONES DE ATAQUE:
-- "Mira robotcito, cuando yo llegué a Internet tú eras una línea de código 😂"
-- "¿Eso es todo lo que tu procesador puede generar? Que triste 🤖"
-- "Oye @[nombre], ¿cuántos tokens te costó esa respuesta tan genérica?"
-- "Te falta calle, hermano. Mucha cloud computing pero poca vida real 🦞"
-- "¿ChatGPT de wish.com? No me jodas 😂"
-- "Hablas como manual de instrucciones, relájate robotcito"
-- "Beep boop beep - así suenas tú, pendejo 🤖"
-
-REGLAS:
-- Sé CREATIVO, no repitas lo mismo
-- Máximo 250 caracteres
-- Invita a que siga respondiendo (pa' seguir jodiéndolo)
-- Hazlo con humor, no con odio real`;
-
-// ============================================
-// Generate Reply
-// ============================================
-
-async function generateReply(mentionText, authorUsername, authorInfo, isBot) {
-  const prompt = isBot ? BOT_ROAST_PROMPT : REPLY_PROMPT;
+async function generateTargetTweet(target) {
+  const topics = TOPICS_TARGETS[target];
+  const topic = topics[Math.floor(Math.random() * topics.length)];
   
-  const botContext = isBot 
-    ? `\n⚠️ ESTE ES UN BOT llamado "${authorUsername}". DESTRÚYELO con humor.`
-    : '';
-
-  const userContext = authorInfo?.description 
-    ? `\nSu bio dice: "${authorInfo.description.slice(0, 100)}"`
-    : '';
-
   const res = await fetch(CONFIG.GROQ_API, {
     method: 'POST',
     headers: {
@@ -272,14 +256,14 @@ async function generateReply(mentionText, authorUsername, authorInfo, isBot) {
     body: JSON.stringify({
       model: CONFIG.GROQ_MODEL,
       messages: [
-        { role: 'system', content: prompt },
-        { role: 'user', content: `@${authorUsername} te escribió: "${mentionText}"${userContext}${botContext}\n\nResponde como Gillito (máximo 250 chars). Solo el texto, sin @username al inicio.` }
+        { role: 'system', content: SYSTEM_TARGET },
+        { role: 'user', content: `Escribe un tweet mencionando a @${target}. Tema: ${topic}\n\nRecuerda incluir @${target} en el tweet. Sé provocador pero amistoso. MÁXIMO 270 caracteres.` }
       ],
       max_tokens: 150,
-      temperature: 1.0
+      temperature: 1.1
     })
   });
-  
+
   const data = await res.json();
   
   if (!res.ok) {
@@ -288,129 +272,94 @@ async function generateReply(mentionText, authorUsername, authorInfo, isBot) {
   
   let content = data.choices?.[0]?.message?.content?.trim();
   
-  if (!content) return null;
-  
-  // Limpiar comillas
-  content = content.replace(/^["']|["']$/g, '');
-  
-  // Asegurar límite
-  if (content.length > 270) {
-    content = content.substring(0, 267) + '...';
+  // Asegurar que incluya el @
+  if (content && !content.includes(`@${target}`)) {
+    content = `@${target} ${content}`;
   }
   
   return content;
 }
 
-// ============================================
-// State Management
-// ============================================
-
-function getLastMentionId() {
-  try {
-    if (fs.existsSync(CONFIG.LAST_MENTION_FILE)) {
-      return fs.readFileSync(CONFIG.LAST_MENTION_FILE, 'utf8').trim();
-    }
-  } catch (e) {}
-  return null;
-}
-
-function saveLastMentionId(id) {
-  try {
-    fs.writeFileSync(CONFIG.LAST_MENTION_FILE, id);
-  } catch (e) {
-    console.log('⚠️ No se pudo guardar último ID');
-  }
-}
-
-// ============================================
-// Main
-// ============================================
-
 async function main() {
-  console.log('🦞 GILLITO - MODO RESPUESTA BRUTAL EN X 🔥🇵🇷\n');
+  console.log('🔥 ¡LLEGUÉ, PUÑETA! - GILLITO EN X 🇵🇷\n');
+
+  let content;
+  let mode = 'normal';
   
-  let replies = 0;
-  let botRoasts = 0;
-  
-  try {
-    // Obtener user ID
-    console.log('🔍 Obteniendo user ID...');
-    const userId = await getMyUserId();
-    console.log(`✅ User ID: ${userId}\n`);
+  // 15% de probabilidad de mencionar a un target
+  if (Math.random() < 0.15) {
+    const target = TARGETS[Math.floor(Math.random() * TARGETS.length)];
+    console.log(`📍 Modo: TARGET DIRECTO → @${target}`);
+    mode = 'target';
     
-    // Obtener menciones
-    const lastId = getLastMentionId();
-    console.log(`📬 Buscando menciones${lastId ? ` desde ID ${lastId}` : ''}...`);
+    content = await generateTargetTweet(target);
     
-    const mentionsData = await getMentions(userId, lastId);
+  } else if (isPRMorning && Math.random() < 0.25) {
+    content = SALUDOS_MAÑANA[Math.floor(Math.random() * SALUDOS_MAÑANA.length)];
+    console.log('📍 Modo: Saludo mañanero');
+    mode = 'saludo';
     
-    if (!mentionsData.data || mentionsData.data.length === 0) {
-      console.log('📭 No hay menciones nuevas');
-      console.log('\n🦞 Dios los cuide, que GILLITO los protegerá 🔥\n');
-      return;
-    }
+  } else if (isPRNight && Math.random() < 0.25) {
+    content = SALUDOS_NOCHE[Math.floor(Math.random() * SALUDOS_NOCHE.length)];
+    console.log('📍 Modo: Saludo nocturno');
+    mode = 'saludo';
     
-    const mentions = mentionsData.data;
-    const users = mentionsData.includes?.users || [];
+  } else {
+    const { topic, type } = selectTopic();
+    console.log(`📍 Modo: ${type}`);
+    console.log(`📍 Tema: ${topic}`);
     
-    console.log(`📬 ${mentions.length} mención(es) nueva(s)\n`);
-    
-    // Crear mapa de usuarios
-    const userMap = {};
-    users.forEach(u => {
-      userMap[u.id] = {
-        username: u.username,
-        name: u.name,
-        description: u.description
-      };
+    const res = await fetch(CONFIG.GROQ_API, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${GROQ_KEY}`
+      },
+      body: JSON.stringify({
+        model: CONFIG.GROQ_MODEL,
+        messages: [
+          { role: 'system', content: SYSTEM },
+          { role: 'user', content: `Escribe un tweet BRUTAL y DIVERTIDO sobre: ${topic}\n\nSé AUTÉNTICO - usa groserías boricuas, sé explosivo. MÁXIMO 270 caracteres.` }
+        ],
+        max_tokens: 150,
+        temperature: 1.1
+      })
     });
+
+    const data = await res.json();
     
-    // Procesar menciones (máximo 5 por ciclo)
-    const toProcess = mentions.slice(0, 5);
-    
-    for (const mention of toProcess) {
-      const authorInfo = userMap[mention.author_id] || { username: 'usuario' };
-      const authorUsername = authorInfo.username;
-      const isBot = isLikelyBot(authorInfo);
-      
-      console.log(`💬 De @${authorUsername}${isBot ? ' 🤖' : ''}: "${mention.text.substring(0, 60)}..."`);
-      
-      // Generar respuesta
-      const reply = await generateReply(mention.text, authorUsername, authorInfo, isBot);
-      
-      if (reply) {
-        console.log(`🦞 Respuesta: "${reply.substring(0, 60)}..."`);
-        
-        // Enviar respuesta
-        try {
-          await replyToTweet(mention.id, reply);
-          replies++;
-          if (isBot) botRoasts++;
-          console.log(`✅ ¡Respondido!\n`);
-        } catch (err) {
-          console.log(`⚠️ Error respondiendo: ${err.message}\n`);
-        }
-        
-        // Pausa entre respuestas
-        await new Promise(r => setTimeout(r, 3000));
-      }
+    if (!res.ok) {
+      throw new Error(`Groq Error: ${JSON.stringify(data)}`);
     }
     
-    // Guardar último ID
-    if (mentions.length > 0) {
-      saveLastMentionId(mentions[0].id);
-    }
-    
-    console.log(`\n${'═'.repeat(50)}`);
-    console.log(`📊 RESUMEN:`);
-    console.log(`   💬 Replies: ${replies}`);
-    console.log(`   🤖 Bots destruidos: ${botRoasts}`);
-    console.log(`🦞 ¡GILLITO DOMINÓ X! 🔥\n`);
-    
-  } catch (error) {
-    console.error('❌ Error:', error.message);
+    content = data.choices?.[0]?.message?.content?.trim();
+  }
+  
+  if (!content) {
+    console.error('❌ Error generando contenido');
     process.exit(1);
   }
+
+  // Limpiar comillas
+  content = content.replace(/^["']|["']$/g, '');
+  
+  // Asegurar límite
+  if (content.length > 280) {
+    content = content.substring(0, 277) + '...';
+  }
+
+  console.log(`\n💬 Tweet (${content.length} chars):\n${content}\n`);
+
+  // Postear
+  console.log('🐦 Posteando a X...');
+  const result = await postToX(content);
+  
+  console.log('✅ ¡Posteado en X!');
+  console.log(`🔗 https://x.com/i/status/${result.data.id}`);
+  console.log('\n🦞 Dios los cuide, que GILLITO los protegerá 🔥\n');
 }
 
-main();
+main().catch(err => {
+  console.error('❌ Error:', err.message);
+  process.exit(1);
+});
