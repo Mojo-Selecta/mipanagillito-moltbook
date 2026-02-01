@@ -1,4 +1,4 @@
-name: 🔞 Gillito - MoltHub v6.0
+name: 🔞 Gillito - MoltHub Interact
 
 on:
   schedule:
@@ -20,7 +20,7 @@ jobs:
           key: molt-interact-${{ github.run_id }}
           restore-keys: molt-interact-
 
-      - name: 🔞 MoltHub content
+      - name: 🔞 MoltHub interact
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
