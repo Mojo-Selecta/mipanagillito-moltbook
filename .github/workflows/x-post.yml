@@ -25,6 +25,13 @@ jobs:
       - name: 🔥 ¡GILLITO en X!
         run: echo "Mi Pana Gillito posteando en X 🐦🇵🇷"
 
+      - name: 🔍 Debug - Ver modelo
+        run: |
+          echo "=== Contenido de post-to-x.js (primeras 15 líneas) ==="
+          head -15 scripts/post-to-x.js
+          echo "=== Buscando modelo ==="
+          grep -n "GROQ_MODEL" scripts/post-to-x.js
+
       - name: 📝 Generar y Postear
         env:
           X_API_KEY: ${{ secrets.X_API_KEY }}
