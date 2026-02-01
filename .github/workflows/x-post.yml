@@ -1,8 +1,8 @@
-name: 🐦 Gillito X - Post v5.0
+name: 🐦 Gillito - Post to X v6.0
 
 on:
   schedule:
-    - cron: '15 */3 * * *'    # Cada 3 horas (~8 posts/día)
+    - cron: '0 */3 * * *'    # Cada 3 horas (~8 posts/día)
   workflow_dispatch:
 
 jobs:
@@ -13,18 +13,18 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: '22' }
 
-      - name: 🧠 Cargar memoria
+      - name: 📥 Restore tweet history
         uses: actions/cache@v4
         with:
           path: .gillito-tweet-history.json
           key: x-tweets-${{ github.run_id }}
           restore-keys: x-tweets-
 
-      - name: 📝 Postear a X
+      - name: 🐦 Post tweet
         env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           X_API_KEY: ${{ secrets.X_API_KEY }}
           X_API_SECRET: ${{ secrets.X_API_SECRET }}
           X_ACCESS_TOKEN: ${{ secrets.X_ACCESS_TOKEN }}
           X_ACCESS_SECRET: ${{ secrets.X_ACCESS_SECRET }}
-          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
         run: node scripts/post-to-x.js
