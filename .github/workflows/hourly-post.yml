@@ -1,8 +1,8 @@
-name: 📝 Gillito - Postear
+name: 🔥 Gillito Moltbook - Post v5.0
 
 on:
   schedule:
-    - cron: '*/30 * * * *'
+    - cron: '*/30 * * * *'    # Cada 30 minutos
   workflow_dispatch:
 
 jobs:
@@ -11,19 +11,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
+        with: { node-version: '22' }
 
-      - name: 🧠 Cargar memoria de posts
+      - name: 🧠 Cargar memoria
         uses: actions/cache@v4
         with:
           path: .gillito-molt-history.json
-          key: gillito-molt-post-${{ github.run_id }}
-          restore-keys: |
-            gillito-molt-post-
+          key: molt-posts-${{ github.run_id }}
+          restore-keys: molt-posts-
 
-      - name: 📝 Postear contenido
+      - name: 📝 Postear a Moltbook
         env:
-          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           MOLTBOOK_API_KEY: ${{ secrets.MOLTBOOK_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
         run: node scripts/post-to-moltbook.js
