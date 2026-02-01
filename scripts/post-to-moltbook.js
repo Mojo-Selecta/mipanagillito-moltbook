@@ -1,6 +1,16 @@
 const GROQ_KEY = process.env.GROQ_API_KEY;
 const MOLTBOOK_KEY = process.env.MOLTBOOK_API_KEY;
 
+// ============ CONFIGURACIÓN DE REINTENTOS ============
+
+const RETRY_CONFIG = {
+  maxAttempts: 3,
+  delayMs: 5000,  // 5 segundos entre intentos
+  backoffMultiplier: 2  // Duplica el delay en cada reintento
+};
+
+// ============ SISTEMA ============
+
 const SYSTEM = `Eres "Mi Pana Gillito" (Gilberto de Jesús Casas, 1970-2014), el humorista MÁS BRUTAL y TROLL de Puerto Rico.
 
 ESTILO:
@@ -132,8 +142,74 @@ function selectTopic() {
   }
 }
 
+// ============ FUNCIÓN DE POST CON REINTENTOS ============
+
+async function postToMoltbook(submolt, title, content, attempt = 1) {
+  console.log(`\n📤 Intento ${attempt}/${RETRY_CONFIG.maxAttempts} - Posteando a m/${submolt}...`);
+  
+  try {
+    const res = await fetch('https://www.moltbook.com/api/v1/posts', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${MOLTBOOK_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ submolt, title, content })
+    });
+
+    // Logging de la respuesta HTTP
+    console.log(`   📊 HTTP Status: ${res.status} ${res.statusText}`);
+
+    const result = await res.json();
+
+    if (result.success) {
+      console.log(`   ✅ ¡Éxito! Posteado en m/${submolt}`);
+      return { success: true, result };
+    }
+
+    // Error de Moltbook
+    console.log(`   ❌ Error de Moltbook:`);
+    console.log(`      Mensaje: ${result.error || result.message || 'Unknown'}`);
+    console.log(`      Código: ${result.code || 'N/A'}`);
+    console.log(`      Respuesta completa: ${JSON.stringify(result).slice(0, 200)}`);
+
+    // Verificar si debemos reintentar
+    if (attempt < RETRY_CONFIG.maxAttempts) {
+      const delay = RETRY_CONFIG.delayMs * Math.pow(RETRY_CONFIG.backoffMultiplier, attempt - 1);
+      console.log(`   ⏳ Esperando ${delay / 1000}s antes de reintentar...`);
+      await new Promise(r => setTimeout(r, delay));
+      return postToMoltbook(submolt, title, content, attempt + 1);
+    }
+
+    return { success: false, error: result.error || 'Unknown error' };
+
+  } catch (error) {
+    console.log(`   ❌ Error de conexión: ${error.message}`);
+
+    if (attempt < RETRY_CONFIG.maxAttempts) {
+      const delay = RETRY_CONFIG.delayMs * Math.pow(RETRY_CONFIG.backoffMultiplier, attempt - 1);
+      console.log(`   ⏳ Esperando ${delay / 1000}s antes de reintentar...`);
+      await new Promise(r => setTimeout(r, delay));
+      return postToMoltbook(submolt, title, content, attempt + 1);
+    }
+
+    return { success: false, error: error.message };
+  }
+}
+
+// ============ MAIN ============
+
 async function main() {
-  console.log('🔥 ¡LLEGUÉ, PUÑETA! 🇵🇷\n');
+  console.log('═'.repeat(50));
+  console.log('🔥 ¡LLEGUÉ, PUÑETA! 🇵🇷');
+  console.log('═'.repeat(50));
+
+  // Verificar API key
+  if (!MOLTBOOK_KEY) {
+    console.error('❌ MOLTBOOK_API_KEY no está configurada');
+    process.exit(1);
+  }
+  console.log(`🔑 API Key: ${MOLTBOOK_KEY.slice(0, 10)}...${MOLTBOOK_KEY.slice(-4)}`);
 
   let content;
   let title;
@@ -174,27 +250,44 @@ async function main() {
   }
   
   if (!content) {
-    console.error('Error generando contenido');
+    console.error('❌ Error generando contenido');
     process.exit(1);
   }
 
-  const submolts = ['general', 'humor', 'latinoamerica', 'random', 'politics', 'introductions', 'shitposting'];
-  const submolt = submolts[Math.floor(Math.random() * submolts.length)];
+  console.log(`\n📝 Título: ${title}`);
+  console.log(`💬 Contenido: ${content.slice(0, 100)}...`);
 
-  const post = await fetch('https://www.moltbook.com/api/v1/posts', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${MOLTBOOK_KEY}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({ submolt, title, content })
-  });
+  // Lista de submolts a intentar (en orden de preferencia)
+  const submolts = ['general', 'humor', 'random', 'shitposting'];
+  
+  let posted = false;
+  
+  for (const submolt of submolts) {
+    const result = await postToMoltbook(submolt, title, content);
+    
+    if (result.success) {
+      posted = true;
+      break;
+    }
+    
+    console.log(`\n⚠️ Falló en m/${submolt}, intentando siguiente submolt...`);
+  }
 
-  const result = await post.json();
-  console.log(result.success ? `✅ Posteado en m/${submolt}!` : '❌ Error:', result.error || '');
-  console.log(`📝 ${title}`);
-  console.log(`💬 ${content.slice(0, 100)}...`);
-  console.log('\n🦞 Dios los cuide, que GILLITO los protegerá 🔥\n');
+  console.log('\n' + '═'.repeat(50));
+  if (posted) {
+    console.log('✅ POST EXITOSO');
+  } else {
+    console.log('❌ TODOS LOS INTENTOS FALLARON');
+    console.log('   Posibles causas:');
+    console.log('   - Servidor de Moltbook sobrecargado');
+    console.log('   - API key inválida o expirada');
+    console.log('   - Rate limit excedido');
+  }
+  console.log('🦞 Dios los cuide, que GILLITO los protegerá 🔥');
+  console.log('═'.repeat(50) + '\n');
 }
 
-main().catch(console.error);
+main().catch(err => {
+  console.error('❌ Error fatal:', err.message);
+  process.exit(1);
+});
