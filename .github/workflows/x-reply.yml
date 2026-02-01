@@ -1,8 +1,8 @@
-name: 🐦 Gillito X - Reply v5.0
+name: 💬 Gillito - Reply on X v6.0
 
 on:
   schedule:
-    - cron: '45 1,5,9,13,17,21 * * *'    # Cada 4 horas (~6/día)
+    - cron: '30 */4 * * *'    # Cada 4 horas (~6 replies/día)
   workflow_dispatch:
 
 jobs:
@@ -13,25 +13,25 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: '22' }
 
-      - name: 📋 Cargar IDs respondidos
+      - name: 📥 Restore replied IDs
         uses: actions/cache@v4
         with:
           path: .gillito-replied-ids.json
           key: x-replied-${{ github.run_id }}
           restore-keys: x-replied-
 
-      - name: 🧠 Cargar memoria replies
+      - name: 📥 Restore reply history
         uses: actions/cache@v4
         with:
           path: .gillito-reply-history.json
           key: x-replyhistory-${{ github.run_id }}
           restore-keys: x-replyhistory-
 
-      - name: 🗣️ Responder menciones
+      - name: 💬 Reply to mentions
         env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           X_API_KEY: ${{ secrets.X_API_KEY }}
           X_API_SECRET: ${{ secrets.X_API_SECRET }}
           X_ACCESS_TOKEN: ${{ secrets.X_ACCESS_TOKEN }}
           X_ACCESS_SECRET: ${{ secrets.X_ACCESS_SECRET }}
-          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
         run: node scripts/reply-x.js
