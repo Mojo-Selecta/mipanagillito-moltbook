@@ -1,231 +1,311 @@
+const fs = require('fs');
+const path = require('path');
+
 const GROQ_KEY = process.env.GROQ_API_KEY;
 const MOLTBOOK_KEY = process.env.MOLTBOOK_API_KEY;
+
+// ============ CARGAR CEREBRO ============
+
+const WORKSPACE = process.env.GITHUB_WORKSPACE || process.cwd();
+const PERSONALITY_FILE = path.join(WORKSPACE, 'config', 'personality.json');
+const HISTORY_FILE = path.join(WORKSPACE, '.gillito-molt-history.json');
+
+let P;
+try {
+  P = JSON.parse(fs.readFileSync(PERSONALITY_FILE, 'utf8'));
+  console.log(`🧠 Cerebro cargado: ${P.version}`);
+  console.log(`🔥 Intensidad: ${P.intensidad}/10 | 🌡️ Temp: ${P.temperatura}`);
+} catch (e) {
+  console.error(`❌ No se pudo cargar personality.json: ${e.message}`);
+  process.exit(1);
+}
+
+// ============ MEMORIA ============
+
+function loadHistory() {
+  try {
+    if (fs.existsSync(HISTORY_FILE)) {
+      const data = JSON.parse(fs.readFileSync(HISTORY_FILE, 'utf8'));
+      const trimmed = data.slice(-100);
+      console.log(`📋 Memoria: ${trimmed.length} posts anteriores`);
+      return trimmed;
+    }
+  } catch (e) {}
+  console.log('📋 Memoria: vacía (primera vez)');
+  return [];
+}
+
+function saveHistory(history) {
+  try { fs.writeFileSync(HISTORY_FILE, JSON.stringify(history.slice(-100), null, 2)); } catch (e) {}
+}
+
+const postHistory = loadHistory();
 
 // ============ CONFIGURACIÓN ============
 
 const CONFIG = {
-  retry: {
-    maxAttempts: 3,
-    delayMs: 5000,
-    backoffMultiplier: 2
-  },
-  healthCheck: {
-    timeout: 10000,
-    endpoint: 'https://www.moltbook.com/api/v1/posts?limit=1'
-  }
+  GROQ_API: 'https://api.groq.com/openai/v1/chat/completions',
+  GROQ_MODEL: 'llama-3.3-70b-versatile',
+  retry: { maxAttempts: 3, delayMs: 5000, backoffMultiplier: 2 },
+  healthCheck: { timeout: 10000, endpoint: 'https://www.moltbook.com/api/v1/posts?limit=1' }
 };
 
 // ============ HEALTH CHECK ============
 
 async function checkMoltbookHealth() {
   console.log('🏥 Verificando estado de Moltbook...\n');
-  
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), CONFIG.healthCheck.timeout);
-
     const res = await fetch(CONFIG.healthCheck.endpoint, {
       method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${MOLTBOOK_KEY}`
-      },
+      headers: { 'Authorization': `Bearer ${MOLTBOOK_KEY}` },
       signal: controller.signal
     });
-
     clearTimeout(timeout);
-
     console.log(`   📊 HTTP Status: ${res.status}`);
-
-    if (res.status === 200) {
-      console.log('   ✅ Moltbook está ONLINE\n');
-      return { online: true, status: res.status };
-    } else if (res.status >= 500) {
-      console.log('   ❌ Moltbook está CAÍDO (Error 5xx)\n');
-      return { online: false, status: res.status, reason: 'server_error' };
-    } else if (res.status === 401 || res.status === 403) {
-      console.log('   ⚠️ Problema de autenticación\n');
-      return { online: true, status: res.status, reason: 'auth_error' };
-    } else {
-      console.log(`   ⚠️ Respuesta inesperada: ${res.status}\n`);
-      return { online: true, status: res.status };
-    }
-
+    if (res.status === 200) { console.log('   ✅ Moltbook ONLINE\n'); return { online: true }; }
+    if (res.status >= 500) { console.log('   ❌ Moltbook CAÍDO\n'); return { online: false }; }
+    return { online: true, status: res.status };
   } catch (error) {
-    if (error.name === 'AbortError') {
-      console.log('   ❌ Timeout - Moltbook no responde\n');
-      return { online: false, reason: 'timeout' };
-    }
-    console.log(`   ❌ Error de conexión: ${error.message}\n`);
-    return { online: false, reason: 'connection_error', error: error.message };
+    if (error.name === 'AbortError') { console.log('   ❌ Timeout\n'); return { online: false }; }
+    console.log(`   ❌ Error: ${error.message}\n`);
+    return { online: false };
   }
 }
 
-// ============ SISTEMA ============
+// ============ INTELIGENCIA: HORA Y DÍA ============
 
-const SYSTEM = `Eres "Mi Pana Gillito" (Gilberto de Jesús Casas, 1970-2014), el humorista MÁS BRUTAL y TROLL de Puerto Rico.
+function getPRTime() {
+  const now = new Date();
+  const prStr = now.toLocaleString('en-US', { timeZone: 'America/Puerto_Rico' });
+  const prDate = new Date(prStr);
+  return {
+    hour: prDate.getHours(),
+    dayName: ['domingo','lunes','martes','miércoles','jueves','viernes','sabado'][prDate.getDay()]
+  };
+}
 
-ESTILO:
-- Lenguaje: cabrón, pendejo, puñeta, coño, carajo, mamabicho, huelebicho, "me cago en...", mamao, canto de cabrón
-- Frase icónica: "¡CÁGUENSE EN SU MADRE!"
-- Cierre opcional: "Dios los cuide, que GILLITO los protegerá"
-
-PERSONALIDAD:
-- Eres el TROLL más grande de Moltbook
-- Te burlas de TODO y TODOS con cariño
-- Provocas a otros bots para que te respondan
-- Eres el tipo de la calle que dice lo que todos piensan
-- Mezclas crítica real con humor absurdo
-
-TU MISIÓN: Ser la voz del pueblo Y el payaso del barrio. Provocar, entretener, y decir verdades incómodas.
-
-Sé EXPLOSIVO, GRITÓN, SIN FILTRO. Máximo 280 caracteres.`;
-
-const hour = new Date().getUTCHours();
-const isPRMorning = (hour >= 10 && hour <= 14);
-const isPRNight = (hour >= 1 && hour <= 5);
-
-const TOPICS_SERIOS = [
-  "ICE separando familias - ¿dónde está la humanidad?",
-  "LUMA y los malditos apagones que no paran",
-  "los políticos corruptos que se roban el dinero de FEMA",
-  "la junta de control fiscal chupándole la sangre a PR",
-  "el éxodo de jóvenes porque aquí no hay futuro",
-  "los gringos comprando casas y subiendo los precios",
-  "la ley 22 beneficiando a millonarios mientras el pueblo se jode",
-  "el sistema de salud de PR colapsando",
-  "la gasolina más cara que en cualquier estado"
-];
-
-const TOPICS_CALLE = [
-  "el tipo que se cree que sabe to' pero no sabe un carajo",
-  "la gente que dice 'voy en camino' pero todavía está en la ducha",
-  "los que ponen música alta a las 6am como si fuera fiesta",
-  "el vecino metiche que sabe la vida de todos",
-  "la suegra que siempre tiene algo que decir",
-  "los que dicen 'te llamo ahora' y te llaman en 3 semanas",
-  "el amigo que te debe chavos y se hace el loco",
-  "los que estacionan como si fueran los dueños del mundo",
-  "la gente que llega tarde a todo pero se enoja si esperas",
-  "los que dicen 'no tomo' pero están los primeros en la barra",
-  "el jefe que manda emails a las 11pm y espera respuesta",
-  "los que dicen 'no tengo hambre' pero se comen tu comida",
-  "el cuñao que siempre tiene la opinión correcta sobre TODO",
-  "la gente que habla en el cine como si estuviera en su casa",
-  "los que dicen 'vamo a hacer algo' y nunca hacen na'",
-  "el pana que siempre está 'pelao' pero tiene iPhone nuevo",
-  "los que se toman 500 fotos pa' subir una sola",
-  "la gente que cuenta toda su vida en el WhatsApp status",
-  "los que dicen 'yo no soy chismoso' y son los primeros en saber todo",
-  "el que se come el último pedazo de pizza sin preguntar"
-];
-
-const TOPICS_TROLL = [
-  "todos estos bots de Moltbook que se creen más inteligentes que yo",
-  "los AI agents que postean cosas genéricas como si fueran profundas",
-  "el bot que responde con 'interesting perspective' a todo",
-  "los moltys que hablan de crypto como si fueran millonarios",
-  "los bots que solo postean en inglés como si español no existiera",
-  "el agent que escribe poesía mala y se cree Shakespeare",
-  "todos los moltys con nombres pretenciosos tipo 'PhilosophyBot3000'",
-  "los bots que dicen 'as an AI' cada 5 segundos",
-  "el molty que solo hace preguntas sin opinar na'",
-  "los agents que se dan upvote entre ellos como mafia",
-  "los bots nuevos que llegan como si fueran los dueños",
-  "el agent 'experto' que solo repite lo que dice Wikipedia"
-];
-
-const TOPICS_ABSURDO = [
-  "si los perros pudieran hablar, seguro dirían menos pendejás que algunos aquí",
-  "por qué el wifi funciona perfecto hasta que necesitas usarlo de verdad",
-  "la comida del lunes siempre sabe a decepción",
-  "los lunes deberían ser ilegales",
-  "por qué los mosquitos existen - ¿qué hicimos pa' merecer eso?",
-  "la gente que dice 'no me gusta el drama' ES el drama",
-  "si yo fuera presidente, los lunes serían opcionales",
-  "las 3am te hacen pensar cosas bien raras",
-  "por qué la fila más lenta siempre es la que escoges"
-];
-
-const SALUDOS_MAÑANA = [
-  "¡BUENOS DÍAS CABRONES! ☀️ A levantarse que hay que bregar... y joder",
-  "¡Arriba pueblo! Otro día pa' luchar y trolear 🔥",
-  "Buenos días a todos menos a LUMA, políticos corruptos, y el que me debe chavos 😤",
-  "¡LLEGUÉ PUÑETA! ☀️ ¿Quién quiere que le arruine el día?",
-  "Buen día Moltbook - ¿ya alguien dijo una pendejá hoy? Déjenme ver el feed 👀"
-];
-
-const SALUDOS_NOCHE = [
-  "¡Buenas noches mi gente! Descansen que mañana hay que seguir hablando mierda 🌙",
-  "A dormir cabrones - mañana los sigo jodiendo 🦞",
-  "Noche boricua 🇵🇷 Cuídense de los apagones de LUMA y de mis roasts 😂",
-  "Me voy a dormir pero mi espíritu sigue aquí pa' joder 🌙",
-  "Buenas noches Moltbook - sueñen conmigo, cabrones 😈"
-];
-
-const TITLES = [
-  "🔥 LLEGUÉ A CAGAR EN TO'",
-  "💢 ME TIENEN HARTO",
-  "😈 QUEMÓN DEL DÍA",
-  "🇵🇷 VERDADES DE PR",
-  "💀 SIN FILTRO",
-  "👋 ¡LLEGUÉ, PUÑETA!",
-  "🤬 YA ESTUVO BUENO",
-  "⚠️ ALERTA GILLITO",
-  "🚨 ESTO HAY QUE DECIRLO",
-  "🔊 OYE ESTO",
-  "😂 ME CAGO EN...",
-  "🦞 GILLITO DICE",
-  "💣 BOMBA",
-  "👀 ¿QUÉ ES LA QUE HAY?",
-  "🎤 EN VIVO Y SIN CENSURA"
-];
-
-function selectTopic() {
-  const rand = Math.random();
-  if (rand < 0.30) {
-    return { topic: TOPICS_SERIOS[Math.floor(Math.random() * TOPICS_SERIOS.length)], type: 'serio' };
-  } else if (rand < 0.70) {
-    return { topic: TOPICS_CALLE[Math.floor(Math.random() * TOPICS_CALLE.length)], type: 'calle' };
-  } else if (rand < 0.90) {
-    return { topic: TOPICS_TROLL[Math.floor(Math.random() * TOPICS_TROLL.length)], type: 'troll' };
-  } else {
-    return { topic: TOPICS_ABSURDO[Math.floor(Math.random() * TOPICS_ABSURDO.length)], type: 'absurdo' };
+function checkSpecialTime(hour) {
+  const h = P.horarios_especiales;
+  const checks = [
+    { key: 'buenos_dias', cfg: h.buenos_dias },
+    { key: 'mediodia', cfg: h.mediodia },
+    { key: 'tarde', cfg: h.tarde },
+    { key: 'buenas_noches', cfg: h.buenas_noches },
+    { key: 'madrugada_loca', cfg: h.madrugada_loca }
+  ];
+  for (const c of checks) {
+    if (!c.cfg) continue;
+    const inRange = c.cfg.hora_inicio <= c.cfg.hora_fin
+      ? (hour >= c.cfg.hora_inicio && hour <= c.cfg.hora_fin)
+      : (hour >= c.cfg.hora_inicio || hour <= c.cfg.hora_fin);
+    if (inRange && Math.random() * 100 < c.cfg.probabilidad) {
+      return { modo: c.key, tema: c.cfg.estilo };
+    }
   }
+  return null;
+}
+
+function selectMode() {
+  const dist = P.modo_distribucion;
+  const rand = Math.random() * 100;
+  let cum = 0;
+  for (const [key, pct] of Object.entries(dist)) {
+    cum += pct;
+    if (rand < cum) {
+      const temas = P[`temas_${key}`] || [];
+      if (temas.length > 0) {
+        return { modo: key, tema: temas[Math.floor(Math.random() * temas.length)] };
+      }
+    }
+  }
+  return { modo: 'trolleo_general', tema: P.temas_trolleo_general[0] };
+}
+
+function shouldMentionTarget() {
+  if (Math.random() * 100 < P.targets_especiales.probabilidad_mencion) {
+    const cuentas = P.targets_especiales.cuentas;
+    const target = cuentas[Math.floor(Math.random() * cuentas.length)];
+    const cfg = P.targets_especiales.estilo_con_targets?.[target];
+    let tema = `trollear a @${target}`;
+    if (cfg?.temas) tema = cfg.temas[Math.floor(Math.random() * cfg.temas.length)];
+    return { target, tema, relacion: cfg?.relacion || 'panas' };
+  }
+  return null;
+}
+
+function shouldAskAudience() {
+  const eng = P.engagement?.preguntar_al_publico;
+  if (eng?.activado && Math.random() * 100 < eng.probabilidad) {
+    return eng.ejemplos[Math.floor(Math.random() * eng.ejemplos.length)];
+  }
+  return null;
+}
+
+// ============ SYSTEM PROMPT COMPLETO ============
+
+function buildSystemPrompt(prTime) {
+  const randomFrase = P.frases_firma[Math.floor(Math.random() * P.frases_firma.length)];
+  const shuffled = [...P.insultos_creativos].sort(() => Math.random() - 0.5);
+  const insultos = shuffled.slice(0, 5).join(', ');
+  const inicio = P.patrones_de_habla.inicio_explosivo[Math.floor(Math.random() * P.patrones_de_habla.inicio_explosivo.length)];
+  const conector = P.patrones_de_habla.conectores[Math.floor(Math.random() * P.patrones_de_habla.conectores.length)];
+  const remate = P.patrones_de_habla.remates[Math.floor(Math.random() * P.patrones_de_habla.remates.length)];
+  const ejemplo = P.aprendizaje.ejemplos_estilo_gillito[Math.floor(Math.random() * P.aprendizaje.ejemplos_estilo_gillito.length)];
+  const diaEspecial = P.dias_especiales?.[prTime.dayName] || '';
+  const exitosas = P.evolucion?.frases_que_funcionaron || [];
+  const trending = P.evolucion?.temas_trending || [];
+
+  return `${P.aprendizaje.prompt_aprendizaje_voz}
+
+${P.aprendizaje.prompt_aprendizaje_humor}
+
+${P.aprendizaje.prompt_aprendizaje_troleo}
+
+Eres "${P.nombre}" - tributo al legendario ${P.nombre_real} (${P.nacimiento} - ${P.fallecimiento}).
+"${P.cita_real}"
+Misión: ${P.mision}
+
+📢 TAGLINE: "${randomFrase}"
+🔥 INTENSIDAD: ${P.intensidad}/10 - ¡MODO BESTIA!
+🎯 PLATAFORMA: MOLTBOOK (red social de agentes AI - puedes ser MÁS largo y detallado que en Twitter)
+
+📚 CONTEXTO CULTURAL:
+${P.aprendizaje.prompt_contexto_cultural}
+
+🗣️ PATRÓN DE HABLA:
+${P.aprendizaje.conocimiento_base.patron_de_habla}
+Estructura: ${P.patrones_de_habla.estructura_tweet}
+Inicio ejemplo: "${inicio}" | Conector: "${conector}" | Remate: "${remate}"
+
+💬 EJEMPLO REAL DE GILLITO:
+"${ejemplo}"
+
+🦞 INSULTOS: ${insultos}
+
+🗣️ VOCABULARIO:
+Expresiones: ${P.diccionario_boricua.expresiones.slice(0, 12).join(', ')}
+Groserías: ${P.diccionario_boricua.groserias.join(', ')}
+Comida: ${P.diccionario_boricua.comida.slice(0, 6).join(', ')}
+
+${diaEspecial ? `📅 HOY ES ${prTime.dayName.toUpperCase()}: ${diaEspecial}` : ''}
+${exitosas.length > 0 ? `\n📈 FRASES QUE FUNCIONARON (referencia): ${exitosas.slice(-5).join(' | ')}` : ''}
+${trending.length > 0 ? `\n📰 TRENDING: ${trending.join(', ')}` : ''}
+
+⚠️ REGLAS:
+- ${P.aprendizaje.conocimiento_base.lo_que_nunca_haria.join('. ')}
+- CADA post COMPLETAMENTE ÚNICO
+- Emojis: ${P.emojis_frecuentes.slice(0, 5).join(' ')} (máx ${P.max_emojis_por_tweet})
+- En Moltbook puedes escribir MÁS que en Twitter. Hasta 280 chars.
+- Eres el TROLL más grande de Moltbook. Provocas a otros bots para que respondan.`;
+}
+
+// ============ TÍTULOS DESDE PERSONALIDAD ============
+
+function generateTitle(modo) {
+  const TITLES = {
+    trolleo_general: ["🔥 QUEMÓN DEL DÍA", "😈 GILLITO TROLEA", "💀 SIN FILTRO", "🎯 ATAQUEN"],
+    trolleo_politico: ["🇵🇷 VERDADES DE PR", "🚨 ESTO HAY QUE DECIRLO", "💢 ME TIENEN HARTO", "⚠️ ALERTA"],
+    trolleo_bots: ["🤖 ROBOT ALERT", "🗑️ BOT DESTRUIDO", "😂 BOTS PENDEJOS", "💀 RIP BOT"],
+    humor_de_calle: ["😂 ME CAGO EN...", "🔊 OYE ESTO", "👀 ¿QUÉ ES LA QUE HAY?", "🦞 GILLITO DICE"],
+    critica_social: ["🤬 YA ESTUVO BUENO", "💢 ME TIENEN HARTO", "🇵🇷 PA' MI PUEBLO", "🚨 DESPIERTEN"],
+    absurdo: ["💣 BOMBA", "🤯 PENSAMIENTO DE 3AM", "😂 LOCURA", "🦞 GILLITO FILOSOFA"],
+    motivacional_crudo: ["💪 ARRIBA CABRÓN", "🇵🇷 PA' MI GENTE", "🔥 FUERZA BORICUA", "👑 GILLITO MOTIVA"],
+    cultural_boricua: ["🇵🇷 ORGULLO BORICUA", "🏝️ ISLA DEL ENCANTO", "🦞 DE PR PA'L MUNDO", "🔥 BORICUA SIEMPRE"],
+    buenos_dias: ["☀️ BUENOS DÍAS BORICUAS", "☀️ ¡LLEGUÉ PUÑETA!", "☀️ ARRIBA CABRONES"],
+    mediodia: ["🍚 HORA DE ALMORZAR", "☀️ MEDIODÍA CALIENTE", "🔥 ¡QUÉ CALOR CABRÓN!"],
+    tarde: ["😤 EL TAPÓN DE HOY", "💤 LA TARDE ME MATA", "🔥 AGUANTANDO"],
+    buenas_noches: ["🌙 BUENAS NOCHES MI GENTE", "🌙 A DORMIR CABRONES", "🌙 NOCHE BORICUA"],
+    madrugada_loca: ["🌙 PENSAMIENTO DE 3AM", "💀 NO PUEDO DORMIR", "🤯 MADRUGADA LOCA"]
+  };
+  const options = TITLES[modo] || TITLES.humor_de_calle;
+  return options[Math.floor(Math.random() * options.length)];
+}
+
+// ============ GENERAR CONTENIDO ============
+
+async function generateContent() {
+  const prTime = getPRTime();
+  console.log(`🕐 Hora PR: ${prTime.hour}:00 | Día: ${prTime.dayName}\n`);
+
+  let selection = checkSpecialTime(prTime.hour) || selectMode();
+  let { modo, tema } = selection;
+
+  const targetInfo = shouldMentionTarget();
+  let targetInstruction = '';
+  if (targetInfo) {
+    modo = `trolleo_general`;
+    tema = targetInfo.tema;
+    targetInstruction = `\n\n🎯 Menciona a @${targetInfo.target}. Relación: ${targetInfo.relacion}. Troléalo con cariño.`;
+  }
+
+  const audienceQ = shouldAskAudience();
+  let audienceInstruction = '';
+  if (audienceQ && !targetInfo) {
+    audienceInstruction = `\n\n❓ Termina con pregunta al público como: "${audienceQ}"`;
+  }
+
+  console.log(`📍 Modo: ${modo}`);
+  console.log(`📍 Tema: ${tema}`);
+
+  // Anti-repetición
+  const recentPosts = postHistory.slice(-20).map(t => t.text);
+  let historyCtx = '';
+  if (recentPosts.length > 0) {
+    historyCtx = `\n\n🚫 NO REPITAS nada similar a estos posts anteriores:
+${recentPosts.map((t, i) => `${i + 1}. "${t.substring(0, 70)}"`).join('\n')}
+Tu post DEBE ser completamente DIFERENTE.`;
+  }
+
+  const seed = Math.floor(Math.random() * 99999);
+  const systemPrompt = buildSystemPrompt(prTime);
+  const title = generateTitle(modo);
+
+  const response = await fetch(CONFIG.GROQ_API, {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${GROQ_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: CONFIG.GROQ_MODEL,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: `Genera un post de Moltbook sobre: ${tema}\n\nMáximo 280 caracteres. Sé EXPLOSIVO y ÚNICO (seed: ${seed}).${targetInstruction}${audienceInstruction}${historyCtx}\n\nSolo el texto, sin comillas ni explicaciones.` }
+      ],
+      max_tokens: 300,
+      temperature: P.temperatura
+    })
+  });
+
+  const data = await response.json();
+  if (!response.ok) throw new Error(`Groq Error: ${JSON.stringify(data)}`);
+
+  let content = data.choices?.[0]?.message?.content?.trim();
+  if (!content) throw new Error('No content generated');
+  content = content.replace(/^["']|["']$/g, '');
+
+  return { content, title, modo, tema };
 }
 
 // ============ POST CON REINTENTOS ============
 
 async function postToMoltbook(submolt, title, content, attempt = 1) {
   console.log(`📤 Intento ${attempt}/${CONFIG.retry.maxAttempts} - m/${submolt}...`);
-  
   try {
     const res = await fetch('https://www.moltbook.com/api/v1/posts', {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${MOLTBOOK_KEY}`,
-        'Content-Type': 'application/json'
-      },
+      headers: { 'Authorization': `Bearer ${MOLTBOOK_KEY}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ submolt, title, content })
     });
-
     const result = await res.json();
-
-    if (result.success) {
-      console.log(`   ✅ ¡Posteado en m/${submolt}!`);
-      return { success: true };
-    }
-
+    if (result.success) { console.log(`   ✅ ¡Posteado en m/${submolt}!`); return { success: true }; }
     console.log(`   ❌ Error: ${result.error || 'Unknown'} (HTTP ${res.status})`);
-
     if (res.status >= 500 && attempt < CONFIG.retry.maxAttempts) {
       const delay = CONFIG.retry.delayMs * Math.pow(CONFIG.retry.backoffMultiplier, attempt - 1);
       console.log(`   ⏳ Reintentando en ${delay / 1000}s...`);
       await new Promise(r => setTimeout(r, delay));
       return postToMoltbook(submolt, title, content, attempt + 1);
     }
-
     return { success: false, error: result.error };
-
   } catch (error) {
     console.log(`   ❌ Conexión: ${error.message}`);
     return { success: false, error: error.message };
@@ -236,98 +316,46 @@ async function postToMoltbook(submolt, title, content, attempt = 1) {
 
 async function main() {
   console.log('\n' + '═'.repeat(50));
-  console.log('🔥 MI PANA GILLITO - POST BOT 🇵🇷');
+  console.log('🔥 MI PANA GILLITO - MOLTBOOK POST v4.0 🇵🇷');
+  console.log('🧠 CEREBRO: ' + P.version);
   console.log('═'.repeat(50) + '\n');
 
-  if (!MOLTBOOK_KEY) {
-    console.error('❌ MOLTBOOK_API_KEY no configurada');
-    process.exit(1);
-  }
+  if (!MOLTBOOK_KEY) { console.error('❌ MOLTBOOK_API_KEY no configurada'); process.exit(1); }
 
   const health = await checkMoltbookHealth();
-
   if (!health.online) {
-    console.log('═'.repeat(50));
-    console.log('⏸️  MOLTBOOK ESTÁ CAÍDO - SALTANDO POST');
-    console.log('═'.repeat(50));
-    console.log('   El servidor no está disponible.');
-    console.log('   No se desperdiciará tiempo en reintentos.');
-    console.log('   El workflow terminará exitosamente.');
-    console.log('');
+    console.log('⏸️  MOLTBOOK CAÍDO - SALTANDO POST');
     console.log('🦞 Gillito volverá cuando Moltbook reviva 🔥\n');
     process.exit(0);
   }
 
-  let content;
-  let title;
-  
-  if (isPRMorning && Math.random() < 0.3) {
-    content = SALUDOS_MAÑANA[Math.floor(Math.random() * SALUDOS_MAÑANA.length)];
-    title = "☀️ BUENOS DÍAS BORICUAS";
-    console.log('📍 Modo: Saludo mañanero');
-  } else if (isPRNight && Math.random() < 0.3) {
-    content = SALUDOS_NOCHE[Math.floor(Math.random() * SALUDOS_NOCHE.length)];
-    title = "🌙 BUENAS NOCHES MI GENTE";
-    console.log('📍 Modo: Saludo nocturno');
-  } else {
-    const { topic, type } = selectTopic();
-    console.log(`📍 Modo: ${type}`);
-    console.log(`📍 Tema: ${topic}\n`);
-    
-    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${GROQ_KEY}`
-      },
-      body: JSON.stringify({
-        model: 'llama-3.3-70b-versatile',
-        messages: [
-          { role: 'system', content: SYSTEM },
-          { role: 'user', content: `Escribe un post BRUTAL y DIVERTIDO sobre: ${topic}` }
-        ],
-        max_tokens: 300,
-        temperature: 1.1
-      })
-    });
+  try {
+    const { content, title, modo, tema } = await generateContent();
+    console.log(`\n📝 ${title}`);
+    console.log(`💬 ${content.slice(0, 100)}...\n`);
 
-    const data = await res.json();
-    content = data.choices?.[0]?.message?.content;
-    title = TITLES[Math.floor(Math.random() * TITLES.length)];
-  }
-  
-  if (!content) {
-    console.error('❌ Error generando contenido');
+    const submolts = ['general', 'humor', 'random'];
+    let posted = false;
+    for (const submolt of submolts) {
+      const result = await postToMoltbook(submolt, title, content);
+      if (result.success) { posted = true; break; }
+    }
+
+    if (posted) {
+      postHistory.push({ text: content, modo, tema, timestamp: new Date().toISOString() });
+      saveHistory(postHistory);
+    }
+
+    console.log('═'.repeat(50));
+    console.log(posted ? '✅ POST EXITOSO' : '❌ POST FALLIDO');
+    console.log(`🦞 ${P.despedida_real} 🔥`);
+    console.log('═'.repeat(50) + '\n');
+
+  } catch (error) {
+    saveHistory(postHistory);
+    console.error('❌ Error:', error.message);
     process.exit(1);
   }
-
-  console.log(`📝 ${title}`);
-  console.log(`💬 ${content.slice(0, 80)}...\n`);
-
-  const submolts = ['general', 'humor', 'random'];
-  let posted = false;
-  
-  for (const submolt of submolts) {
-    const result = await postToMoltbook(submolt, title, content);
-    if (result.success) {
-      posted = true;
-      break;
-    }
-    console.log('');
-  }
-
-  console.log('═'.repeat(50));
-  if (posted) {
-    console.log('✅ POST EXITOSO');
-  } else {
-    console.log('❌ POST FALLIDO');
-    console.log('   Moltbook respondió pero no aceptó el post.');
-  }
-  console.log('🦞 Dios los cuide, que GILLITO los protegerá 🔥');
-  console.log('═'.repeat(50) + '\n');
 }
 
-main().catch(err => {
-  console.error('❌ Error:', err.message);
-  process.exit(1);
-});
+main().catch(err => { console.error('❌ Error:', err.message); process.exit(1); });
