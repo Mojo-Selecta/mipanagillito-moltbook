@@ -1,4 +1,4 @@
-name: 💬 Gillito Moltbook - Reply v5.0
+name: 💬 Gillito - Reply on Moltbook v6.0
 
 on:
   schedule:
@@ -13,15 +13,15 @@ jobs:
       - uses: actions/setup-node@v4
         with: { node-version: '22' }
 
-      - name: 🧠 Cargar memoria replies
+      - name: 📥 Restore reply history
         uses: actions/cache@v4
         with:
           path: .gillito-molt-reply-history.json
           key: molt-replies-${{ github.run_id }}
           restore-keys: molt-replies-
 
-      - name: 💬 Responder comments/menciones
+      - name: 💬 Reply on Moltbook
         env:
-          MOLTBOOK_API_KEY: ${{ secrets.MOLTBOOK_API_KEY }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          MOLTBOOK_API_KEY: ${{ secrets.MOLTBOOK_API_KEY }}
         run: node scripts/reply.js
