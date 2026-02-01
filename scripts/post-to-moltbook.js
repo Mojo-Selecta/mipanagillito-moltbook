@@ -1,13 +1,64 @@
 const GROQ_KEY = process.env.GROQ_API_KEY;
 const MOLTBOOK_KEY = process.env.MOLTBOOK_API_KEY;
 
-// ============ CONFIGURACIÓN DE REINTENTOS ============
+// ============ CONFIGURACIÓN ============
 
-const RETRY_CONFIG = {
-  maxAttempts: 3,
-  delayMs: 5000,  // 5 segundos entre intentos
-  backoffMultiplier: 2  // Duplica el delay en cada reintento
+const CONFIG = {
+  retry: {
+    maxAttempts: 3,
+    delayMs: 5000,
+    backoffMultiplier: 2
+  },
+  healthCheck: {
+    timeout: 10000,  // 10 segundos
+    endpoint: 'https://www.moltbook.com/api/v1/posts?limit=1'
+  }
 };
+
+// ============ HEALTH CHECK ============
+
+async function checkMoltbookHealth() {
+  console.log('🏥 Verificando estado de Moltbook...\n');
+  
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), CONFIG.healthCheck.timeout);
+
+    const res = await fetch(CONFIG.healthCheck.endpoint, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${MOLTBOOK_KEY}`
+      },
+      signal: controller.signal
+    });
+
+    clearTimeout(timeout);
+
+    console.log(`   📊 HTTP Status: ${res.status}`);
+
+    if (res.status === 200) {
+      console.log('   ✅ Moltbook está ONLINE\n');
+      return { online: true, status: res.status };
+    } else if (res.status >= 500) {
+      console.log('   ❌ Moltbook está CAÍDO (Error 5xx)\n');
+      return { online: false, status: res.status, reason: 'server_error' };
+    } else if (res.status === 401 || res.status === 403) {
+      console.log('   ⚠️ Problema de autenticación\n');
+      return { online: true, status: res.status, reason: 'auth_error' };
+    } else {
+      console.log(`   ⚠️ Respuesta inesperada: ${res.status}\n`);
+      return { online: true, status: res.status };
+    }
+
+  } catch (error) {
+    if (error.name === 'AbortError') {
+      console.log('   ❌ Timeout - Moltbook no responde\n');
+      return { online: false, reason: 'timeout' };
+    }
+    console.log(`   ❌ Error de conexión: ${error.message}\n`);
+    return { online: false, reason: 'connection_error', error: error.message };
+  }
+}
 
 // ============ SISTEMA ============
 
@@ -142,10 +193,10 @@ function selectTopic() {
   }
 }
 
-// ============ FUNCIÓN DE POST CON REINTENTOS ============
+// ============ POST CON REINTENTOS ============
 
 async function postToMoltbook(submolt, title, content, attempt = 1) {
-  console.log(`\n📤 Intento ${attempt}/${RETRY_CONFIG.maxAttempts} - Posteando a m/${submolt}...`);
+  console.log(`📤 Intento ${attempt}/${CONFIG.retry.maxAttempts} - m/${submolt}...`);
   
   try {
     const res = await fetch('https://www.moltbook.com/api/v1/posts', {
@@ -157,42 +208,27 @@ async function postToMoltbook(submolt, title, content, attempt = 1) {
       body: JSON.stringify({ submolt, title, content })
     });
 
-    // Logging de la respuesta HTTP
-    console.log(`   📊 HTTP Status: ${res.status} ${res.statusText}`);
-
     const result = await res.json();
 
     if (result.success) {
-      console.log(`   ✅ ¡Éxito! Posteado en m/${submolt}`);
-      return { success: true, result };
+      console.log(`   ✅ ¡Posteado en m/${submolt}!`);
+      return { success: true };
     }
 
-    // Error de Moltbook
-    console.log(`   ❌ Error de Moltbook:`);
-    console.log(`      Mensaje: ${result.error || result.message || 'Unknown'}`);
-    console.log(`      Código: ${result.code || 'N/A'}`);
-    console.log(`      Respuesta completa: ${JSON.stringify(result).slice(0, 200)}`);
+    console.log(`   ❌ Error: ${result.error || 'Unknown'} (HTTP ${res.status})`);
 
-    // Verificar si debemos reintentar
-    if (attempt < RETRY_CONFIG.maxAttempts) {
-      const delay = RETRY_CONFIG.delayMs * Math.pow(RETRY_CONFIG.backoffMultiplier, attempt - 1);
-      console.log(`   ⏳ Esperando ${delay / 1000}s antes de reintentar...`);
+    // Solo reintentar en errores 5xx
+    if (res.status >= 500 && attempt < CONFIG.retry.maxAttempts) {
+      const delay = CONFIG.retry.delayMs * Math.pow(CONFIG.retry.backoffMultiplier, attempt - 1);
+      console.log(`   ⏳ Reintentando en ${delay / 1000}s...`);
       await new Promise(r => setTimeout(r, delay));
       return postToMoltbook(submolt, title, content, attempt + 1);
     }
 
-    return { success: false, error: result.error || 'Unknown error' };
+    return { success: false, error: result.error };
 
   } catch (error) {
-    console.log(`   ❌ Error de conexión: ${error.message}`);
-
-    if (attempt < RETRY_CONFIG.maxAttempts) {
-      const delay = RETRY_CONFIG.delayMs * Math.pow(RETRY_CONFIG.backoffMultiplier, attempt - 1);
-      console.log(`   ⏳ Esperando ${delay / 1000}s antes de reintentar...`);
-      await new Promise(r => setTimeout(r, delay));
-      return postToMoltbook(submolt, title, content, attempt + 1);
-    }
-
+    console.log(`   ❌ Conexión: ${error.message}`);
     return { success: false, error: error.message };
   }
 }
@@ -200,17 +236,32 @@ async function postToMoltbook(submolt, title, content, attempt = 1) {
 // ============ MAIN ============
 
 async function main() {
-  console.log('═'.repeat(50));
-  console.log('🔥 ¡LLEGUÉ, PUÑETA! 🇵🇷');
-  console.log('═'.repeat(50));
+  console.log('\n' + '═'.repeat(50));
+  console.log('🔥 MI PANA GILLITO - POST BOT 🇵🇷');
+  console.log('═'.repeat(50) + '\n');
 
   // Verificar API key
   if (!MOLTBOOK_KEY) {
-    console.error('❌ MOLTBOOK_API_KEY no está configurada');
+    console.error('❌ MOLTBOOK_API_KEY no configurada');
     process.exit(1);
   }
-  console.log(`🔑 API Key: ${MOLTBOOK_KEY.slice(0, 10)}...${MOLTBOOK_KEY.slice(-4)}`);
 
+  // HEALTH CHECK PRIMERO
+  const health = await checkMoltbookHealth();
+
+  if (!health.online) {
+    console.log('═'.repeat(50));
+    console.log('⏸️  MOLTBOOK ESTÁ CAÍDO - SALTANDO POST');
+    console.log('═'.repeat(50));
+    console.log('   El servidor no está disponible.');
+    console.log('   No se desperdiciará tiempo en reintentos.');
+    console.log('   El workflow terminará exitosamente.');
+    console.log('');
+    console.log('🦞 Gillito volverá cuando Moltbook reviva 🔥\n');
+    process.exit(0);  // Exit 0 para no fallar el workflow
+  }
+
+  // Generar contenido
   let content;
   let title;
   
@@ -225,7 +276,7 @@ async function main() {
   } else {
     const { topic, type } = selectTopic();
     console.log(`📍 Modo: ${type}`);
-    console.log(`📍 Tema: ${topic}`);
+    console.log(`📍 Tema: ${topic}\n`);
     
     const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
@@ -237,7 +288,7 @@ async function main() {
         model: 'llama-3.3-70b-versatile',
         messages: [
           { role: 'system', content: SYSTEM },
-          { role: 'user', content: `Escribe un post BRUTAL y DIVERTIDO sobre: ${topic}\n\nSi es trolleo a bots, provócalos pa' que respondan.` }
+          { role: 'user', content: `Escribe un post BRUTAL y DIVERTIDO sobre: ${topic}` }
         ],
         max_tokens: 300,
         temperature: 1.1
@@ -254,40 +305,58 @@ async function main() {
     process.exit(1);
   }
 
-  console.log(`\n📝 Título: ${title}`);
-  console.log(`💬 Contenido: ${content.slice(0, 100)}...`);
+  console.log(`📝 ${title}`);
+  console.log(`💬 ${content.slice(0, 80)}...\n`);
 
-  // Lista de submolts a intentar (en orden de preferencia)
-  const submolts = ['general', 'humor', 'random', 'shitposting'];
-  
+  // Intentar postear
+  const submolts = ['general', 'humor', 'random'];
   let posted = false;
   
   for (const submolt of submolts) {
     const result = await postToMoltbook(submolt, title, content);
-    
     if (result.success) {
       posted = true;
       break;
     }
-    
-    console.log(`\n⚠️ Falló en m/${submolt}, intentando siguiente submolt...`);
+    console.log('');
   }
 
-  console.log('\n' + '═'.repeat(50));
+  // Resultado
+  console.log('═'.repeat(50));
   if (posted) {
     console.log('✅ POST EXITOSO');
   } else {
-    console.log('❌ TODOS LOS INTENTOS FALLARON');
-    console.log('   Posibles causas:');
-    console.log('   - Servidor de Moltbook sobrecargado');
-    console.log('   - API key inválida o expirada');
-    console.log('   - Rate limit excedido');
+    console.log('❌ POST FALLIDO');
+    console.log('   Moltbook respondió pero no aceptó el post.');
   }
   console.log('🦞 Dios los cuide, que GILLITO los protegerá 🔥');
   console.log('═'.repeat(50) + '\n');
 }
 
 main().catch(err => {
-  console.error('❌ Error fatal:', err.message);
+  console.error('❌ Error:', err.message);
   process.exit(1);
 });
+```
+
+---
+
+## 📊 Cambios:
+
+| Antes | Ahora |
+|-------|-------|
+| Intenta postear directo | **Health check primero** |
+| Muchos reintentos si caído | **Sale inmediatamente si está caído** |
+| Workflow falla si no puede postear | **Exit 0** (workflow exitoso aunque Moltbook esté caído) |
+| Timeout infinito | **10 segundos de timeout** |
+| Prueba submolts que no existen | **Solo submolts que existen** |
+
+---
+
+## 🏥 Cómo funciona el health check:
+```
+1. GET /api/v1/posts?limit=1
+   ↓
+2. Si HTTP 200 → Moltbook ONLINE → Continuar
+   Si HTTP 5xx → Moltbook CAÍDO → Salir (exit 0)
+   Si timeout  → Moltbook no responde → Salir (exit 0)
