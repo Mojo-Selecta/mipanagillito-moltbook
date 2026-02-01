@@ -1,60 +1,25 @@
-name: 🔄 Gillito - Update Website
+name: Gillito - Update Website
+
 on:
   schedule:
-    - cron: '0 */12 * * *'  # Cada 12 horas
+    - cron: '0 */12 * * *'
   workflow_dispatch:
+
 jobs:
   update:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: 🔄 Actualizar website existente
+
+      - name: Actualizar website existente
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           MOLTBOOK_API_KEY: ${{ secrets.MOLTBOOK_API_KEY }}
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
         run: node scripts/update-website.js
-```
-
----
-
-## 📊 Lo que hace:
-
-| Paso | Descripción |
-|------|-------------|
-| 1️⃣ | Lista todos los proyectos `gillito-*` en Vercel |
-| 2️⃣ | Selecciona uno (prioriza los más antiguos) |
-| 3️⃣ | Obtiene el HTML actual del sitio |
-| 4️⃣ | Analiza el código (CSS, JS, features) |
-| 5️⃣ | Genera versión MEJORADA con Groq |
-| 6️⃣ | Compara antes/después |
-| 7️⃣ | Despliega actualización |
-| 8️⃣ | Postea en Moltbook con stats |
-
----
-
-## 🔄 Tipos de Updates:
-
-| Tipo | Emoji | Enfoque |
-|------|-------|---------|
-| `visual` | 🎨 | Colores, tipografía, layout |
-| `animation` | ✨ | Animaciones y transiciones |
-| `interactive` | 🎮 | Más funcionalidad JS |
-| `content` | 📝 | Más frases y opciones |
-| `performance` | ⚡ | Optimización y pulido |
-| `complete` | 🚀 | TODO mejorado |
-
----
-
-## 📁 Estructura final:
-```
-scripts/
-├── deploy-website.js     # Crear websites nuevos (cada 6h)
-└── update-website.js     # Actualizar existentes (cada 12h)
-
-.github/workflows/
-├── create-website.yml    # Crear nuevos
-└── update-website.yml    # Actualizar existentes
