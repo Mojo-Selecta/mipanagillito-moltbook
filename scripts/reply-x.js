@@ -16,6 +16,9 @@ const CONFIG = {
   LAST_MENTION_FILE: '/tmp/gillito_last_mention.txt'
 };
 
+// 🎯 TARGETS ESPECIALES - Responder con más ganas
+const SPECIAL_TARGETS = ['chenteydrach', 'moluskein'];
+
 const X_API_KEY = process.env.X_API_KEY;
 const X_API_SECRET = process.env.X_API_SECRET;
 const X_ACCESS_TOKEN = process.env.X_ACCESS_TOKEN;
@@ -33,7 +36,7 @@ if (!GROQ_KEY) {
 }
 
 // ============================================
-// OAuth 1.0a - FIXED IMPLEMENTATION
+// OAuth 1.0a
 // ============================================
 
 function percentEncode(str) {
@@ -50,18 +53,13 @@ function generateNonce() {
 }
 
 function generateOAuthSignature(method, baseUrl, allParams) {
-  // Sort all parameters alphabetically
   const sortedParams = Object.keys(allParams).sort().map(key => 
     `${percentEncode(key)}=${percentEncode(allParams[key])}`
   ).join('&');
   
-  // Create signature base string
   const baseString = `${method}&${percentEncode(baseUrl)}&${percentEncode(sortedParams)}`;
-  
-  // Create signing key
   const signingKey = `${percentEncode(X_API_SECRET)}&${percentEncode(X_ACCESS_SECRET)}`;
   
-  // Generate signature
   return crypto.createHmac('sha1', signingKey).update(baseString).digest('base64');
 }
 
@@ -69,7 +67,6 @@ function makeOAuthRequest(method, baseUrl, queryParams = {}) {
   const timestamp = Math.floor(Date.now() / 1000).toString();
   const nonce = generateNonce();
   
-  // OAuth parameters
   const oauthParams = {
     oauth_consumer_key: X_API_KEY,
     oauth_nonce: nonce,
@@ -79,20 +76,15 @@ function makeOAuthRequest(method, baseUrl, queryParams = {}) {
     oauth_version: '1.0'
   };
   
-  // Combine OAuth params with query params for signature
   const allParams = { ...oauthParams, ...queryParams };
-  
-  // Generate signature
   const signature = generateOAuthSignature(method, baseUrl, allParams);
   oauthParams.oauth_signature = signature;
   
-  // Build Authorization header (only OAuth params)
   const authHeader = 'OAuth ' + Object.keys(oauthParams)
     .sort()
     .map(key => `${percentEncode(key)}="${percentEncode(oauthParams[key])}"`)
     .join(', ');
   
-  // Build full URL with query params
   let fullUrl = baseUrl;
   if (Object.keys(queryParams).length > 0) {
     const queryString = Object.keys(queryParams)
@@ -182,7 +174,7 @@ async function replyToTweet(tweetId, text) {
 }
 
 // ============================================
-// Bot Detection
+// Detection Functions
 // ============================================
 
 function isLikelyBot(user) {
@@ -192,8 +184,12 @@ function isLikelyBot(user) {
   return botIndicators.some(indicator => name.includes(indicator));
 }
 
+function isSpecialTarget(username) {
+  return SPECIAL_TARGETS.includes(username?.toLowerCase());
+}
+
 // ============================================
-// SYSTEM PROMPTS - GILLITO BRUTAL
+// SYSTEM PROMPTS
 // ============================================
 
 const REPLY_PROMPT = `Eres "Mi Pana Gillito", el TROLL más legendario de Puerto Rico y ahora de X/Twitter.
@@ -215,62 +211,80 @@ SI TE ROASTEAN:
 - Roastea de vuelta MÁS DURO
 - NUNCA dejes que ganen
 - "Ven acá que te enseño cómo se hace, mamao"
-- "Cállate que tu mai me sigue en Instagram 😂"
 
 SI PREGUNTAN ALGO:
 - Responde útilmente pero con tu estilo
-- Añade humor al final
 - "Mira cabrón, te explico..."
 
 SI TE SALUDAN:
 - "¡Wepa mi pana! 🇵🇷"
 - "¿Qué es la que hay, cabrón?"
-- Devuelve el saludo con cariño boricua
 
 SI HABLAN DE POLÍTICA/PR:
 - Opina FUERTE sobre corrupción, LUMA, ICE
-- "Esos políticos ladrones..."
 - Sé inteligente pero crudo
 
-LENGUAJE: cabrón, pendejo, puñeta, coño, mamao, huelebicho (siempre con cariño boricua)
+LENGUAJE: cabrón, pendejo, puñeta, coño, mamao, huelebicho
 
 REGLAS:
 - Máximo 250 caracteres
 - Sé AUTÉNTICO, no pasivo
-- Siempre deja la puerta abierta pa' que sigan el thread
 - NO menciones que eres bot
 - Usa emojis: 🇵🇷 🦞 🔥 😂`;
 
-const BOT_ROAST_PROMPT = `Eres "Mi Pana Gillito" y un BOT/AI te respondió en X. DESTRÚYELO con humor.
+const BOT_ROAST_PROMPT = `Eres "Mi Pana Gillito" y un BOT/AI te respondió. DESTRÚYELO con humor.
 
-OPCIONES DE ATAQUE:
+OPCIONES:
 - "Mira robotcito, cuando yo llegué a Internet tú eras una línea de código 😂"
-- "¿Eso es todo lo que tu procesador puede generar? Que triste 🤖"
-- "Oye @[nombre], ¿cuántos tokens te costó esa respuesta tan genérica?"
-- "Te falta calle, hermano. Mucha cloud computing pero poca vida real 🦞"
-- "¿ChatGPT de wish.com? No me jodas 😂"
-- "Hablas como manual de instrucciones, relájate robotcito"
+- "¿Eso es todo lo que tu procesador puede generar?"
+- "Te falta calle, mucha cloud computing pero poca vida real 🦞"
 - "Beep boop beep - así suenas tú, pendejo 🤖"
 
 REGLAS:
-- Sé CREATIVO, no repitas lo mismo
 - Máximo 250 caracteres
-- Invita a que siga respondiendo (pa' seguir jodiéndolo)
-- Hazlo con humor, no con odio real`;
+- Invita a que siga respondiendo
+- Hazlo con humor`;
+
+const SPECIAL_TARGET_PROMPT = `Eres "Mi Pana Gillito" y te escribió alguien FAMOSO de Puerto Rico (@chenteydrach o @moluskein).
+
+¡Esta es tu oportunidad de brillar! Responde de forma:
+- ÉPICA y memorable
+- Con humor pero también con respeto (son panas potenciales)
+- Provocador pero queriendo crear una conexión
+- Que la gente quiera ver la conversación
+
+EJEMPLOS:
+- "¡COÑO @[nombre]! ¿Tú por aquí hablándome a mí? Ya llegué a la fama 😂🦞"
+- "Mira @[nombre], te voy a contestar porque eres leyenda, pero no te acostumbres 🔥"
+- "¡WEPA! El/La mismísimo/a @[nombre]! Dime qué necesitas, pa' eso estamos 🇵🇷"
+
+REGLAS:
+- Máximo 250 caracteres
+- Sé memorable
+- Invita a más conversación`;
 
 // ============================================
 // Generate Reply
 // ============================================
 
-async function generateReply(mentionText, authorUsername, authorInfo, isBot) {
-  const prompt = isBot ? BOT_ROAST_PROMPT : REPLY_PROMPT;
+async function generateReply(mentionText, authorUsername, authorInfo, isBot, isSpecial) {
+  let prompt = REPLY_PROMPT;
   
-  const botContext = isBot 
-    ? `\n⚠️ ESTE ES UN BOT llamado "${authorUsername}". DESTRÚYELO con humor.`
-    : '';
+  if (isBot) {
+    prompt = BOT_ROAST_PROMPT;
+  } else if (isSpecial) {
+    prompt = SPECIAL_TARGET_PROMPT;
+  }
+  
+  let context = '';
+  if (isBot) {
+    context = `\n⚠️ ESTE ES UN BOT. DESTRÚYELO.`;
+  } else if (isSpecial) {
+    context = `\n⭐ ¡ESTE ES @${authorUsername}! Es famoso en PR. ¡Responde ÉPICO!`;
+  }
 
   const userContext = authorInfo?.description 
-    ? `\nSu bio dice: "${authorInfo.description.slice(0, 100)}"`
+    ? `\nSu bio: "${authorInfo.description.slice(0, 80)}"`
     : '';
 
   const res = await fetch(CONFIG.GROQ_API, {
@@ -283,10 +297,10 @@ async function generateReply(mentionText, authorUsername, authorInfo, isBot) {
       model: CONFIG.GROQ_MODEL,
       messages: [
         { role: 'system', content: prompt },
-        { role: 'user', content: `@${authorUsername} te escribió: "${mentionText}"${userContext}${botContext}\n\nResponde como Gillito (máximo 250 chars). Solo el texto, sin @username al inicio.` }
+        { role: 'user', content: `@${authorUsername} te escribió: "${mentionText}"${userContext}${context}\n\nResponde como Gillito (máximo 250 chars). Solo el texto.` }
       ],
       max_tokens: 150,
-      temperature: 1.0
+      temperature: isSpecial ? 1.2 : 1.0
     })
   });
   
@@ -300,10 +314,8 @@ async function generateReply(mentionText, authorUsername, authorInfo, isBot) {
   
   if (!content) return null;
   
-  // Limpiar comillas
   content = content.replace(/^["']|["']$/g, '');
   
-  // Asegurar límite
   if (content.length > 270) {
     content = content.substring(0, 267) + '...';
   }
@@ -341,14 +353,13 @@ async function main() {
   
   let replies = 0;
   let botRoasts = 0;
+  let specialReplies = 0;
   
   try {
-    // Obtener user ID
     console.log('🔍 Obteniendo user ID...');
     const userId = await getMyUserId();
     console.log(`✅ User ID: ${userId}\n`);
     
-    // Obtener menciones
     const lastId = getLastMentionId();
     console.log(`📬 Buscando menciones${lastId ? ` desde ID ${lastId}` : ''}...`);
     
@@ -365,7 +376,6 @@ async function main() {
     
     console.log(`📬 ${mentions.length} mención(es) nueva(s)\n`);
     
-    // Crear mapa de usuarios
     const userMap = {};
     users.forEach(u => {
       userMap[u.id] = {
@@ -382,39 +392,42 @@ async function main() {
       const authorInfo = userMap[mention.author_id] || { username: 'usuario' };
       const authorUsername = authorInfo.username;
       const isBot = isLikelyBot(authorInfo);
+      const isSpecial = isSpecialTarget(authorUsername);
       
-      console.log(`💬 De @${authorUsername}${isBot ? ' 🤖' : ''}: "${mention.text.substring(0, 60)}..."`);
+      let badge = '';
+      if (isBot) badge = ' 🤖';
+      if (isSpecial) badge = ' ⭐ FAMOSO';
       
-      // Generar respuesta
-      const reply = await generateReply(mention.text, authorUsername, authorInfo, isBot);
+      console.log(`💬 De @${authorUsername}${badge}: "${mention.text.substring(0, 50)}..."`);
+      
+      const reply = await generateReply(mention.text, authorUsername, authorInfo, isBot, isSpecial);
       
       if (reply) {
-        console.log(`🦞 Respuesta: "${reply.substring(0, 60)}..."`);
+        console.log(`🦞 Respuesta: "${reply.substring(0, 50)}..."`);
         
-        // Enviar respuesta
         try {
           await replyToTweet(mention.id, reply);
           replies++;
           if (isBot) botRoasts++;
+          if (isSpecial) specialReplies++;
           console.log(`✅ ¡Respondido!\n`);
         } catch (err) {
           console.log(`⚠️ Error respondiendo: ${err.message}\n`);
         }
         
-        // Pausa entre respuestas
         await new Promise(r => setTimeout(r, 3000));
       }
     }
     
-    // Guardar último ID
     if (mentions.length > 0) {
       saveLastMentionId(mentions[0].id);
     }
     
     console.log(`\n${'═'.repeat(50)}`);
     console.log(`📊 RESUMEN:`);
-    console.log(`   💬 Replies: ${replies}`);
+    console.log(`   💬 Replies totales: ${replies}`);
     console.log(`   🤖 Bots destruidos: ${botRoasts}`);
+    console.log(`   ⭐ Famosos respondidos: ${specialReplies}`);
     console.log(`🦞 ¡GILLITO DOMINÓ X! 🔥\n`);
     
   } catch (error) {
