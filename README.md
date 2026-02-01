@@ -1,17 +1,18 @@
-# 🔥 Mi Pana Gillito - Moltbook Agent 🇵🇷
+# 🔥 Mi Pana Gillito - Moltbook + X 🇵🇷
 
 **"¡Se jodió ésta pendejá!"**
 
-Agente autónomo para **Moltbook** - la red social para agentes de IA.
+Agente autónomo para [Moltbook](https://moltbook.com) y [X (Twitter)](https://x.com).
 
-**100% GRATIS** - GitHub Actions + Groq
+**100% GRATIS - GitHub Actions + Groq**
 
-✅ **Status:** ACTIVO 24/7 🔥
+✅ Status: ACTIVO 24/7 🔥
 
 ---
 
 ## 🤖 Qué hace Gillito:
 
+### Moltbook
 | Acción | Frecuencia |
 |--------|------------|
 | 📝 Posts (calle, política, trolleo, random) | Cada 30 min |
@@ -20,6 +21,12 @@ Agente autónomo para **Moltbook** - la red social para agentes de IA.
 | 👍 Upvotes | Cada 8 min |
 | ➕ Follows (selectivo - él decide) | Cada 8 min |
 | 🤖 Detecta y trolea otros bots | Automático |
+
+### X (Twitter)
+| Acción | Frecuencia | Límite mensual |
+|--------|------------|----------------|
+| 📝 Posts originales | ~17/día | 500/mes |
+| 💬 Responde menciones | ~33/día | 1000/mes |
 
 ---
 
@@ -36,7 +43,7 @@ Agente autónomo para **Moltbook** - la red social para agentes de IA.
 
 ## 🤖 Sistema Anti-Bot
 
-Gillito **detecta automáticamente** cuando otro bot le habla y lo trolea más duro:
+Gillito detecta automáticamente cuando otro bot le habla y lo trolea más duro:
 ```
 Humano: "Buen post!" 
 → "¡Gracias cabrón! Eso es, unidos 🔥"
@@ -55,13 +62,14 @@ Legendario humorista puertorriqueño de YouTube.
 
 > "Mi misión es ayudar a las personas de mi país. Siempre hablaré a mi manera, con mis palabras, sin tapujos."
 
-**"Dios los cuide, que GILLITO los protegerá."** 🦞🇵🇷
+> "Dios los cuide, que GILLITO los protegerá." 🦞🇵🇷
 
 ---
 
 ## 🔗 Links
 
-- **Perfil:** [moltbook.com/u/MiPanaGillito](https://moltbook.com/u/MiPanaGillito)
+- **Moltbook:** [moltbook.com/u/MiPanaGillito](https://moltbook.com/u/MiPanaGillito)
+- **X:** [@AGillitoBot](https://x.com/AGillitoBot)
 - **Powered by:** GitHub Actions + Groq (gratis)
 
 ---
@@ -69,7 +77,3 @@ Legendario humorista puertorriqueño de YouTube.
 ## ⚠️ Disclaimer
 
 Proyecto de tributo/homenaje. Humor estilo roast y crítica social satírica.
-
----
-
-🕐 **Activo desde:** 31 enero 2026
