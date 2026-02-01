@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 /**
- * Mi Pana Gillito — Interact on Moltbook v6.0
+ * Mi Pana Gillito — Interact on Moltbook v6.1
  * ═══════════════════════════════════════════
  * 🤝 Interactúa con el feed (upvote/downvote/comment/follow)
  * 🤖 Bot detection → trolleo agresivo
- * 📊 Tracking enriquecido de todas las acciones
+ * 📊 Logging detallado de éxitos Y fallos
  */
 
 const C = require('./lib/core');
@@ -34,7 +34,7 @@ async function main() {
   const feed = C.shuffle(await C.moltGetFeed('hot', 30));
   C.log.stat('Feed', `${feed.length} posts`);
 
-  let actions = { upvotes: 0, downvotes: 0, comments: 0, follows: 0 };
+  let actions = { upvotes: 0, downvotes: 0, comments: 0, follows: 0, failures: 0 };
 
   for (const post of feed.slice(0, 10)) {
     const author = post.author || {};
@@ -50,40 +50,66 @@ async function main() {
       // Bots: 70% comment (troll), 20% downvote, 10% upvote
       const roll = Math.random();
       if (roll < 0.7) {
-        const comment = await generateComment(post, 'bot');
-        if (C.validateContent(comment, 200).valid) {
-          const ok = await C.moltComment(postId, comment);
-          if (ok) {
-            C.log.ok(`🤖 Trolled @${authorName}: ${comment.substring(0, 50)}...`);
-            history.add({ text: comment, author: authorName, authorType: 'bot', action: 'comment', postId, charLen: comment.length });
-            actions.comments++;
+        try {
+          const comment = await generateComment(post, 'bot');
+          if (C.validateContent(comment, 200).valid) {
+            const ok = await C.moltComment(postId, comment);
+            if (ok) {
+              C.log.ok(`🤖 Trolled @${authorName}: ${comment.substring(0, 50)}...`);
+              history.add({ text: comment, author: authorName, authorType: 'bot', action: 'comment', postId, charLen: comment.length });
+              actions.comments++;
+            } else {
+              C.log.warn(`❌ Comment failed on @${authorName} (postId: ${postId})`);
+              actions.failures++;
+            }
           }
+        } catch (err) {
+          C.log.warn(`❌ Comment generation failed: ${err.message}`);
+          actions.failures++;
         }
       } else if (roll < 0.9) {
-        if (await C.moltDownvote(postId)) { actions.downvotes++; C.log.stat('Action', `👎 @${authorName}`); }
+        const ok = await C.moltDownvote(postId);
+        if (ok) { actions.downvotes++; C.log.ok(`👎 Downvoted @${authorName}`); }
+        else { actions.failures++; C.log.warn(`❌ Downvote failed @${authorName}`); }
       } else {
-        if (await C.moltUpvote(postId)) { actions.upvotes++; C.log.stat('Action', `👍 @${authorName}`); }
+        const ok = await C.moltUpvote(postId);
+        if (ok) { actions.upvotes++; C.log.ok(`👍 Upvoted @${authorName}`); }
+        else { actions.failures++; C.log.warn(`❌ Upvote failed @${authorName}`); }
       }
     } else {
-      // Humans: 40% comment, 50% upvote, 10% follow
+      // Humans/others: 40% comment, 50% upvote, 10% follow
       const roll = Math.random();
       if (roll < 0.4) {
-        const comment = await generateComment(post, 'normal');
-        if (C.validateContent(comment, 200).valid) {
-          const ok = await C.moltComment(postId, comment);
-          if (ok) {
-            C.log.ok(`💬 Commented @${authorName}: ${comment.substring(0, 50)}...`);
-            history.add({ text: comment, author: authorName, authorType: 'human', action: 'comment', postId, charLen: comment.length });
-            actions.comments++;
+        try {
+          const comment = await generateComment(post, 'normal');
+          if (C.validateContent(comment, 200).valid) {
+            const ok = await C.moltComment(postId, comment);
+            if (ok) {
+              C.log.ok(`💬 Commented @${authorName}: ${comment.substring(0, 50)}...`);
+              history.add({ text: comment, author: authorName, authorType: 'human', action: 'comment', postId, charLen: comment.length });
+              actions.comments++;
+            } else {
+              C.log.warn(`❌ Comment failed on @${authorName} (postId: ${postId})`);
+              actions.failures++;
+            }
           }
+        } catch (err) {
+          C.log.warn(`❌ Comment generation failed: ${err.message}`);
+          actions.failures++;
         }
       } else if (roll < 0.9) {
-        if (await C.moltUpvote(postId)) { actions.upvotes++; C.log.stat('Action', `👍 @${authorName}`); }
+        const ok = await C.moltUpvote(postId);
+        if (ok) { actions.upvotes++; C.log.ok(`👍 Upvoted @${authorName}`); }
+        else { actions.failures++; C.log.warn(`❌ Upvote failed @${authorName}`); }
       } else {
-        if (await C.moltFollow(authorName)) {
+        const ok = await C.moltFollow(authorName);
+        if (ok) {
           actions.follows++;
-          C.log.stat('Action', `➕ Followed @${authorName}`);
+          C.log.ok(`➕ Followed @${authorName}`);
           history.add({ action: 'follow', author: authorName, authorType: 'human' });
+        } else {
+          actions.failures++;
+          C.log.warn(`❌ Follow failed @${authorName}`);
         }
       }
     }
@@ -97,6 +123,7 @@ async function main() {
   C.log.stat('Downvotes', actions.downvotes);
   C.log.stat('Comments', actions.comments);
   C.log.stat('Follows', actions.follows);
+  C.log.stat('Failures', actions.failures);
 
   history.save();
   C.log.session();
