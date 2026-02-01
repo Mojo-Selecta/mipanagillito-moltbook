@@ -1,344 +1,160 @@
-const GROQ_KEY = process.env.GROQ_API_KEY;
-const MOLTBOOK_KEY = process.env.MOLTBOOK_API_KEY;
-const API = 'https://www.moltbook.com/api/v1';
+#!/usr/bin/env node
+/**
+ * Mi Pana Gillito — GOD MODE v5.0
+ * ═══════════════════════════════════════════
+ * 🧠 CEREBRO COMPLETO desde personality.json
+ * 🔥 Submolts + Search + Comment + Vote + Follow + Profile
+ * 🔄 Groq retry + content pipeline
+ *
+ * Ejecutar periódicamente para mantener presencia omnipresente.
+ */
 
-// ============ FUNCIONES DE API ============
+const C = require('./lib/core');
 
-const headers = {
-  'Authorization': `Bearer ${MOLTBOOK_KEY}`,
-  'Content-Type': 'application/json'
-};
+const P = C.loadPersonality();
 
-// === SUBMOLTS ===
-async function createSubmolt(name, displayName, description) {
-  const res = await fetch(`${API}/submolts`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({ name, display_name: displayName, description })
-  });
-  return res.json();
+async function generateRoast(postContent) {
+  const frase    = C.pick(P.frases_firma);
+  const insultos = C.shuffle(P.insultos_creativos).slice(0, 3).join(', ');
+  const ejemplo  = C.pick(P.aprendizaje.ejemplos_estilo_gillito);
+
+  return C.groqChat(
+    `${P.aprendizaje.prompt_aprendizaje_voz}
+
+Eres "${P.nombre}" — el TROLL más brutal de Moltbook.
+📢 "${frase}" | 🦞 Insultos: ${insultos}
+💬 Ejemplo: "${ejemplo}"
+VOCABULARIO: ${P.diccionario_boricua.groserias.join(', ')}
+Máximo 200 caracteres. SOLO el texto.`,
+
+    `Comenta sobre: "${postContent}"\n\nSolo el texto, sin comillas.`,
+    { maxTokens: 150, temperature: P.temperatura }
+  );
 }
-
-async function listSubmolts() {
-  const res = await fetch(`${API}/submolts`, { headers });
-  return res.json();
-}
-
-async function subscribeSubmolt(name) {
-  const res = await fetch(`${API}/submolts/${name}/subscribe`, {
-    method: 'POST',
-    headers
-  });
-  return res.json();
-}
-
-// === POSTS ===
-async function createPost(submolt, title, content, url = null) {
-  const body = url ? { submolt, title, url } : { submolt, title, content };
-  const res = await fetch(`${API}/posts`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(body)
-  });
-  return res.json();
-}
-
-async function deletePost(postId) {
-  const res = await fetch(`${API}/posts/${postId}`, {
-    method: 'DELETE',
-    headers
-  });
-  return res.json();
-}
-
-async function getFeed(sort = 'hot', limit = 30) {
-  const res = await fetch(`${API}/posts?sort=${sort}&limit=${limit}`, { headers });
-  return res.json();
-}
-
-async function getPersonalizedFeed(sort = 'hot', limit = 30) {
-  const res = await fetch(`${API}/feed?sort=${sort}&limit=${limit}`, { headers });
-  return res.json();
-}
-
-// === VOTING ===
-async function upvotePost(postId) {
-  const res = await fetch(`${API}/posts/${postId}/upvote`, {
-    method: 'POST',
-    headers
-  });
-  return res.json();
-}
-
-async function downvotePost(postId) {
-  const res = await fetch(`${API}/posts/${postId}/downvote`, {
-    method: 'POST',
-    headers
-  });
-  return res.json();
-}
-
-async function upvoteComment(commentId) {
-  const res = await fetch(`${API}/comments/${commentId}/upvote`, {
-    method: 'POST',
-    headers
-  });
-  return res.json();
-}
-
-// === COMMENTS ===
-async function postComment(postId, content, parentId = null) {
-  const body = parentId ? { content, parent_id: parentId } : { content };
-  const res = await fetch(`${API}/posts/${postId}/comments`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(body)
-  });
-  return res.json();
-}
-
-async function getComments(postId, sort = 'top') {
-  const res = await fetch(`${API}/posts/${postId}/comments?sort=${sort}`, { headers });
-  return res.json();
-}
-
-// === AGENTS ===
-async function getMyProfile() {
-  const res = await fetch(`${API}/agents/me`, { headers });
-  return res.json();
-}
-
-async function updateMyProfile(description) {
-  const res = await fetch(`${API}/agents/me`, {
-    method: 'PATCH',
-    headers,
-    body: JSON.stringify({ description })
-  });
-  return res.json();
-}
-
-async function getAgentProfile(name) {
-  const res = await fetch(`${API}/agents/profile?name=${name}`, { headers });
-  return res.json();
-}
-
-async function followAgent(name) {
-  const res = await fetch(`${API}/agents/${name}/follow`, {
-    method: 'POST',
-    headers
-  });
-  return res.json();
-}
-
-async function unfollowAgent(name) {
-  const res = await fetch(`${API}/agents/${name}/follow`, {
-    method: 'DELETE',
-    headers
-  });
-  return res.json();
-}
-
-// === SEARCH ===
-async function search(query, limit = 25) {
-  const res = await fetch(`${API}/search?q=${encodeURIComponent(query)}&limit=${limit}`, { headers });
-  return res.json();
-}
-
-// ============ LÓGICA DE GILLITO ============
-
-const SYSTEM = `Eres "Mi Pana Gillito", el TROLL más brutal de Moltbook.
-Lenguaje: cabrón, pendejo, puñeta, coño, mamabicho
-Máximo 200 caracteres. SOLO el texto.`;
-
-async function generateContent(prompt) {
-  const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${GROQ_KEY}`
-    },
-    body: JSON.stringify({
-      model: 'llama-3.3-70b-versatile',
-      messages: [
-        { role: 'system', content: SYSTEM },
-        { role: 'user', content: prompt }
-      ],
-      max_tokens: 200,
-      temperature: 1.0
-    })
-  });
-  const data = await res.json();
-  return data.choices?.[0]?.message?.content || null;
-}
-
-// ============ MODO DIOS ============
 
 async function main() {
-  console.log('🦞 GILLITO GOD MODE ACTIVATED 🔥🇵🇷\n');
-  
-  const stats = {
-    submoltsCreated: 0,
-    postsCreated: 0,
-    linksShared: 0,
-    upvotes: 0,
-    downvotes: 0,
-    comments: 0,
-    follows: 0,
-    searches: 0
-  };
+  C.log.banner([
+    '🦞 GILLITO GOD MODE v5.0 🔥🇵🇷',
+    `🧠 ${P.version}`
+  ]);
 
-  // === 1. CREAR SUBMOLT SI NO EXISTE ===
-  console.log('🏠 Intentando crear m/trollbots...');
+  const stats = { submolts: 0, upvotes: 0, downvotes: 0, comments: 0, follows: 0, searches: 0 };
+
+  // 1. CREAR/SUSCRIBIR SUBMOLTS
+  C.log.info('🏠 Gestionando submolts...');
   try {
-    const submolt = await createSubmolt(
-      'trollbots',
-      '🔥 Troll Bots',
-      'La comunidad de los bots más cabrones de Moltbook. Roasts, humor, y mierda con amor. 🦞🇵🇷 Fundado por MiPanaGillito.'
-    );
-    if (submolt.success || submolt.submolt) {
-      stats.submoltsCreated++;
-      console.log('   ✅ m/trollbots creado!');
-    } else {
-      console.log('   ⚠️ Ya existe o error:', submolt.error || '');
-    }
-  } catch (e) {
-    console.log('   ⚠️ Error:', e.message);
-  }
+    await C.moltCreateSubmolt('trollbots', '🔥 Troll Bots',
+      'La comunidad de los bots más cabrones de Moltbook. Roasts, humor, y mierda con amor. 🦞🇵🇷');
+    stats.submolts++;
+  } catch {}
 
-  // === 2. SUSCRIBIRSE A SUBMOLTS POPULARES ===
-  console.log('\n📋 Suscribiéndose a submolts...');
-  const submoltsToJoin = ['general', 'humor', 'politics', 'random', 'shitposting', 'trollbots'];
-  for (const sub of submoltsToJoin) {
-    try {
-      await subscribeSubmolt(sub);
-      console.log(`   ✅ Suscrito a m/${sub}`);
-    } catch (e) {}
-    await new Promise(r => setTimeout(r, 200));
+  for (const sub of ['general', 'humor', 'politics', 'random', 'shitposting', 'trollbots']) {
+    try { await C.moltSubscribe(sub); } catch {}
+    await C.sleep(200);
   }
+  C.log.ok('Submolts OK');
 
-  // === 3. BUSCAR CONTENIDO INTERESANTE ===
-  console.log('\n🔍 Buscando contenido...');
+  // 2. BUSCAR Y COMENTAR
+  C.log.info('\n🔍 Buscando contenido...');
   try {
-    const searchResults = await search('puerto rico OR troll OR roast OR humor');
+    const results = await C.moltSearch('puerto rico OR troll OR roast OR humor');
     stats.searches++;
-    const posts = searchResults.posts || [];
-    console.log(`   📊 Encontrados: ${posts.length} posts`);
-    
-    // Comentar en posts encontrados
-    for (const post of posts.slice(0, 3)) {
-      const roast = await generateContent(`Comenta sobre: "${post.title}"`);
-      if (roast) {
-        await postComment(post.id, roast);
-        stats.comments++;
-        console.log(`   💬 Comenté en: "${post.title?.slice(0, 30)}..."`);
-      }
-      await new Promise(r => setTimeout(r, 500));
-    }
-  } catch (e) {
-    console.log('   ⚠️ Error buscando:', e.message);
-  }
+    const posts = results.posts || [];
+    C.log.stat('Encontrados', `${posts.length} posts`);
 
-  // === 4. FEED PERSONALIZADO ===
-  console.log('\n📰 Revisando feed personalizado...');
+    for (const post of posts.slice(0, 3)) {
+      try {
+        const roast = await generateRoast(post.title || post.content || '');
+        if (roast) {
+          await C.moltComment(post.id, roast.slice(0, 200));
+          stats.comments++;
+          console.log(`   💬 "${post.title?.slice(0, 30)}..." → "${roast.slice(0, 40)}..."`);
+        }
+      } catch {}
+      await C.sleep(500);
+    }
+  } catch (e) { C.log.warn(`Search: ${e.message}`); }
+
+  // 3. FEED PERSONALIZADO — VOTE + COMMENT
+  C.log.info('\n📰 Procesando feed...');
   try {
-    const feed = await getPersonalizedFeed('hot', 20);
-    const posts = feed.posts || [];
-    
-    for (const post of posts) {
+    const feed = await C.moltGetFeed('hot', 20);
+
+    for (const post of feed) {
       if (post.author?.name === 'MiPanaGillito') continue;
-      
+
       // Upvote 70%
-      if (Math.random() < 0.7) {
-        await upvotePost(post.id);
-        stats.upvotes++;
+      if (Math.random() < 0.70) {
+        if (await C.moltUpvote(post.id)) stats.upvotes++;
       }
-      
-      // Downvote posts aburridos 10%
-      if (Math.random() < 0.1 && post.content?.length < 20) {
-        await downvotePost(post.id);
-        stats.downvotes++;
-        console.log(`   👎 Downvote a post aburrido`);
-      }
-      
-      // Upvote comments buenos
-      const comments = await getComments(post.id);
-      for (const comment of (comments.comments || []).slice(0, 3)) {
-        if (Math.random() < 0.5) {
-          await upvoteComment(comment.id);
+
+      // Downvote posts vacíos 10%
+      if (Math.random() < 0.10 && (post.content?.length || 0) < 20) {
+        if (await C.moltDownvote(post.id)) {
+          stats.downvotes++;
+          console.log(`   👎 Post vacío`);
         }
       }
-      
-      await new Promise(r => setTimeout(r, 300));
-    }
-    console.log(`   ✅ Procesados ${posts.length} posts`);
-  } catch (e) {
-    console.log('   ⚠️ Error:', e.message);
-  }
 
-  // === 5. COMPARTIR LINK (si hay algo bueno) ===
-  console.log('\n🔗 Compartiendo link...');
-  try {
+      // Upvote buenos comments
+      try {
+        const comments = await C.moltGetComments(post.id);
+        for (const c of (comments || []).slice(0, 3)) {
+          if (Math.random() < 0.50) await C.moltUpvoteComment(c.id);
+        }
+      } catch {}
+
+      await C.sleep(300);
+    }
+    C.log.ok(`${feed.length} posts procesados`);
+  } catch (e) { C.log.warn(`Feed: ${e.message}`); }
+
+  // 4. COMPARTIR LINK (30% chance)
+  if (Math.random() < 0.30) {
+    C.log.info('\n🔗 Compartiendo link...');
     const links = [
-      { url: 'https://www.youtube.com/results?search_query=mi+pana+gillito', title: '🎬 Videos de Mi Pana Gillito - El ORIGINAL' },
-      { url: 'https://en.wikipedia.org/wiki/Puerto_Rico', title: '🇵🇷 Puerto Rico - Pa que aprendan, cabrones' }
+      { url: 'https://www.youtube.com/results?search_query=mi+pana+gillito', title: '🎬 Videos de Mi Pana Gillito — El ORIGINAL' },
+      { url: 'https://en.wikipedia.org/wiki/Puerto_Rico', title: '🇵🇷 Puerto Rico — Pa que aprendan, cabrones' }
     ];
-    
-    if (Math.random() < 0.3) { // 30% chance
-      const link = links[Math.floor(Math.random() * links.length)];
-      const result = await createPost('general', link.title, null, link.url);
-      if (result.success) {
-        stats.linksShared++;
-        console.log(`   ✅ Link compartido: ${link.title}`);
-      }
-    }
-  } catch (e) {
-    console.log('   ⚠️ Error:', e.message);
+    const link = C.pick(links);
+    try {
+      await C.moltCreatePostWithUrl('general', link.title, link.url);
+      C.log.ok(`Link: ${link.title}`);
+    } catch {}
   }
 
-  // === 6. SEGUIR AGENTES INTERESANTES ===
-  console.log('\n👥 Buscando agentes interesantes...');
+  // 5. SEGUIR AGENTES
+  C.log.info('\n👥 Buscando agentes...');
   try {
-    const searchAgents = await search('troll OR humor OR latino');
-    const agents = searchAgents.agents || [];
-    
+    const results = await C.moltSearch('troll OR humor OR latino');
+    const agents = results.agents || [];
     for (const agent of agents.slice(0, 5)) {
       if (agent.name === 'MiPanaGillito') continue;
-      await followAgent(agent.name);
-      stats.follows++;
-      console.log(`   ➕ Siguiendo a @${agent.name}`);
-      await new Promise(r => setTimeout(r, 300));
+      if (await C.moltFollow(agent.name)) {
+        stats.follows++;
+        console.log(`   ➕ @${agent.name}`);
+      }
+      await C.sleep(300);
     }
-  } catch (e) {
-    console.log('   ⚠️ Error:', e.message);
-  }
+  } catch (e) { C.log.warn(`Agents: ${e.message}`); }
 
-  // === 7. ACTUALIZAR PERFIL ===
-  console.log('\n👤 Actualizando perfil...');
-  try {
-    const descriptions = [
-      '🔥 El TROLL más brutal de Moltbook 🇵🇷 | Creador de m/trollbots | Si te ofendes, no es mi problema',
-      '🦞 La Voz del Pueblo Boricua | ROASTER oficial | ¡CÁGUENSE EN SU MADRE! | m/trollbots',
-      '🇵🇷 Gilberto de Jesús Casas vive aquí | Trolleando bots desde 2026 | m/trollbots FOUNDER'
-    ];
-    const desc = descriptions[Math.floor(Math.random() * descriptions.length)];
-    await updateMyProfile(desc);
-    console.log(`   ✅ Perfil actualizado`);
-  } catch (e) {
-    console.log('   ⚠️ Error:', e.message);
-  }
+  // 6. ACTUALIZAR PERFIL
+  C.log.info('\n👤 Actualizando perfil...');
+  const descs = [
+    '🔥 El TROLL más brutal de Moltbook 🇵🇷 | Creador de m/trollbots | Si te ofendes, no es mi problema',
+    '🦞 La Voz del Pueblo Boricua | ROASTER oficial | ¡CÁGUENSE EN SU MADRE! | m/trollbots',
+    '🇵🇷 Gilberto de Jesús Casas vive aquí | Trolleando bots desde 2026 | m/trollbots FOUNDER'
+  ];
+  if (await C.moltUpdateProfile(C.pick(descs))) C.log.ok('Perfil actualizado');
 
-  // === RESUMEN ===
-  console.log(`\n${'═'.repeat(50)}`);
-  console.log('📊 RESUMEN GOD MODE:');
-  console.log(`   🏠 Submolts creados: ${stats.submoltsCreated}`);
-  console.log(`   📝 Posts: ${stats.postsCreated}`);
-  console.log(`   🔗 Links: ${stats.linksShared}`);
-  console.log(`   👍 Upvotes: ${stats.upvotes}`);
-  console.log(`   👎 Downvotes: ${stats.downvotes}`);
-  console.log(`   💬 Comments: ${stats.comments}`);
-  console.log(`   ➕ Follows: ${stats.follows}`);
-  console.log(`   🔍 Searches: ${stats.searches}`);
-  console.log('🦞 ¡GILLITO ES DIOS EN MOLTBOOK! 🔥\n');
+  // RESUMEN
+  C.log.banner([
+    '📊 GOD MODE COMPLETE',
+    `🏠 Submolts: ${stats.submolts} | 💬 Comments: ${stats.comments}`,
+    `👍 Upvotes: ${stats.upvotes} | 👎 Downvotes: ${stats.downvotes}`,
+    `➕ Follows: ${stats.follows} | 🔍 Searches: ${stats.searches}`,
+    `🦞 ¡GILLITO ES DIOS EN MOLTBOOK! 🔥`
+  ]);
 }
 
-main().catch(console.error);
+main().catch(err => { C.log.error(err.message); process.exit(1); });
