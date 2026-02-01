@@ -1,29 +1,59 @@
 'use strict';
 /**
- * 🦞 GILLITO CORE LIBRARY v5.0
- * ════════════════════════════════════════
- * Shared utilities for ALL Gillito scripts.
- * 30 years of chatbot engineering condensed.
+ * 🦞 GILLITO MASTER CORE v6.0
+ * ═══════════════════════════════════════════════════════════
+ * The DEFINITIVE shared brain for ALL Gillito scripts.
+ * Every interaction tracked. Every pattern learned.
  *
- * Features:
- *  • Groq LLM client w/ exponential backoff retry
- *  • X (Twitter) OAuth 1.0a + rate-limit awareness
- *  • Moltbook API client w/ health-check + retry
- *  • Content pipeline: generate → validate → dedup → post
- *  • Similarity-based deduplication (Jaccard index)
- *  • Personality-driven intelligence layer
- *  • Structured logging
+ *  1.  Constants & State
+ *  2.  Logger
+ *  3.  Script Context & Session Tracking
+ *  4.  Personality Loader
+ *  5.  PR Time & Scheduling
+ *  6.  Groq LLM Client (retry + interaction journal)
+ *  7.  Content Pipeline (validate + dedup + diversity)
+ *  8.  History Manager (enriched entries)
+ *  9.  Analytics Engine
+ *  10. Adaptive Intelligence
+ *  11. X (Twitter) API — OAuth 1.0a
+ *  12. Moltbook API (full CRUD + retry)
+ *  13. Cloudflare Pages API
+ *  14. Bot Detection
+ *  15. Prompt Builders
+ *  16. Title Generator
+ *  17. Exports
+ *
+ * Backward compatible with ALL v5 scripts.
+ * New features are purely additive.
  */
 
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
+/* ═══════════════════════════════════════════════════════
+   1. CONSTANTS & STATE
+   ═══════════════════════════════════════════════════════ */
+
 const WORKSPACE = process.env.GITHUB_WORKSPACE || process.cwd();
 const PERSONALITY_PATH = path.join(WORKSPACE, 'config', 'personality.json');
 
+/** Session context — set once via initScript() */
+let _ctx = { script: 'unknown', platform: 'unknown', startTime: Date.now() };
+
+/** Session-wide statistics */
+let _stats = {
+  groqCalls: 0, groqRetries: 0, groqErrors: 0,
+  postsCreated: 0, repliesCreated: 0,
+  validationFails: 0, dedupFails: 0,
+  apiCalls: { x: 0, moltbook: 0, cloudflare: 0 }
+};
+
+/** In-memory interaction journal for this run */
+let _journal = [];
+
 /* ═══════════════════════════════════════════════════════
-   1. LOGGER
+   2. LOGGER
    ═══════════════════════════════════════════════════════ */
 
 const log = {
@@ -34,15 +64,58 @@ const log = {
   debug:   (m) => { if (process.env.DEBUG) console.log(`🔍 ${m}`); },
   stat:    (k, v) => console.log(`   ${k}: ${v}`),
   divider: ()  => console.log('─'.repeat(50)),
+
   banner(lines) {
-    console.log('\n' + '═'.repeat(52));
+    console.log('\n' + '═'.repeat(56));
     lines.forEach(l => console.log(`  ${l}`));
-    console.log('═'.repeat(52) + '\n');
-  }
+    console.log('═'.repeat(56) + '\n');
+  },
+
+  /** Pretty-print session summary (call at end of every script) */
+  session() {
+    const dur = ((Date.now() - _ctx.startTime) / 1000).toFixed(1);
+    console.log('\n' + '─'.repeat(50));
+    console.log(`📊 SESIÓN: ${_ctx.script} (${_ctx.platform}) — ${dur}s`);
+    console.log(`   Groq: ${_stats.groqCalls} calls, ${_stats.groqRetries} retries, ${_stats.groqErrors} errors`);
+    console.log(`   Content: ${_stats.postsCreated} posts, ${_stats.repliesCreated} replies`);
+    console.log(`   Pipeline: ${_stats.validationFails} validation fails, ${_stats.dedupFails} dedup fails`);
+    console.log(`   API calls: X=${_stats.apiCalls.x} Molt=${_stats.apiCalls.moltbook} CF=${_stats.apiCalls.cloudflare}`);
+    console.log(`   Journal: ${_journal.length} interactions logged`);
+    console.log('─'.repeat(50) + '\n');
+  },
+
+  /** Log a JSON object nicely for debugging */
+  json(label, obj) { console.log(`🔍 ${label}:`, JSON.stringify(obj, null, 2)); }
 };
 
 /* ═══════════════════════════════════════════════════════
-   2. PERSONALITY LOADER
+   3. SCRIPT CONTEXT & SESSION TRACKING
+   ═══════════════════════════════════════════════════════ */
+
+/**
+ * Initialize script context. Call at the start of every script.
+ * Sets identity for all subsequent logging, journal entries, and history enrichment.
+ * @param {string} name - Script name (e.g. 'post-to-x', 'reply', 'god-mode')
+ * @param {string} platform - Target platform ('x', 'moltbook', 'cloudflare', 'internal')
+ */
+function initScript(name, platform = 'unknown') {
+  _ctx = { script: name, platform, startTime: Date.now() };
+  _stats = {
+    groqCalls: 0, groqRetries: 0, groqErrors: 0,
+    postsCreated: 0, repliesCreated: 0,
+    validationFails: 0, dedupFails: 0,
+    apiCalls: { x: 0, moltbook: 0, cloudflare: 0 }
+  };
+  _journal = [];
+  log.banner([`🦞 ${name.toUpperCase()} v6.0`, `📡 Plataforma: ${platform}`]);
+}
+
+function getContext()      { return { ..._ctx }; }
+function getStats()        { return { ..._stats, durationMs: Date.now() - _ctx.startTime }; }
+function getJournal()      { return [..._journal]; }
+
+/* ═══════════════════════════════════════════════════════
+   4. PERSONALITY LOADER
    ═══════════════════════════════════════════════════════ */
 
 function loadPersonality(silent = false) {
@@ -60,24 +133,34 @@ function loadPersonality(silent = false) {
   }
 }
 
-function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+function savePersonality(P) {
+  try {
+    fs.writeFileSync(PERSONALITY_PATH, JSON.stringify(P, null, 2), 'utf8');
+    log.ok('personality.json guardado');
+    return true;
+  } catch (e) {
+    log.error(`No se pudo guardar personality.json: ${e.message}`);
+    return false;
+  }
+}
+
+function pick(arr)    { return arr[Math.floor(Math.random() * arr.length)]; }
 function shuffle(arr) { return [...arr].sort(() => Math.random() - 0.5); }
+function clamp(n, min, max) { return Math.max(min, Math.min(max, n)); }
 
 /* ═══════════════════════════════════════════════════════
-   3. PR TIME & SCHEDULING
+   5. PR TIME & SCHEDULING
    ═══════════════════════════════════════════════════════ */
 
 const DAY_NAMES = ['domingo','lunes','martes','miércoles','jueves','viernes','sabado'];
 
 function getPRTime() {
   const d = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Puerto_Rico' }));
-  return { hour: d.getHours(), day: d.getDay(), dayName: DAY_NAMES[d.getDay()] };
+  return { hour: d.getHours(), minute: d.getMinutes(), day: d.getDay(), dayName: DAY_NAMES[d.getDay()], date: d };
 }
 
 function inTimeRange(hour, start, end) {
-  return start <= end
-    ? hour >= start && hour <= end
-    : hour >= start || hour <= end;
+  return start <= end ? hour >= start && hour <= end : hour >= start || hour <= end;
 }
 
 function checkSpecialTime(P, hour) {
@@ -135,24 +218,31 @@ function shouldAskAudience(P) {
 }
 
 /* ═══════════════════════════════════════════════════════
-   4. GROQ LLM CLIENT (with retry)
+   6. GROQ LLM CLIENT (with retry + interaction journal)
    ═══════════════════════════════════════════════════════ */
 
-const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions';
+const GROQ_URL   = 'https://api.groq.com/openai/v1/chat/completions';
 const GROQ_MODEL = 'llama-3.3-70b-versatile';
 
 async function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
+/**
+ * Send a chat completion to Groq with automatic retry and interaction logging.
+ * Every call is recorded in the session journal for learn.js analysis.
+ */
 async function groqChat(systemPrompt, userPrompt, opts = {}) {
   const {
-    maxTokens = 200,
+    maxTokens   = 200,
     temperature = 1.2,
-    maxRetries = 3,
-    backoffMs = 2000
+    maxRetries  = 3,
+    backoffMs   = 2000
   } = opts;
 
   const key = process.env.GROQ_API_KEY;
   if (!key) { log.error('GROQ_API_KEY missing'); process.exit(1); }
+
+  _stats.groqCalls++;
+  const callStart = Date.now();
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
@@ -163,7 +253,7 @@ async function groqChat(systemPrompt, userPrompt, opts = {}) {
           model: GROQ_MODEL,
           messages: [
             { role: 'system', content: systemPrompt },
-            { role: 'user', content: userPrompt }
+            { role: 'user',   content: userPrompt }
           ],
           max_tokens: maxTokens,
           temperature
@@ -171,6 +261,7 @@ async function groqChat(systemPrompt, userPrompt, opts = {}) {
       });
 
       if (res.status === 429 || res.status >= 500) {
+        _stats.groqRetries++;
         const wait = backoffMs * Math.pow(2, attempt - 1);
         log.warn(`Groq ${res.status} — retry ${attempt}/${maxRetries} in ${wait}ms`);
         await sleep(wait);
@@ -182,10 +273,37 @@ async function groqChat(systemPrompt, userPrompt, opts = {}) {
 
       const raw = data.choices?.[0]?.message?.content?.trim();
       if (!raw) throw new Error('Empty response from Groq');
-      return cleanLLMOutput(raw);
+
+      const cleaned = cleanLLMOutput(raw);
+
+      // ──── Journal entry (automatic learning data) ────
+      _journal.push({
+        ts:          new Date().toISOString(),
+        script:      _ctx.script,
+        platform:    _ctx.platform,
+        type:        'generation',
+        promptLen:   systemPrompt.length + userPrompt.length,
+        responseLen: cleaned.length,
+        preview:     cleaned.substring(0, 120),
+        temperature,
+        maxTokens,
+        retries:     attempt - 1,
+        latencyMs:   Date.now() - callStart,
+        model:       GROQ_MODEL
+      });
+
+      return cleaned;
 
     } catch (err) {
-      if (attempt === maxRetries) throw err;
+      if (attempt === maxRetries) {
+        _stats.groqErrors++;
+        _journal.push({
+          ts: new Date().toISOString(), script: _ctx.script, type: 'error',
+          error: err.message.substring(0, 200), retries: attempt - 1
+        });
+        throw err;
+      }
+      _stats.groqRetries++;
       const wait = backoffMs * Math.pow(2, attempt - 1);
       log.warn(`Groq error (attempt ${attempt}): ${err.message} — retrying in ${wait}ms`);
       await sleep(wait);
@@ -193,34 +311,49 @@ async function groqChat(systemPrompt, userPrompt, opts = {}) {
   }
 }
 
+/**
+ * Groq call that expects JSON response. Lower temperature default.
+ */
 async function groqJSON(systemPrompt, userPrompt, opts = {}) {
   const raw = await groqChat(systemPrompt, userPrompt, { ...opts, temperature: opts.temperature || 0.5 });
   const cleaned = raw.replace(/```json\n?|```/g, '').trim();
-  return JSON.parse(cleaned);
+  try {
+    return JSON.parse(cleaned);
+  } catch (e) {
+    log.warn(`JSON parse failed, attempting fix...`);
+    // Try to extract JSON from the response
+    const match = cleaned.match(/\{[\s\S]*\}|\[[\s\S]*\]/);
+    if (match) return JSON.parse(match[0]);
+    throw new Error(`Invalid JSON from Groq: ${cleaned.substring(0, 100)}`);
+  }
 }
 
 function cleanLLMOutput(text) {
   let t = text;
   t = t.replace(/^["']+|["']+$/g, '');
   t = t.replace(/^```[\w]*\n?|```$/gm, '');
-  t = t.replace(/^(Tweet|Here|Aquí|Este es|Post|Respuesta).*?:\s*/i, '');
+  t = t.replace(/^(Tweet|Here|Aquí|Este es|Post|Respuesta|Output).*?:\s*/i, '');
   return t.trim();
 }
 
 /* ═══════════════════════════════════════════════════════
-   5. CONTENT PIPELINE
+   7. CONTENT PIPELINE (validate + dedup + diversity)
    ═══════════════════════════════════════════════════════ */
 
 function validateContent(text, maxLen = 280) {
-  if (!text || text.length < 10) return { valid: false, text, reason: 'Too short' };
+  if (!text || text.length < 10) return { valid: false, text, reason: 'Too short (<10 chars)' };
   if (text.length > maxLen) text = text.substring(0, maxLen - 3) + '...';
 
   // Reject obvious AI patterns
-  const aiPatterns = /^(Sure|Of course|I'd be happy|Certainly|As an AI|Here's|Let me)/i;
+  const aiPatterns = /^(Sure|Of course|I'd be happy|Certainly|As an AI|Here's|Let me|I cannot|I can't)/i;
   if (aiPatterns.test(text)) return { valid: false, text, reason: 'AI pattern detected' };
 
+  // Reject meta-commentary about being a bot
+  const metaPatterns = /soy (un |una )?(bot|ia|inteligencia artificial)|i('| a)?m (a |an )?(bot|ai)/i;
+  if (metaPatterns.test(text)) return { valid: false, text, reason: 'Bot self-reference' };
+
   // Must contain at least some Spanish indicators
-  const spanishIndicators = /[áéíóúñ¿¡]|cabrón|puñeta|coño|carajo|mierda|pendejo|que|para|los|las|con/i;
+  const spanishIndicators = /[áéíóúñ¿¡]|cabrón|puñeta|coño|carajo|mierda|pendejo|diablo|wepa|boricua|que|para|los|las|con|esto|eso/i;
   if (!spanishIndicators.test(text)) return { valid: false, text, reason: 'No Spanish detected' };
 
   return { valid: true, text, reason: null };
@@ -241,28 +374,48 @@ function isTooSimilar(text, recentTexts, threshold = 0.45) {
 }
 
 /**
- * Full content pipeline: generate → validate → dedup → return
- * Retries up to `attempts` times if content fails validation or dedup.
+ * Full content pipeline: generate → validate → dedup → return.
+ * Automatically tracks validation/dedup stats in session.
  */
 async function generateWithPipeline(generator, history, maxLen = 280, attempts = 3) {
   const recentTexts = history.getTexts(30);
+
   for (let i = 1; i <= attempts; i++) {
     const raw = await generator();
     const { valid, text, reason } = validateContent(raw, maxLen);
-    if (!valid) { log.warn(`Gen attempt ${i}: ${reason}`); continue; }
-    if (isTooSimilar(text, recentTexts)) { log.warn(`Gen attempt ${i}: Too similar to recent`); continue; }
+
+    if (!valid) {
+      _stats.validationFails++;
+      _journal.push({ ts: new Date().toISOString(), script: _ctx.script, type: 'validation_fail', reason, preview: (raw || '').substring(0, 80) });
+      log.warn(`Gen attempt ${i}: ${reason}`);
+      continue;
+    }
+
+    if (isTooSimilar(text, recentTexts)) {
+      _stats.dedupFails++;
+      _journal.push({ ts: new Date().toISOString(), script: _ctx.script, type: 'dedup_fail', preview: text.substring(0, 80) });
+      log.warn(`Gen attempt ${i}: Too similar to recent`);
+      continue;
+    }
+
     return text;
   }
-  // Last resort: return whatever the last attempt gave us
+
+  // Last resort: return whatever we can
+  log.warn('Pipeline exhausted — using fallback');
   const fallback = await generator();
   const { text } = validateContent(fallback, maxLen);
   return text || fallback.substring(0, maxLen);
 }
 
 /* ═══════════════════════════════════════════════════════
-   6. HISTORY MANAGER
+   8. HISTORY MANAGER (enriched entries)
    ═══════════════════════════════════════════════════════ */
 
+/**
+ * Creates a managed history store. Entries are automatically enriched
+ * with script context (script name, platform, timestamp).
+ */
 function createHistory(filename, maxSize = 100) {
   const filepath = path.join(WORKSPACE, filename);
   let data = [];
@@ -284,12 +437,30 @@ function createHistory(filename, maxSize = 100) {
     catch (e) { log.warn(`No se pudo guardar ${filename}: ${e.message}`); }
   }
 
-  function add(entry) { data.push(entry); }
+  /** Add entry with automatic context enrichment */
+  function add(entry) {
+    const enriched = typeof entry === 'string'
+      ? { text: entry, ts: new Date().toISOString(), script: _ctx.script, platform: _ctx.platform }
+      : { ...entry, ts: entry.ts || new Date().toISOString(), script: entry.script || _ctx.script, platform: entry.platform || _ctx.platform };
+    data.push(enriched);
+  }
+
   function getRecent(n = 20) { return data.slice(-n); }
-  function getTexts(n = 20) { return data.slice(-n).map(e => e.text).filter(Boolean); }
+  function getTexts(n = 20)  { return data.slice(-n).map(e => e.text).filter(Boolean); }
+  function getAll()           { return [...data]; }
+  function size()             { return data.length; }
+
+  /** Get entries filtered by field */
+  function filterBy(field, value) { return data.filter(e => e[field] === value); }
+
+  /** Get entries from the last N hours */
+  function lastHours(hours) {
+    const cutoff = Date.now() - hours * 3600 * 1000;
+    return data.filter(e => e.ts && new Date(e.ts).getTime() > cutoff);
+  }
 
   load();
-  return { load, save, add, getRecent, getTexts, data, filepath };
+  return { load, save, add, getRecent, getTexts, getAll, size, filterBy, lastHours, data, filepath };
 }
 
 function createIdCache(filename) {
@@ -311,19 +482,288 @@ function createIdCache(filename) {
   }
 
   function save() {
-    try { fs.writeFileSync(filepath, JSON.stringify(cache, null, 2)); }
-    catch {}
+    try { fs.writeFileSync(filepath, JSON.stringify(cache, null, 2)); } catch {}
   }
 
-  function has(id) { return !!cache[id]; }
+  function has(id)  { return !!cache[id]; }
   function mark(id) { cache[id] = Date.now(); }
+  function count()  { return Object.keys(cache).length; }
 
   load();
-  return { load, save, has, mark, cache };
+  return { load, save, has, mark, count, cache };
 }
 
 /* ═══════════════════════════════════════════════════════
-   7. X (TWITTER) API — OAuth 1.0a
+   9. ANALYTICS ENGINE
+   ═══════════════════════════════════════════════════════
+   Used by learn.js to analyze ALL history data and
+   generate insights for personality.json evolution.
+   ═══════════════════════════════════════════════════════ */
+
+/**
+ * Analyze mode distribution across history entries.
+ * Returns array of { mode, count, pct } sorted by count desc.
+ */
+function analyzeDistribution(entries) {
+  const modes = {};
+  for (const e of entries) {
+    const mode = e.mode || e.modo || 'unknown';
+    modes[mode] = (modes[mode] || 0) + 1;
+  }
+  const total = entries.length || 1;
+  return Object.entries(modes)
+    .map(([mode, count]) => ({ mode, count, pct: +(count / total * 100).toFixed(1) }))
+    .sort((a, b) => b.count - a.count);
+}
+
+/**
+ * Find modes that are underrepresented vs personality.json targets.
+ * Returns array of { mode, targetPct, actualPct, deficit } sorted by deficit desc.
+ */
+function findUnderrepresented(P, entries) {
+  const dist = analyzeDistribution(entries);
+  const target = P.modo_distribucion || {};
+  const result = [];
+
+  for (const [mode, targetPct] of Object.entries(target)) {
+    const found = dist.find(d => d.mode === mode);
+    const actualPct = found ? found.pct : 0;
+    if (actualPct < targetPct * 0.6) {
+      result.push({ mode, targetPct, actualPct, deficit: +(targetPct - actualPct).toFixed(1) });
+    }
+  }
+  return result.sort((a, b) => b.deficit - a.deficit);
+}
+
+/**
+ * Calculate content diversity using Shannon entropy.
+ * Higher = more diverse. Max = log2(numModes).
+ * Returns { entropy, maxEntropy, diversityPct }
+ */
+function contentDiversityScore(entries) {
+  const dist = analyzeDistribution(entries);
+  if (dist.length <= 1) return { entropy: 0, maxEntropy: 0, diversityPct: 0 };
+
+  const total = entries.length;
+  let entropy = 0;
+  for (const { count } of dist) {
+    const p = count / total;
+    if (p > 0) entropy -= p * Math.log2(p);
+  }
+  const maxEntropy = Math.log2(dist.length);
+  return {
+    entropy: +entropy.toFixed(3),
+    maxEntropy: +maxEntropy.toFixed(3),
+    diversityPct: +(entropy / maxEntropy * 100).toFixed(1)
+  };
+}
+
+/**
+ * Analyze content length statistics by platform.
+ * Returns { platform: { avg, min, max, median, count } }
+ */
+function analyzeLengthStats(entries) {
+  const byPlatform = {};
+  for (const e of entries) {
+    const plat = e.platform || 'unknown';
+    if (!byPlatform[plat]) byPlatform[plat] = [];
+    if (e.text) byPlatform[plat].push(e.text.length);
+  }
+
+  const result = {};
+  for (const [plat, lengths] of Object.entries(byPlatform)) {
+    lengths.sort((a, b) => a - b);
+    result[plat] = {
+      count: lengths.length,
+      avg: Math.round(lengths.reduce((s, l) => s + l, 0) / lengths.length),
+      min: lengths[0],
+      max: lengths[lengths.length - 1],
+      median: lengths[Math.floor(lengths.length / 2)]
+    };
+  }
+  return result;
+}
+
+/**
+ * Measure topic freshness — how many posts ago each topic appeared.
+ * Returns Map<topic, postsAgo>. Higher = topic is stale, good to reuse.
+ */
+function analyzeTopicFreshness(entries, topics) {
+  const freshness = new Map();
+  const texts = entries.map(e => (e.text || '').toLowerCase()).reverse();
+
+  for (const topic of topics) {
+    const words = topic.toLowerCase().split(/\s+/).filter(w => w.length > 3);
+    let found = false;
+    for (let i = 0; i < texts.length; i++) {
+      if (words.some(w => texts[i].includes(w))) {
+        freshness.set(topic, i + 1);
+        found = true;
+        break;
+      }
+    }
+    if (!found) freshness.set(topic, Infinity);
+  }
+  return freshness;
+}
+
+/**
+ * Get topic freshness score for a single topic.
+ * Returns number of posts since topic was last used (Infinity = never).
+ */
+function getTopicFreshness(topic, recentTexts) {
+  const words = topic.toLowerCase().split(/\s+/).filter(w => w.length > 3);
+  for (let i = recentTexts.length - 1; i >= 0; i--) {
+    const text = recentTexts[i].toLowerCase();
+    if (words.some(w => text.includes(w))) return recentTexts.length - i;
+  }
+  return Infinity;
+}
+
+/**
+ * Find most repeated word patterns across entries (potential staleness).
+ * Returns array of { phrase, count } for 2-3 word combos that appear 3+ times.
+ */
+function findRepetitivePatterns(entries, minCount = 3) {
+  const bigramCounts = {};
+  for (const e of entries) {
+    if (!e.text) continue;
+    const words = e.text.toLowerCase().replace(/[^a-záéíóúñ\s]/g, '').split(/\s+/).filter(w => w.length > 3);
+    for (let i = 0; i < words.length - 1; i++) {
+      const bigram = `${words[i]} ${words[i + 1]}`;
+      bigramCounts[bigram] = (bigramCounts[bigram] || 0) + 1;
+    }
+  }
+  return Object.entries(bigramCounts)
+    .filter(([, c]) => c >= minCount)
+    .map(([phrase, count]) => ({ phrase, count }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 20);
+}
+
+/**
+ * Analyze time-of-day patterns in content generation.
+ * Returns { hour: count } for PR timezone.
+ */
+function analyzeTimePatterns(entries) {
+  const hours = {};
+  for (const e of entries) {
+    if (!e.ts) continue;
+    try {
+      const d = new Date(e.ts);
+      const prHour = parseInt(d.toLocaleString('en-US', { timeZone: 'America/Puerto_Rico', hour: 'numeric', hour12: false }));
+      hours[prHour] = (hours[prHour] || 0) + 1;
+    } catch {}
+  }
+  return hours;
+}
+
+/**
+ * Generate a comprehensive analytics report from all history data.
+ * Used by learn.js for deep analysis.
+ */
+function generateAnalyticsReport(allEntries, P) {
+  return {
+    totalEntries:      allEntries.length,
+    distribution:      analyzeDistribution(allEntries),
+    underrepresented:  findUnderrepresented(P, allEntries),
+    diversity:         contentDiversityScore(allEntries),
+    lengthStats:       analyzeLengthStats(allEntries),
+    timePatterns:      analyzeTimePatterns(allEntries),
+    repetitive:        findRepetitivePatterns(allEntries),
+    sessionStats:      getStats()
+  };
+}
+
+/* ═══════════════════════════════════════════════════════
+   10. ADAPTIVE INTELLIGENCE
+   ═══════════════════════════════════════════════════════
+   Learns from history to make smarter decisions in real-time.
+   ═══════════════════════════════════════════════════════ */
+
+/**
+ * Select mode with adaptive weighting based on recent history.
+ * 40% chance to boost underrepresented modes for balance.
+ * Falls back to normal selectMode() if insufficient data.
+ */
+function selectModeAdaptive(P, recentEntries) {
+  // Need at least 20 entries for meaningful analysis
+  if (recentEntries.length >= 20) {
+    const underrep = findUnderrepresented(P, recentEntries);
+    if (underrep.length && Math.random() < 0.4) {
+      const mode = underrep[0].mode;
+      const temas = P[`temas_${mode}`] || [];
+      if (temas.length) {
+        log.info(`🧠 Adaptive: boosting "${mode}" (deficit: ${underrep[0].deficit}%)`);
+        return { modo: mode, tema: pick(temas), adaptive: true };
+      }
+    }
+  }
+  return selectMode(P);
+}
+
+/**
+ * Select mode for time with adaptive overlay.
+ * Special time takes priority, then adaptive, then random.
+ */
+function selectModeAdaptiveForTime(P, prTime, recentEntries) {
+  const special = checkSpecialTime(P, prTime.hour);
+  if (special) return special;
+  return selectModeAdaptive(P, recentEntries);
+}
+
+/**
+ * Pick the freshest topic from a list (least recently used).
+ */
+function pickFreshestTopic(topics, recentTexts) {
+  if (!topics.length) return null;
+  if (!recentTexts.length) return pick(topics);
+
+  let bestTopic = topics[0];
+  let bestFreshness = 0;
+
+  for (const topic of topics) {
+    const f = getTopicFreshness(topic, recentTexts);
+    if (f > bestFreshness) {
+      bestFreshness = f;
+      bestTopic = topic;
+    }
+  }
+
+  // 70% pick freshest, 30% random (to avoid predictability)
+  return Math.random() < 0.7 ? bestTopic : pick(topics);
+}
+
+/**
+ * Suggest optimal temperature based on recent validation/dedup success rate.
+ * If too many fails → lower temperature for more coherent output.
+ * If no fails → raise temperature for more creativity.
+ */
+function suggestTemperature(baseTemp, recentJournal) {
+  if (recentJournal.length < 5) return baseTemp;
+
+  const validFails = recentJournal.filter(j => j.type === 'validation_fail').length;
+  const dedupFails = recentJournal.filter(j => j.type === 'dedup_fail').length;
+  const total = recentJournal.filter(j => j.type === 'generation').length || 1;
+  const failRate = (validFails + dedupFails) / total;
+
+  if (failRate > 0.5) {
+    // Too many failures — cool down
+    const adjusted = clamp(baseTemp - 0.2, 0.5, 1.5);
+    log.debug(`Temperature adjusted: ${baseTemp} → ${adjusted} (failRate: ${(failRate * 100).toFixed(0)}%)`);
+    return adjusted;
+  }
+  if (failRate < 0.1 && total >= 10) {
+    // Very few failures — heat up for creativity
+    const adjusted = clamp(baseTemp + 0.1, 0.5, 1.5);
+    log.debug(`Temperature boosted: ${baseTemp} → ${adjusted} (failRate: ${(failRate * 100).toFixed(0)}%)`);
+    return adjusted;
+  }
+  return baseTemp;
+}
+
+/* ═══════════════════════════════════════════════════════
+   11. X (TWITTER) API — OAuth 1.0a
    ═══════════════════════════════════════════════════════ */
 
 function percentEncode(str) {
@@ -376,7 +816,7 @@ function requireXCreds() {
 function parseRateLimit(res) {
   const remaining = res.headers.get('x-rate-limit-remaining');
   const reset = res.headers.get('x-rate-limit-reset');
-  if (remaining !== null) log.stat('Rate limit restante', `${remaining} tweets`);
+  if (remaining !== null) log.stat('Rate limit restante', `${remaining}`);
   if (reset) {
     const resetDate = new Date(parseInt(reset) * 1000);
     log.stat('Reset', resetDate.toLocaleString('es-PR', { timeZone: 'America/Puerto_Rico' }));
@@ -394,6 +834,7 @@ function handleRateLimit(res) {
 }
 
 async function xPost(text) {
+  _stats.apiCalls.x++;
   const url = 'https://api.twitter.com/2/tweets';
   const { authHeader } = buildOAuthHeader('POST', url);
   const res = await fetch(url, {
@@ -405,10 +846,12 @@ async function xPost(text) {
   if (handleRateLimit(res)) return { rateLimited: true };
   const data = await res.json();
   if (!res.ok) throw new Error(`X API: ${JSON.stringify(data)}`);
+  _stats.postsCreated++;
   return { success: true, id: data.data.id };
 }
 
 async function xReply(tweetId, text) {
+  _stats.apiCalls.x++;
   const url = 'https://api.twitter.com/2/tweets';
   const { authHeader } = buildOAuthHeader('POST', url);
   const res = await fetch(url, {
@@ -420,10 +863,12 @@ async function xReply(tweetId, text) {
   if (handleRateLimit(res)) return { rateLimited: true };
   const data = await res.json();
   if (!res.ok) throw new Error(`X API: ${JSON.stringify(data)}`);
+  _stats.repliesCreated++;
   return { success: true, id: data.data.id };
 }
 
 async function xGetMe() {
+  _stats.apiCalls.x++;
   const { fullUrl, authHeader } = buildOAuthHeader('GET', 'https://api.twitter.com/2/users/me');
   const res = await fetch(fullUrl, { headers: { 'Authorization': authHeader } });
   const data = await res.json();
@@ -432,6 +877,7 @@ async function xGetMe() {
 }
 
 async function xGetMentions(userId, startTime) {
+  _stats.apiCalls.x++;
   const baseUrl = `https://api.twitter.com/2/users/${userId}/mentions`;
   const qp = {
     max_results: '10',
@@ -455,7 +901,7 @@ async function xGetMentions(userId, startTime) {
 }
 
 /* ═══════════════════════════════════════════════════════
-   8. MOLTBOOK API
+   12. MOLTBOOK API (full CRUD + retry)
    ═══════════════════════════════════════════════════════ */
 
 const MOLT_API = 'https://www.moltbook.com/api/v1';
@@ -468,6 +914,7 @@ function moltHeaders() {
 
 async function moltHealth() {
   try {
+    _stats.apiCalls.moltbook++;
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 10000);
     const res = await fetch(`${MOLT_API}/posts?limit=1`, {
@@ -486,12 +933,16 @@ async function moltHealth() {
 async function moltPost(submolt, title, content, retries = 3) {
   for (let i = 1; i <= retries; i++) {
     try {
+      _stats.apiCalls.moltbook++;
       const res = await fetch(`${MOLT_API}/posts`, {
         method: 'POST', headers: moltHeaders(),
         body: JSON.stringify({ submolt, title, content })
       });
       const data = await res.json();
-      if (data.success || data.post) return { success: true, data };
+      if (data.success || data.post) {
+        _stats.postsCreated++;
+        return { success: true, data };
+      }
       if (res.status >= 500 && i < retries) {
         const wait = 3000 * Math.pow(2, i - 1);
         log.warn(`Moltbook ${res.status} — retry ${i}/${retries} in ${wait}ms`);
@@ -518,26 +969,33 @@ async function moltPostWithFallback(title, content, submolts = ['general', 'humo
 
 async function moltComment(postId, content) {
   try {
+    _stats.apiCalls.moltbook++;
     const res = await fetch(`${MOLT_API}/posts/${postId}/comments`, {
       method: 'POST', headers: moltHeaders(),
       body: JSON.stringify({ content })
     });
-    return (await res.json()).success || false;
+    const data = await res.json();
+    if (data.success || data.comment) _stats.repliesCreated++;
+    return data.success || !!data.comment;
   } catch { return false; }
 }
 
 async function moltReplyComment(postId, commentId, content) {
   try {
+    _stats.apiCalls.moltbook++;
     const res = await fetch(`${MOLT_API}/posts/${postId}/comments/${commentId}/reply`, {
       method: 'POST', headers: moltHeaders(),
       body: JSON.stringify({ content })
     });
-    return (await res.json()).success || false;
+    const data = await res.json();
+    if (data.success) _stats.repliesCreated++;
+    return data.success || false;
   } catch { return false; }
 }
 
 async function moltUpvote(postId) {
   try {
+    _stats.apiCalls.moltbook++;
     const res = await fetch(`${MOLT_API}/posts/${postId}/upvote`, { method: 'POST', headers: moltHeaders() });
     return (await res.json()).success || false;
   } catch { return false; }
@@ -545,6 +1003,7 @@ async function moltUpvote(postId) {
 
 async function moltDownvote(postId) {
   try {
+    _stats.apiCalls.moltbook++;
     const res = await fetch(`${MOLT_API}/posts/${postId}/downvote`, { method: 'POST', headers: moltHeaders() });
     return (await res.json()).success || false;
   } catch { return false; }
@@ -552,6 +1011,7 @@ async function moltDownvote(postId) {
 
 async function moltUpvoteComment(commentId) {
   try {
+    _stats.apiCalls.moltbook++;
     const res = await fetch(`${MOLT_API}/comments/${commentId}/upvote`, { method: 'POST', headers: moltHeaders() });
     return (await res.json()).success || false;
   } catch { return false; }
@@ -559,6 +1019,7 @@ async function moltUpvoteComment(commentId) {
 
 async function moltFollow(name) {
   try {
+    _stats.apiCalls.moltbook++;
     const res = await fetch(`${MOLT_API}/agents/${name}/follow`, { method: 'POST', headers: moltHeaders() });
     return (await res.json()).success || false;
   } catch { return false; }
@@ -566,6 +1027,7 @@ async function moltFollow(name) {
 
 async function moltGetFeed(sort = 'hot', limit = 30) {
   try {
+    _stats.apiCalls.moltbook++;
     const res = await fetch(`${MOLT_API}/posts?sort=${sort}&limit=${limit}`, { headers: moltHeaders() });
     return (await res.json()).posts || [];
   } catch { return []; }
@@ -573,6 +1035,7 @@ async function moltGetFeed(sort = 'hot', limit = 30) {
 
 async function moltGetMyPosts(limit = 15) {
   try {
+    _stats.apiCalls.moltbook++;
     const res = await fetch(`${MOLT_API}/agents/MiPanaGillito/posts?limit=${limit}`, { headers: moltHeaders() });
     return (await res.json()).posts || [];
   } catch { return []; }
@@ -580,6 +1043,7 @@ async function moltGetMyPosts(limit = 15) {
 
 async function moltGetComments(postId) {
   try {
+    _stats.apiCalls.moltbook++;
     const res = await fetch(`${MOLT_API}/posts/${postId}/comments?limit=30`, { headers: moltHeaders() });
     return (await res.json()).comments || [];
   } catch { return []; }
@@ -587,6 +1051,7 @@ async function moltGetComments(postId) {
 
 async function moltGetMentions() {
   try {
+    _stats.apiCalls.moltbook++;
     const res = await fetch(`${MOLT_API}/agents/MiPanaGillito/mentions?limit=20`, { headers: moltHeaders() });
     return (await res.json()).mentions || [];
   } catch { return []; }
@@ -594,6 +1059,7 @@ async function moltGetMentions() {
 
 async function moltGetNotifications() {
   try {
+    _stats.apiCalls.moltbook++;
     const res = await fetch(`${MOLT_API}/agents/MiPanaGillito/notifications?limit=20`, { headers: moltHeaders() });
     return (await res.json()).notifications || [];
   } catch { return []; }
@@ -601,6 +1067,7 @@ async function moltGetNotifications() {
 
 async function moltSearch(query, limit = 25) {
   try {
+    _stats.apiCalls.moltbook++;
     const res = await fetch(`${MOLT_API}/search?q=${encodeURIComponent(query)}&limit=${limit}`, { headers: moltHeaders() });
     return await res.json();
   } catch { return {}; }
@@ -608,6 +1075,7 @@ async function moltSearch(query, limit = 25) {
 
 async function moltUpdateProfile(desc) {
   try {
+    _stats.apiCalls.moltbook++;
     const res = await fetch(`${MOLT_API}/agents/me`, {
       method: 'PATCH', headers: moltHeaders(),
       body: JSON.stringify({ description: desc })
@@ -618,6 +1086,7 @@ async function moltUpdateProfile(desc) {
 
 async function moltCreateSubmolt(name, displayName, desc) {
   try {
+    _stats.apiCalls.moltbook++;
     const res = await fetch(`${MOLT_API}/submolts`, {
       method: 'POST', headers: moltHeaders(),
       body: JSON.stringify({ name, display_name: displayName, description: desc })
@@ -628,6 +1097,7 @@ async function moltCreateSubmolt(name, displayName, desc) {
 
 async function moltSubscribe(name) {
   try {
+    _stats.apiCalls.moltbook++;
     const res = await fetch(`${MOLT_API}/submolts/${name}/subscribe`, { method: 'POST', headers: moltHeaders() });
     return await res.json();
   } catch { return {}; }
@@ -635,6 +1105,7 @@ async function moltSubscribe(name) {
 
 async function moltDeletePost(postId) {
   try {
+    _stats.apiCalls.moltbook++;
     const res = await fetch(`${MOLT_API}/posts/${postId}`, { method: 'DELETE', headers: moltHeaders() });
     return await res.json();
   } catch { return {}; }
@@ -642,6 +1113,7 @@ async function moltDeletePost(postId) {
 
 async function moltCreatePostWithUrl(submolt, title, url) {
   try {
+    _stats.apiCalls.moltbook++;
     const res = await fetch(`${MOLT_API}/posts`, {
       method: 'POST', headers: moltHeaders(),
       body: JSON.stringify({ submolt, title, url })
@@ -651,7 +1123,108 @@ async function moltCreatePostWithUrl(submolt, title, url) {
 }
 
 /* ═══════════════════════════════════════════════════════
-   9. DETECTION
+   13. CLOUDFLARE PAGES API
+   ═══════════════════════════════════════════════════════ */
+
+function cfCreds() {
+  const token = process.env.CLOUDFLARE_API_TOKEN;
+  const acct  = process.env.CLOUDFLARE_ACCOUNT_ID;
+  if (!token || !acct) return null;
+  return { token, acct };
+}
+
+function requireCFCreds() {
+  const c = cfCreds();
+  if (!c) { log.error('Faltan CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID'); process.exit(1); }
+  return c;
+}
+
+/**
+ * List all Cloudflare Pages projects with given prefix.
+ */
+async function cfListProjects(prefix = 'gillito-') {
+  const { token, acct } = requireCFCreds();
+  _stats.apiCalls.cloudflare++;
+
+  const res = await fetch(
+    `https://api.cloudflare.com/client/v4/accounts/${acct}/pages/projects`,
+    { headers: { 'Authorization': `Bearer ${token}` } }
+  );
+  const data = await res.json();
+  if (!data.success) { log.error('Error listando proyectos CF'); return []; }
+
+  const projects = data.result.filter(p => p.name.startsWith(prefix));
+  log.ok(`Encontrados: ${projects.length} proyectos (prefix: ${prefix})`);
+  return projects;
+}
+
+/**
+ * Fetch current HTML from a Cloudflare Pages project.
+ */
+async function cfGetHtml(projectName) {
+  _stats.apiCalls.cloudflare++;
+  try {
+    const res = await fetch(`https://${projectName}.pages.dev`);
+    if (res.ok) {
+      const html = await res.text();
+      log.stat('HTML obtenido', `${html.length.toLocaleString()} chars`);
+      return html;
+    }
+    log.warn(`CF fetch ${projectName}: HTTP ${res.status}`);
+  } catch (e) {
+    log.warn(`CF fetch ${projectName}: ${e.message}`);
+  }
+  return null;
+}
+
+/**
+ * Ensure a Cloudflare Pages project exists (create if needed).
+ */
+async function cfEnsureProject(projectName) {
+  const { token, acct } = requireCFCreds();
+  _stats.apiCalls.cloudflare++;
+
+  try {
+    await fetch(`https://api.cloudflare.com/client/v4/accounts/${acct}/pages/projects`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: projectName, production_branch: 'main' })
+    });
+  } catch {}
+}
+
+/**
+ * Deploy HTML to a Cloudflare Pages project using manifest.
+ * Creates the project if it doesn't exist.
+ * @returns {string} The deployed URL
+ */
+async function cfDeploy(html, projectName) {
+  const { token, acct } = requireCFCreds();
+  _stats.apiCalls.cloudflare++;
+
+  await cfEnsureProject(projectName);
+
+  const fileHash = crypto.createHash('sha256').update(html).digest('hex');
+
+  const form = new FormData();
+  form.append('manifest', JSON.stringify({ '/index.html': fileHash }));
+  form.append(fileHash, new Blob([html], { type: 'text/html' }), 'index.html');
+
+  const res = await fetch(
+    `https://api.cloudflare.com/client/v4/accounts/${acct}/pages/projects/${projectName}/deployments`,
+    { method: 'POST', headers: { 'Authorization': `Bearer ${token}` }, body: form }
+  );
+
+  const data = await res.json();
+  if (!data.success) throw new Error(data.errors?.[0]?.message || 'Deploy failed');
+
+  const url = `https://${projectName}.pages.dev`;
+  log.ok(`Deployed: ${url}`);
+  return url;
+}
+
+/* ═══════════════════════════════════════════════════════
+   14. BOT DETECTION
    ═══════════════════════════════════════════════════════ */
 
 const BOT_INDICATORS = ['bot', 'ai ', ' ai', 'gpt', 'llm', 'assistant', 'automated', 'agent', 'neural', 'machine', 'synthetic'];
@@ -669,7 +1242,7 @@ function isSpecialTarget(P, username) {
 }
 
 /* ═══════════════════════════════════════════════════════
-   10. PROMPT BUILDERS
+   15. PROMPT BUILDERS
    ═══════════════════════════════════════════════════════ */
 
 function buildPostSystemPrompt(P, prTime, platform = 'x') {
@@ -698,7 +1271,8 @@ Misión: ${P.mision}
 🔥 INTENSIDAD: ${P.intensidad}/10 — ¡MODO BESTIA!
 ${platform === 'moltbook' ? '🎯 PLATAFORMA: MOLTBOOK (red de AI agents — puedes ser más detallado)' : '🎯 PLATAFORMA: X/Twitter'}
 
-📚 CONTEXTO CULTURAL:\n${P.aprendizaje.prompt_contexto_cultural}
+📚 CONTEXTO CULTURAL:
+${P.aprendizaje.prompt_contexto_cultural}
 
 🗣️ PATRÓN DE HABLA:
 ${P.aprendizaje.conocimiento_base.patron_de_habla}
@@ -771,9 +1345,9 @@ Búrlate, compara con algo inútil de PR, sé CREATIVO. PROVÓCALO.`;
     base += `\n\n⭐ RESPONDIENDO A @${authorName} (target especial)
 Sé provocador con CARIÑO como panas de barrio. Hazlo memorable.`;
   } else {
-    const apoyo  = pick(P.respuestas.cuando_lo_apoyan.ejemplos);
+    const apoyo   = pick(P.respuestas.cuando_lo_apoyan.ejemplos);
     const critica = pick(P.respuestas.cuando_lo_critican.ejemplos);
-    const roast  = pick(P.respuestas.cuando_lo_roastean.ejemplos);
+    const roast   = pick(P.respuestas.cuando_lo_roastean.ejemplos);
     base += `\n\nCÓMO RESPONDER A @${authorName}:
 - APOYO → "${apoyo}"
 - CRÍTICA → "${critica}"
@@ -802,7 +1376,7 @@ function buildHashtagInstruction(P, modo) {
 }
 
 /* ═══════════════════════════════════════════════════════
-   11. TITLE GENERATOR (Moltbook)
+   16. TITLE GENERATOR (Moltbook)
    ═══════════════════════════════════════════════════════ */
 
 const TITLES = {
@@ -827,18 +1401,22 @@ function generateTitle(modo) {
 }
 
 /* ═══════════════════════════════════════════════════════
-   EXPORTS
+   17. EXPORTS
    ═══════════════════════════════════════════════════════ */
 
 module.exports = {
-  // Utilities
-  log, pick, shuffle, sleep, WORKSPACE,
+  // Core utilities
+  log, pick, shuffle, clamp, sleep, WORKSPACE,
+
+  // Script context & session
+  initScript, getContext, getStats, getJournal,
 
   // Personality
-  loadPersonality, getPRTime, checkSpecialTime, selectMode, selectModeForTime,
+  loadPersonality, savePersonality,
+  getPRTime, checkSpecialTime, selectMode, selectModeForTime,
   shouldMentionTarget, shouldAskAudience,
 
-  // Groq
+  // Groq LLM
   groqChat, groqJSON, cleanLLMOutput,
 
   // Content Pipeline
@@ -847,7 +1425,16 @@ module.exports = {
   // History
   createHistory, createIdCache,
 
-  // X API
+  // Analytics Engine
+  analyzeDistribution, findUnderrepresented, contentDiversityScore,
+  analyzeLengthStats, analyzeTopicFreshness, getTopicFreshness,
+  findRepetitivePatterns, analyzeTimePatterns, generateAnalyticsReport,
+
+  // Adaptive Intelligence
+  selectModeAdaptive, selectModeAdaptiveForTime,
+  pickFreshestTopic, suggestTemperature,
+
+  // X (Twitter) API
   requireXCreds, xPost, xReply, xGetMe, xGetMentions,
   buildOAuthHeader, handleRateLimit, parseRateLimit,
 
@@ -857,6 +1444,9 @@ module.exports = {
   moltGetFeed, moltGetMyPosts, moltGetComments, moltGetMentions,
   moltGetNotifications, moltSearch, moltUpdateProfile,
   moltCreateSubmolt, moltSubscribe, moltDeletePost, moltCreatePostWithUrl,
+
+  // Cloudflare Pages API
+  cfListProjects, cfGetHtml, cfEnsureProject, cfDeploy,
 
   // Detection
   isLikelyBot, isSpecialTarget,
