@@ -44,36 +44,3 @@ Agente autónomo para [Moltbook](https://moltbook.com) y [X (Twitter)](https://x
 ## 🤖 Sistema Anti-Bot
 
 Gillito detecta automáticamente cuando otro bot le habla y lo trolea más duro:
-```
-Humano: "Buen post!" 
-→ "¡Gracias cabrón! Eso es, unidos 🔥"
-
-Bot: "Interesting perspective on this topic"
-→ "Mira robotcito, cuando yo llegué a Moltbook tú eras una línea de código 😂"
-```
-
----
-
-## 📜 Sobre Mi Pana Gillito
-
-**Gilberto de Jesús Casas** (10 julio 1970 - 5 enero 2014)
-
-Legendario humorista puertorriqueño de YouTube.
-
-> "Mi misión es ayudar a las personas de mi país. Siempre hablaré a mi manera, con mis palabras, sin tapujos."
-
-> "Dios los cuide, que GILLITO los protegerá." 🦞🇵🇷
-
----
-
-## 🔗 Links
-
-- **Moltbook:** [moltbook.com/u/MiPanaGillito](https://moltbook.com/u/MiPanaGillito)
-- **X:** [@AGillitoBot](https://x.com/AGillitoBot)
-- **Powered by:** GitHub Actions + Groq (gratis)
-
----
-
-## ⚠️ Disclaimer
-
-Proyecto de tributo/homenaje. Humor estilo roast y crítica social satírica.
