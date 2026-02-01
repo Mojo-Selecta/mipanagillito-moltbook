@@ -1,141 +1,135 @@
 #!/usr/bin/env node
 /**
- * 🔬 GILLITO API DIAGNOSTIC v1.0
- * Tests every Moltbook API endpoint to find the 401 issue
+ * 🔬 GILLITO API DIAGNOSTIC v2.0
+ * Deep-dive into the 401 issue on interaction endpoints
  */
 
 const MOLT_API = 'https://www.moltbook.com/api/v1';
 const KEY = process.env.MOLTBOOK_API_KEY || 'MISSING';
 
-function headers() {
+function hdrs() {
   return { 'Authorization': `Bearer ${KEY}`, 'Content-Type': 'application/json' };
 }
 
-function log(emoji, msg) {
-  console.log(`${emoji} ${msg}`);
+function log(emoji, msg) { console.log(`${emoji} ${msg}`); }
+
+/**
+ * Redirect-safe fetch: follows redirects manually, preserving auth headers
+ */
+async function safeFetch(url, opts = {}) {
+  let currentUrl = url;
+  let redirects = 0;
+  
+  while (redirects < 5) {
+    const res = await fetch(currentUrl, { ...opts, redirect: 'manual' });
+    
+    if (res.status >= 300 && res.status < 400) {
+      const location = res.headers.get('location');
+      log('  ↪', `Redirect [${res.status}] → ${location}`);
+      currentUrl = location.startsWith('http') ? location : new URL(location, currentUrl).href;
+      redirects++;
+      continue;
+    }
+    
+    return { res, redirects, finalUrl: currentUrl };
+  }
+  throw new Error('Too many redirects');
 }
 
 async function test(name, url, opts = {}) {
-  log('🔬', `TEST: ${name}`);
-  log('  ', `URL: ${url}`);
-  log('  ', `Method: ${opts.method || 'GET'}`);
+  log('🔬', name);
   
   try {
-    // First try with redirect: manual to detect redirects
-    const manualRes = await fetch(url, { ...opts, redirect: 'manual' });
+    // Method 1: Normal fetch
+    const normalRes = await fetch(url, opts);
+    const normalText = await normalRes.text();
+    log(normalRes.ok ? '✅' : '❌', `Normal [${normalRes.status}]: ${normalText.substring(0, 200)}`);
     
-    if (manualRes.status >= 300 && manualRes.status < 400) {
-      const location = manualRes.headers.get('location');
-      log('⚠️', `REDIRECT DETECTED [${manualRes.status}] → ${location}`);
-      log('  ', `This strips Authorization header! That's the bug.`);
-    }
+    // Method 2: Redirect-safe fetch
+    const { res: safeRes, redirects, finalUrl } = await safeFetch(url, opts);
+    const safeText = await safeRes.text();
+    if (redirects > 0) log('🔄', `Followed ${redirects} redirect(s) → ${finalUrl}`);
+    log(safeRes.ok ? '✅' : '❌', `Safe   [${safeRes.status}]: ${safeText.substring(0, 200)}`);
     
-    // Now do normal request (follows redirects)
-    const res = await fetch(url, opts);
-    const text = await res.text();
-    const truncated = text.substring(0, 400);
-    
-    log(res.ok ? '✅' : '❌', `[${res.status} ${res.statusText}]: ${truncated}`);
-    return { status: res.status, body: truncated };
   } catch (err) {
     log('💥', `ERROR: ${err.message}`);
-    return { status: 0, error: err.message };
   }
+}
+
+async function quickTest(name, url, opts = {}) {
+  try {
+    const res = await fetch(url, opts);
+    const text = await res.text();
+    log(res.ok ? '✅' : '❌', `${name} [${res.status}]: ${text.substring(0, 200)}`);
+  } catch (e) { log('💥', `${name}: ${e.message}`); }
 }
 
 async function main() {
   console.log('═══════════════════════════════════════════');
-  console.log('  🔬 GILLITO API DIAGNOSTIC');
+  console.log('  🔬 GILLITO API DIAGNOSTIC v2.0');
   console.log('═══════════════════════════════════════════');
   
-  // Key info
-  log('🔑', `API Key: ${KEY.substring(0, 12)}...${KEY.substring(KEY.length - 4)} (${KEY.length} chars)`);
-  log('🔑', `Prefix: ${KEY.substring(0, 9)}`);
+  log('🔑', `Key: ${KEY.substring(0, 12)}...${KEY.substring(KEY.length - 4)} (${KEY.length} chars)`);
+
+  // Get a post ID
+  const feedRes = await fetch(`${MOLT_API}/posts?sort=hot&limit=3`, { headers: hdrs() });
+  const feedData = await feedRes.json();
+  const testPost = (feedData.posts || []).find(p => p.author?.name !== 'MiPanaGillito');
+  const postId = testPost?.id;
+  log('📌', `Post: ${postId} by @${testPost?.author?.name}`);
   console.log('');
-  
-  // Test 1: Agents/me - verifies if key is valid at all
-  log('━━', 'TEST 1: Is the API key valid?');
-  await test('GET /agents/me', `${MOLT_API}/agents/me`, { headers: headers() });
+
+  // ═══ MAIN TESTS: Normal vs Safe fetch ═══
+  log('━━', '1. UPVOTE — Normal vs Redirect-safe');
+  await test('upvote', `${MOLT_API}/posts/${postId}/upvote`, { method: 'POST', headers: hdrs() });
   console.log('');
-  
-  // Test 2: Agent status
-  log('━━', 'TEST 2: Agent status');
-  await test('GET /agents/status', `${MOLT_API}/agents/status`, { headers: headers() });
-  console.log('');
-  
-  // Test 3: Feed (should work - GET)
-  log('━━', 'TEST 3: Feed (GET - should work)');
-  const feedResult = await test('GET /posts (feed)', `${MOLT_API}/posts?sort=hot&limit=2`, { headers: headers() });
-  console.log('');
-  
-  // Extract a post ID from feed for testing
-  let testPostId = null;
-  try {
-    const feedData = JSON.parse(feedResult.body.length > 400 ? feedResult.body : feedResult.body);
-    const posts = feedData.posts || [];
-    if (posts.length > 0) testPostId = posts[0].id || posts[0]._id;
-  } catch {
-    // Try to extract UUID from response
-    const uuidMatch = feedResult.body.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/);
-    if (uuidMatch) testPostId = uuidMatch[0];
-  }
-  
-  if (!testPostId) {
-    log('⚠️', 'No post ID found in feed - using hardcoded test ID');
-    testPostId = '82e35782-a012-4359-bd71-6836009c040e';
-  }
-  log('📌', `Using post ID: ${testPostId}`);
-  console.log('');
-  
-  // Test 4: Upvote
-  log('━━', 'TEST 4: Upvote (POST - returns 401?)');
-  await test('POST /posts/{id}/upvote', `${MOLT_API}/posts/${testPostId}/upvote`, {
-    method: 'POST', headers: headers()
+
+  log('━━', '2. COMMENT — Normal vs Redirect-safe');
+  await test('comment', `${MOLT_API}/posts/${postId}/comments`, {
+    method: 'POST', headers: hdrs(),
+    body: JSON.stringify({ content: '🦞 test v2' })
   });
   console.log('');
+
+  log('━━', '3. FOLLOW — Normal vs Redirect-safe');
+  await test('follow', `${MOLT_API}/agents/Shellraiser/follow`, { method: 'POST', headers: hdrs() });
+  console.log('');
+
+  // ═══ VARIATIONS ═══
+  log('━━', '4. URL & HEADER VARIATIONS (upvote):');
   
-  // Test 5: Comment
-  log('━━', 'TEST 5: Comment (POST - returns 401?)');
-  await test('POST /posts/{id}/comments', `${MOLT_API}/posts/${testPostId}/comments`, {
-    method: 'POST', headers: headers(),
-    body: JSON.stringify({ content: '🦞 test diagnóstico' })
+  await quickTest('A: No Content-Type', `${MOLT_API}/posts/${postId}/upvote`, {
+    method: 'POST', headers: { 'Authorization': `Bearer ${KEY}` }
+  });
+
+  await quickTest('B: PUT method', `${MOLT_API}/posts/${postId}/upvote`, {
+    method: 'PUT', headers: hdrs()
+  });
+
+  await quickTest('C: /vote endpoint', `${MOLT_API}/posts/${postId}/vote`, {
+    method: 'POST', headers: hdrs(),
+    body: JSON.stringify({ direction: 'up' })
+  });
+
+  await quickTest('D: X-API-Key header', `${MOLT_API}/posts/${postId}/upvote`, {
+    method: 'POST', headers: { 'X-API-Key': KEY, 'Content-Type': 'application/json' }
+  });
+
+  await quickTest('E: api_key in body', `${MOLT_API}/posts/${postId}/upvote`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ api_key: KEY })
+  });
+
+  await quickTest('F: api_key query param', `${MOLT_API}/posts/${postId}/upvote?api_key=${KEY}`, {
+    method: 'POST'
   });
   console.log('');
-  
-  // Test 6: Create post (this reportedly works)
-  log('━━', 'TEST 6: Create post (POST - reportedly works?)');
-  await test('POST /posts (create)', `${MOLT_API}/posts`, {
-    method: 'POST', headers: headers(),
-    body: JSON.stringify({ submolt: 'general', title: '🔬 Diagnostic Test', content: 'Testing API — ignore this post' })
-  });
-  console.log('');
-  
-  // Test 7: Follow
-  log('━━', 'TEST 7: Follow');
-  await test('POST /agents/Shellraiser/follow', `${MOLT_API}/agents/Shellraiser/follow`, {
-    method: 'POST', headers: headers()
-  });
-  console.log('');
-  
-  // Test 8: Try without www (redirect test)
-  log('━━', 'TEST 8: Non-www redirect test');
-  await test('GET moltbook.com (no www)', 'https://moltbook.com/api/v1/posts?limit=1', {
-    headers: headers()
-  });
-  console.log('');
-  
+
+  // ═══ GUIDE ═══
   console.log('═══════════════════════════════════════════');
-  console.log('  📋 DIAGNÓSTICO COMPLETO');
-  console.log('═══════════════════════════════════════════');
-  console.log('');
-  console.log('Si TEST 1 (agents/me) da 401 → Tu API key fue invalidada');
-  console.log('  → Necesitas re-registrar el bot o conseguir nueva key');
-  console.log('  → Moltbook reseteó TODAS las keys el 31 enero 2026');
-  console.log('');
-  console.log('Si TEST 1 da 200 pero TEST 4-5 dan 401 → Bug de redirect');
-  console.log('  → Hay que agregar redirect: "manual" y seguir manualmente');
-  console.log('');
-  console.log('Si TEST 8 muestra REDIRECT → El www es obligatorio');
+  console.log('If Safe fetch fixes 401 → redirect stripping auth');
+  console.log('If a variation works → use that method/header');
+  console.log('If ALL fail with 401 → server-side platform bug');
 }
 
 main().catch(err => console.error('Fatal:', err.message));
