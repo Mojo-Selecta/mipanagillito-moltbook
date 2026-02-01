@@ -924,7 +924,7 @@ function requireXCreds() {
 function parseRateLimit(res) {
   const remaining = res.headers.get('x-rate-limit-remaining');
   const reset = res.headers.get('x-rate-limit-reset');
-  if (remaining !== null) log.stat('Rate limit restante', `${remaining}`);
+  if (remaining !== null) log.stat('Rate limit restante', `${remaining} requests`);
   if (reset) {
     const resetDate = new Date(parseInt(reset) * 1000);
     log.stat('Reset', resetDate.toLocaleString('es-PR', { timeZone: 'America/Puerto_Rico' }));
@@ -932,11 +932,16 @@ function parseRateLimit(res) {
   return { remaining: remaining ? parseInt(remaining) : null, reset: reset ? parseInt(reset) : null };
 }
 
-function handleRateLimit(res) {
+async function handleRateLimit(res) {
   if (res.status !== 429) return false;
+  // Read the actual error from Twitter to see which limit was hit
+  try {
+    const body = await res.text();
+    log.warn(`RATE LIMITED [429]: ${body.substring(0, 300)}`);
+  } catch { /* ignore */ }
   const reset = res.headers.get('x-rate-limit-reset');
   const mins = reset ? Math.ceil((parseInt(reset) * 1000 - Date.now()) / 60000) : '?';
-  log.warn(`RATE LIMITED — reset en ~${mins} min`);
+  log.warn(`Reset en ~${mins} min`);
   log.info('🦞 Gillito descansa... 😴');
   return true;
 }
@@ -951,7 +956,7 @@ async function xPost(text) {
     body: JSON.stringify({ text })
   });
   parseRateLimit(res);
-  if (handleRateLimit(res)) return { rateLimited: true };
+  if (await handleRateLimit(res)) return { rateLimited: true };
   const data = await res.json();
   if (!res.ok) throw new Error(`X API: ${JSON.stringify(data)}`);
   _stats.postsCreated++;
@@ -968,7 +973,7 @@ async function xReply(tweetId, text) {
     body: JSON.stringify({ text, reply: { in_reply_to_tweet_id: tweetId } })
   });
   parseRateLimit(res);
-  if (handleRateLimit(res)) return { rateLimited: true };
+  if (await handleRateLimit(res)) return { rateLimited: true };
   const data = await res.json();
   if (!res.ok) throw new Error(`X API: ${JSON.stringify(data)}`);
   _stats.repliesCreated++;
@@ -997,7 +1002,7 @@ async function xGetMentions(userId, startTime) {
   const { fullUrl, authHeader } = buildOAuthHeader('GET', baseUrl, qp);
   const res = await fetch(fullUrl, { headers: { 'Authorization': authHeader } });
 
-  if (res.status === 429) { handleRateLimit(res); return { data: [] }; }
+  if (res.status === 429) { await handleRateLimit(res); return { data: [] }; }
   if (res.status === 403) {
     log.warn('Menciones no disponibles (plan gratis)');
     log.info('Necesitas plan Basic ($100/mes) para leer menciones');
