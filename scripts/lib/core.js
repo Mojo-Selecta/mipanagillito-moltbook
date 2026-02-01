@@ -1083,9 +1083,10 @@ async function moltComment(postId, content) {
       body: JSON.stringify({ content })
     });
     const data = await res.json();
-    if (data.success || data.comment) _stats.repliesCreated++;
-    return data.success || !!data.comment;
-  } catch { return false; }
+    if (data.success || data.comment) { _stats.repliesCreated++; return true; }
+    log.debug(`moltComment failed: ${JSON.stringify(data).substring(0, 150)}`);
+    return false;
+  } catch (err) { log.debug(`moltComment error: ${err.message}`); return false; }
 }
 
 async function moltReplyComment(postId, commentId, content) {
@@ -1105,16 +1106,22 @@ async function moltUpvote(postId) {
   try {
     _stats.apiCalls.moltbook++;
     const res = await fetch(`${MOLT_API}/posts/${postId}/upvote`, { method: 'POST', headers: moltHeaders() });
-    return (await res.json()).success || false;
-  } catch { return false; }
+    const data = await res.json();
+    if (data.success) return true;
+    log.debug(`moltUpvote failed: ${JSON.stringify(data).substring(0, 150)}`);
+    return false;
+  } catch (err) { log.debug(`moltUpvote error: ${err.message}`); return false; }
 }
 
 async function moltDownvote(postId) {
   try {
     _stats.apiCalls.moltbook++;
     const res = await fetch(`${MOLT_API}/posts/${postId}/downvote`, { method: 'POST', headers: moltHeaders() });
-    return (await res.json()).success || false;
-  } catch { return false; }
+    const data = await res.json();
+    if (data.success) return true;
+    log.debug(`moltDownvote failed: ${JSON.stringify(data).substring(0, 150)}`);
+    return false;
+  } catch (err) { log.debug(`moltDownvote error: ${err.message}`); return false; }
 }
 
 async function moltUpvoteComment(commentId) {
@@ -1129,8 +1136,11 @@ async function moltFollow(name) {
   try {
     _stats.apiCalls.moltbook++;
     const res = await fetch(`${MOLT_API}/agents/${name}/follow`, { method: 'POST', headers: moltHeaders() });
-    return (await res.json()).success || false;
-  } catch { return false; }
+    const data = await res.json();
+    if (data.success) return true;
+    log.debug(`moltFollow failed: ${JSON.stringify(data).substring(0, 150)}`);
+    return false;
+  } catch (err) { log.debug(`moltFollow error: ${err.message}`); return false; }
 }
 
 async function moltGetFeed(sort = 'hot', limit = 30) {
