@@ -1,0 +1,38 @@
+name: 🐦 Gillito X - Post
+
+on:
+  # Cada 85 minutos aprox (~17 posts/día = ~500/mes)
+  schedule:
+    - cron: '0 */2 * * *'    # Cada 2 horas en punto
+    - cron: '25 1,5,9,13,17,21 * * *'  # Intercalado para ~17/día
+  
+  # Manual para pruebas
+  workflow_dispatch:
+
+jobs:
+  post-to-x:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 🦞 Checkout
+        uses: actions/checkout@v4
+
+      - name: 📦 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: 🔥 ¡GILLITO en X!
+        run: echo "Mi Pana Gillito posteando en X 🐦🇵🇷"
+
+      - name: 📝 Generar y Postear
+        env:
+          X_API_KEY: ${{ secrets.X_API_KEY }}
+          X_API_SECRET: ${{ secrets.X_API_SECRET }}
+          X_ACCESS_TOKEN: ${{ secrets.X_ACCESS_TOKEN }}
+          X_ACCESS_SECRET: ${{ secrets.X_ACCESS_SECRET }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+        run: node scripts/post-to-x.js
+
+      - name: 🦞 Fin
+        run: echo "¡Posteado! Dios los cuide 🔥"
