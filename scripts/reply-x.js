@@ -28,11 +28,6 @@ if (!X_API_KEY || !X_API_SECRET || !X_ACCESS_TOKEN || !X_ACCESS_SECRET) {
   process.exit(1);
 }
 
-if (!X_BEARER_TOKEN) {
-  console.error('❌ X_BEARER_TOKEN no configurado');
-  process.exit(1);
-}
-
 if (!GROQ_KEY) {
   console.error('❌ GROQ_API_KEY no configurada');
   process.exit(1);
@@ -99,8 +94,10 @@ function getAuthHeader(method, url, extraParams = {}) {
 async function getMyUserId() {
   const url = 'https://api.twitter.com/2/users/me';
   
+  const authHeader = getAuthHeader('GET', url);
+  
   const response = await fetch(url, {
-    headers: { 'Authorization': `Bearer ${X_BEARER_TOKEN}` }
+    headers: { 'Authorization': authHeader }
   });
   
   const data = await response.json();
@@ -119,8 +116,10 @@ async function getMentions(userId, sinceId = null) {
     url += `&since_id=${sinceId}`;
   }
   
+  const authHeader = getAuthHeader('GET', url.split('?')[0]);
+  
   const response = await fetch(url, {
-    headers: { 'Authorization': `Bearer ${X_BEARER_TOKEN}` }
+    headers: { 'Authorization': authHeader }
   });
   
   const data = await response.json();
