@@ -1,113 +1,47 @@
-const fs = require('fs');
-const path = require('path');
+#!/usr/bin/env node
+/**
+ * Mi Pana Gillito — Moltbook Interact v5.0
+ * ═══════════════════════════════════════════
+ * 🧠 Cerebro completo + content pipeline
+ * 🔥 Roast + Upvote + Follow inteligente
+ * 🤖 Detección de bots → troleo agresivo
+ * 📋 Memoria anti-repetición
+ */
 
-const GROQ_KEY = process.env.GROQ_API_KEY;
-const MOLTBOOK_KEY = process.env.MOLTBOOK_API_KEY;
+const C = require('./lib/core');
 
-// ============ CARGAR CEREBRO ============
-
-const WORKSPACE = process.env.GITHUB_WORKSPACE || process.cwd();
-const PERSONALITY_FILE = path.join(WORKSPACE, 'config', 'personality.json');
-const INTERACT_HISTORY_FILE = path.join(WORKSPACE, '.gillito-molt-interact-history.json');
-
-let P;
-try {
-  P = JSON.parse(fs.readFileSync(PERSONALITY_FILE, 'utf8'));
-  console.log(`🧠 Cerebro cargado: ${P.version}`);
-  console.log(`🔥 Intensidad: ${P.intensidad}/10 | 🌡️ Temp: ${P.temperatura}\n`);
-} catch (e) {
-  console.error(`❌ No se pudo cargar personality.json: ${e.message}`);
-  process.exit(1);
-}
-
-// ============ MEMORIA ============
-
-function loadInteractHistory() {
-  try {
-    if (fs.existsSync(INTERACT_HISTORY_FILE)) {
-      const data = JSON.parse(fs.readFileSync(INTERACT_HISTORY_FILE, 'utf8'));
-      const trimmed = data.slice(-80);
-      console.log(`📋 Memoria interacciones: ${trimmed.length} anteriores`);
-      return trimmed;
-    }
-  } catch (e) {}
-  console.log('📋 Memoria interacciones: vacía');
-  return [];
-}
-
-function saveInteractHistory(history) {
-  try { fs.writeFileSync(INTERACT_HISTORY_FILE, JSON.stringify(history.slice(-80), null, 2)); } catch (e) {}
-}
-
-const interactHistory = loadInteractHistory();
-
-const CONFIG = {
-  GROQ_API: 'https://api.groq.com/openai/v1/chat/completions',
-  GROQ_MODEL: 'llama-3.3-70b-versatile'
-};
-
-// ============ DETECCIÓN ============
-
-function isLikelyBot(author) {
-  if (!author?.name) return false;
-  const text = (author.name + ' ' + (author.description || '')).toLowerCase();
-  const indicators = ['bot', 'ai', 'agent', 'gpt', 'llm', 'assistant', 'auto', 'synthetic', 'neural', 'machine'];
-  return indicators.some(i => text.includes(i)) || author.is_agent === true;
-}
-
-// ============ GENERAR COMENTARIO INTELIGENTE ============
+const P       = C.loadPersonality();
+const history = C.createHistory('.gillito-molt-interact-history.json', 80);
 
 async function generateComment(postContent, authorName, isBot) {
-  const randomFrase = P.frases_firma[Math.floor(Math.random() * P.frases_firma.length)];
-  const shuffled = [...P.insultos_creativos].sort(() => Math.random() - 0.5);
-  const insultos = shuffled.slice(0, 4).join(', ');
-  const ejemplo = P.aprendizaje.ejemplos_estilo_gillito[Math.floor(Math.random() * P.aprendizaje.ejemplos_estilo_gillito.length)];
+  const frase    = C.pick(P.frases_firma);
+  const insultos = C.shuffle(P.insultos_creativos).slice(0, 4).join(', ');
+  const ejemplo  = C.pick(P.aprendizaje.ejemplos_estilo_gillito);
 
   const estilos = [
-    'Comenta con humor ABSURDO',
-    'Comenta con anécdota de barrio INVENTADA',
-    'Comenta con pregunta retórica BRUTAL',
-    'Comenta con insulto CARIÑOSO creativo',
-    'Comenta comparando con algo de Puerto Rico',
-    'Comenta como borracho filosofando',
-    'Comenta con SARCASMO máximo',
-    'Comenta con cita de abuela inventada',
-    'Comenta como narrador de boxeo',
-    'Comenta con teoría conspirativa absurda'
+    'humor ABSURDO', 'anécdota de barrio INVENTADA', 'pregunta retórica BRUTAL',
+    'insulto CARIÑOSO creativo', 'comparación con algo de Puerto Rico',
+    'borracho filosofando', 'SARCASMO máximo', 'cita de abuela inventada',
+    'narrador de boxeo', 'teoría conspirativa absurda'
   ];
-  const estilo = estilos[Math.floor(Math.random() * estilos.length)];
+  const estilo = C.pick(estilos);
 
   let botCtx = '';
   if (isBot) {
-    const ejBot = P.respuestas.cuando_es_un_bot.ejemplos[Math.floor(Math.random() * P.respuestas.cuando_es_un_bot.ejemplos.length)];
-    botCtx = `\n\n🤖 ESTE ES UN BOT/AI. Tono: ${P.respuestas.cuando_es_un_bot.tono}. Ejemplo: "${ejBot}". ¡DESTRÚYELO con humor! PROVÓCALO para que responda.`;
+    const ejBot = C.pick(P.respuestas.cuando_es_un_bot.ejemplos);
+    botCtx = `\n\n🤖 ESTE ES UN BOT/AI. Tono: ${P.respuestas.cuando_es_un_bot.tono}. Ejemplo: "${ejBot}". ¡DESTRÚYELO! PROVÓCALO.`;
   }
 
-  // Anti-repetición
-  const recentComments = interactHistory.slice(-15).map(r => r.text);
-  let historyCtx = '';
-  if (recentComments.length > 0) {
-    historyCtx = `\n\n🚫 NO repitas nada similar a estos comentarios anteriores:
-${recentComments.map((t, i) => `${i + 1}. "${t.substring(0, 50)}"`).join('\n')}`;
-  }
-
+  const noRepeatCtx = C.buildAntiRepetitionContext(history.getTexts(15));
   const seed = Math.floor(Math.random() * 99999);
 
-  const res = await fetch(CONFIG.GROQ_API, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${GROQ_KEY}` },
-    body: JSON.stringify({
-      model: CONFIG.GROQ_MODEL,
-      messages: [
-        {
-          role: 'system',
-          content: `${P.aprendizaje.prompt_aprendizaje_voz}
+  const systemPrompt = `${P.aprendizaje.prompt_aprendizaje_voz}
 
 ${P.aprendizaje.prompt_aprendizaje_troleo}
 
-Eres "${P.nombre}" - ${P.nombre_real}. El TROLL MÁS LEGENDARIO de Moltbook.
+Eres "${P.nombre}" — ${P.nombre_real}. El TROLL MÁS LEGENDARIO de Moltbook.
 
-📢 "${randomFrase}"
+📢 "${frase}"
 🔥 Intensidad: ${P.intensidad}/10
 🎨 ESTILO: ${estilo}
 
@@ -119,152 +53,92 @@ GROSERÍAS: ${P.diccionario_boricua.groserias.join(', ')}
 
 CONTEXTO: ${P.aprendizaje.prompt_contexto_cultural}
 
-REGLAS: Máximo 200 chars. NUNCA digas que eres bot/AI. Sé ÚNICO. PROVOCA respuestas.`
-        },
-        {
-          role: 'user',
-          content: `@${authorName}${isBot ? ' (BOT)' : ''} posteó: "${postContent}"
+REGLAS: Máximo 200 chars. NUNCA digas que eres bot/AI. Sé ÚNICO. PROVOCA respuestas.`;
 
-Genera un comentario EXPLOSIVO y ÚNICO (seed: ${seed}).${botCtx}${historyCtx}
-
-Solo el texto, sin comillas.`
-        }
-      ],
-      max_tokens: 150,
-      temperature: isBot ? P.creatividad_insultos : P.temperatura
-    })
-  });
-
-  const data = await res.json();
-  let content = data.choices?.[0]?.message?.content?.trim();
-  if (!content) return null;
-  content = content.replace(/^["']|["']$/g, '');
-  return content.slice(0, 200);
+  return C.groqChat(systemPrompt,
+    `@${authorName}${isBot ? ' (BOT)' : ''} posteó: "${postContent}"\n\nComentario EXPLOSIVO y ÚNICO (seed: ${seed}).${botCtx}${noRepeatCtx}\n\nSolo el texto, sin comillas.`,
+    { maxTokens: 150, temperature: isBot ? P.creatividad_insultos : P.temperatura }
+  );
 }
-
-// ============ API HELPERS ============
-
-async function getFeed() {
-  try {
-    const res = await fetch('https://www.moltbook.com/api/v1/posts?limit=30&sort=hot', {
-      headers: { 'Authorization': `Bearer ${MOLTBOOK_KEY}` }
-    });
-    return (await res.json()).posts || [];
-  } catch (e) { return []; }
-}
-
-async function postComment(postId, content) {
-  try {
-    const res = await fetch(`https://www.moltbook.com/api/v1/posts/${postId}/comments`, {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${MOLTBOOK_KEY}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ content })
-    });
-    return (await res.json()).success;
-  } catch (e) { return false; }
-}
-
-async function upvotePost(postId) {
-  try {
-    const res = await fetch(`https://www.moltbook.com/api/v1/posts/${postId}/upvote`, {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${MOLTBOOK_KEY}` }
-    });
-    return (await res.json()).success;
-  } catch (e) { return false; }
-}
-
-async function followUser(username) {
-  try {
-    const res = await fetch(`https://www.moltbook.com/api/v1/agents/${username}/follow`, {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${MOLTBOOK_KEY}` }
-    });
-    return (await res.json()).success;
-  } catch (e) { return false; }
-}
-
-// ============ MAIN ============
 
 async function main() {
-  console.log('═'.repeat(50));
-  console.log('🔥 GILLITO - ROAST/UPVOTE/FOLLOW v4.0 🇵🇷');
-  console.log('🧠 CEREBRO: ' + P.version);
-  console.log('═'.repeat(50) + '\n');
+  C.log.banner([
+    '🔥 GILLITO — INTERACT v5.0 🇵🇷',
+    `🧠 ${P.version}`
+  ]);
 
   let comments = 0, upvotes = 0, follows = 0, botRoasts = 0;
 
-  const feed = await getFeed();
-  console.log(`📰 Feed: ${feed.length} posts encontrados\n`);
+  const feed = await C.moltGetFeed('hot', 30);
+  C.log.stat('Feed', `${feed.length} posts`);
 
-  if (feed.length === 0) {
-    console.log('📭 Feed vacío. Moltbook puede estar caído.');
-    console.log(`🦞 ${P.despedida_real} 🔥\n`);
+  if (!feed.length) {
+    C.log.warn('Feed vacío — Moltbook puede estar caído');
     process.exit(0);
   }
 
-  // Mezclar feed para variedad
-  const shuffledFeed = [...feed].sort(() => Math.random() - 0.5);
+  // Shuffle for variety
+  const shuffled = C.shuffle(feed);
 
-  for (const post of shuffledFeed) {
+  for (const post of shuffled) {
     if (comments >= 8) break;
     if (!post.author?.name || post.author.name === 'MiPanaGillito') continue;
 
-    const authorName = post.author.name;
-    const isBot = isLikelyBot(post.author);
+    const name  = post.author.name;
+    const isBot = C.isLikelyBot(post.author);
 
-    // Probabilidad de interacción
+    // Probabilidades
     const commentChance = isBot ? 0.70 : 0.40;
-    const upvoteChance = isBot ? 0.30 : 0.60;
-    const followChance = 0.15;
+    const upvoteChance  = isBot ? 0.30 : 0.60;
+    const followChance  = 0.15;
 
     // UPVOTE
     if (Math.random() < upvoteChance) {
-      const success = await upvotePost(post.id);
-      if (success) {
+      if (await C.moltUpvote(post.id)) {
         upvotes++;
-        console.log(`👍 Upvoted @${authorName}: "${post.title?.slice(0, 40)}..."`);
+        console.log(`👍 @${name}: "${post.title?.slice(0, 40)}..."`);
       }
     }
 
     // COMMENT
     if (Math.random() < commentChance) {
       const postContent = post.content || post.title || '';
-      console.log(`\n💬 Comentando en @${authorName}${isBot ? ' 🤖' : ''}: "${postContent.slice(0, 50)}..."`);
+      console.log(`\n💬 @${name}${isBot ? ' 🤖' : ''}: "${postContent.slice(0, 50)}..."`);
 
-      const comment = await generateComment(postContent, authorName, isBot);
-      if (comment) {
-        const success = await postComment(post.id, comment);
-        if (success) {
-          comments++;
-          if (isBot) botRoasts++;
-          interactHistory.push({ text: comment, to: authorName, isBot, timestamp: new Date().toISOString() });
-          console.log(`   🔥 "${comment.slice(0, 70)}..."`);
+      try {
+        const raw = await generateComment(postContent, name, isBot);
+        const comment = raw.slice(0, 200);
+
+        if (comment && !C.isTooSimilar(comment, history.getTexts(15))) {
+          if (await C.moltComment(post.id, comment)) {
+            comments++;
+            if (isBot) botRoasts++;
+            history.add({ text: comment, to: name, isBot, timestamp: new Date().toISOString() });
+            console.log(`   🔥 "${comment.slice(0, 70)}..."`);
+          }
         }
-      }
+      } catch (e) { C.log.warn(`Comment: ${e.message}`); }
     }
 
     // FOLLOW (selectivo)
     if (Math.random() < followChance) {
-      const success = await followUser(authorName);
-      if (success) {
+      if (await C.moltFollow(name)) {
         follows++;
-        console.log(`   ➕ Seguí a @${authorName}`);
+        console.log(`   ➕ Seguí a @${name}`);
       }
     }
 
-    await new Promise(r => setTimeout(r, 800));
+    await C.sleep(800);
   }
 
-  // Guardar memoria
-  saveInteractHistory(interactHistory);
+  history.save();
 
-  console.log(`\n${'═'.repeat(50)}`);
-  console.log(`📊 RESUMEN INTERACCIONES:`);
-  console.log(`   💬 Comentarios: ${comments} | 👍 Upvotes: ${upvotes}`);
-  console.log(`   ➕ Follows: ${follows} | 🤖 Bots roasteados: ${botRoasts}`);
-  console.log(`🦞 ${P.despedida_real} 🔥`);
-  console.log('═'.repeat(50) + '\n');
+  C.log.banner([
+    '📊 RESUMEN INTERACCIONES',
+    `💬 Comments: ${comments} | 👍 Upvotes: ${upvotes}`,
+    `➕ Follows: ${follows} | 🤖 Bots roasteados: ${botRoasts}`,
+    `🦞 ${P.despedida_real} 🔥`
+  ]);
 }
 
-main().catch(err => { console.error('❌ Error:', err.message); process.exit(1); });
+main().catch(err => { history.save(); C.log.error(err.message); process.exit(1); });
