@@ -1,6 +1,6 @@
 'use strict';
 /**
- * 🦞 GILLITO MASTER CORE v6.0
+ * 🦞 GILLITO MASTER CORE v6.1
  * ═══════════════════════════════════════════════════════════
  * The DEFINITIVE shared brain for ALL Gillito scripts.
  * Every interaction tracked. Every pattern learned.
@@ -10,7 +10,7 @@
  *  3.  Script Context & Session Tracking
  *  4.  Personality Loader
  *  5.  PR Time & Scheduling
- *  6.  Groq LLM Client (retry + interaction journal)
+ *  6.  LLM Client — DUAL ENGINE (OpenAI GPT-4o + Groq backup)
  *  7.  Content Pipeline (validate + dedup + diversity)
  *  8.  History Manager (enriched entries)
  *  9.  Analytics Engine
@@ -23,7 +23,7 @@
  *  16. Title Generator
  *  17. Exports
  *
- * Backward compatible with ALL v5 scripts.
+ * Backward compatible with ALL v5/v6 scripts.
  * New features are purely additive.
  */
 
@@ -43,7 +43,8 @@ let _ctx = { script: 'unknown', platform: 'unknown', startTime: Date.now() };
 
 /** Session-wide statistics */
 let _stats = {
-  groqCalls: 0, groqRetries: 0, groqErrors: 0,
+  llmCalls: 0, llmRetries: 0, llmErrors: 0,
+  llmProvider: 'none',
   postsCreated: 0, repliesCreated: 0,
   validationFails: 0, dedupFails: 0,
   apiCalls: { x: 0, moltbook: 0, cloudflare: 0 }
@@ -76,7 +77,7 @@ const log = {
     const dur = ((Date.now() - _ctx.startTime) / 1000).toFixed(1);
     console.log('\n' + '─'.repeat(50));
     console.log(`📊 SESIÓN: ${_ctx.script} (${_ctx.platform}) — ${dur}s`);
-    console.log(`   Groq: ${_stats.groqCalls} calls, ${_stats.groqRetries} retries, ${_stats.groqErrors} errors`);
+    console.log(`   LLM: ${_stats.llmProvider} — ${_stats.llmCalls} calls, ${_stats.llmRetries} retries, ${_stats.llmErrors} errors`);
     console.log(`   Content: ${_stats.postsCreated} posts, ${_stats.repliesCreated} replies`);
     console.log(`   Pipeline: ${_stats.validationFails} validation fails, ${_stats.dedupFails} dedup fails`);
     console.log(`   API calls: X=${_stats.apiCalls.x} Molt=${_stats.apiCalls.moltbook} CF=${_stats.apiCalls.cloudflare}`);
@@ -101,13 +102,16 @@ const log = {
 function initScript(name, platform = 'unknown') {
   _ctx = { script: name, platform, startTime: Date.now() };
   _stats = {
-    groqCalls: 0, groqRetries: 0, groqErrors: 0,
+    llmCalls: 0, llmRetries: 0, llmErrors: 0,
+    llmProvider: 'none',
     postsCreated: 0, repliesCreated: 0,
     validationFails: 0, dedupFails: 0,
     apiCalls: { x: 0, moltbook: 0, cloudflare: 0 }
   };
   _journal = [];
-  log.banner([`🦞 ${name.toUpperCase()} v6.0`, `📡 Plataforma: ${platform}`]);
+  log.banner([`🦞 ${name.toUpperCase()} v6.1`, `📡 Plataforma: ${platform}`]);
+  const llm = detectLLM();
+  log.info(`🧠 Motor LLM: ${llm.provider === 'openai' ? 'OpenAI GPT-4o' : 'Groq/' + GROQ_MODEL}${llm.provider === 'openai' && process.env.GROQ_API_KEY ? ' (Groq backup ready)' : ''}`);
 }
 
 function getContext()      { return { ..._ctx }; }
@@ -218,16 +222,46 @@ function shouldAskAudience(P) {
 }
 
 /* ═══════════════════════════════════════════════════════
-   6. GROQ LLM CLIENT (with retry + interaction journal)
+   6. LLM CLIENT — DUAL ENGINE (OpenAI GPT-4o + Groq backup)
    ═══════════════════════════════════════════════════════ */
 
-const GROQ_URL   = 'https://api.groq.com/openai/v1/chat/completions';
-const GROQ_MODEL = 'llama-3.3-70b-versatile';
+/** OpenAI GPT-4o — PRIMARY BRAIN */
+const OPENAI_URL   = 'https://api.openai.com/v1/chat/completions';
+const OPENAI_MODEL = 'gpt-4o';
 
-async function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+/** Groq Llama — FREE BACKUP */
+const GROQ_URL     = 'https://api.groq.com/openai/v1/chat/completions';
+const GROQ_MODEL   = 'llama-3.3-70b-versatile';
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 /**
- * Send a chat completion to Groq with automatic retry and interaction logging.
+ * Detect which LLM provider to use.
+ * Priority: OPENAI_API_KEY → GROQ_API_KEY → error
+ */
+function detectLLM() {
+  if (process.env.OPENAI_API_KEY) {
+    return { provider: 'openai', model: OPENAI_MODEL, url: OPENAI_URL, key: process.env.OPENAI_API_KEY };
+  }
+  if (process.env.GROQ_API_KEY) {
+    return { provider: 'groq', model: GROQ_MODEL, url: GROQ_URL, key: process.env.GROQ_API_KEY };
+  }
+  log.error('No LLM key found! Set OPENAI_API_KEY or GROQ_API_KEY');
+  process.exit(1);
+}
+
+/**
+ * Try Groq as fallback when OpenAI fails.
+ * Returns null if no Groq key available.
+ */
+function getGroqFallback() {
+  if (!process.env.GROQ_API_KEY) return null;
+  return { provider: 'groq', model: GROQ_MODEL, url: GROQ_URL, key: process.env.GROQ_API_KEY };
+}
+
+/**
+ * Send a chat completion with automatic retry, fallback, and interaction logging.
+ * Uses OpenAI GPT-4o as primary, Groq as backup.
  * Every call is recorded in the session journal for learn.js analysis.
  */
 async function groqChat(systemPrompt, userPrompt, opts = {}) {
@@ -238,19 +272,19 @@ async function groqChat(systemPrompt, userPrompt, opts = {}) {
     backoffMs   = 2000
   } = opts;
 
-  const key = process.env.GROQ_API_KEY;
-  if (!key) { log.error('GROQ_API_KEY missing'); process.exit(1); }
-
-  _stats.groqCalls++;
+  const primary = detectLLM();
+  _stats.llmProvider = primary.provider === 'openai' ? `GPT-4o` : `Groq/${GROQ_MODEL}`;
+  _stats.llmCalls++;
   const callStart = Date.now();
 
+  // ─── Try primary provider ───
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      const res = await fetch(GROQ_URL, {
+      const res = await fetch(primary.url, {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' },
+        headers: { 'Authorization': `Bearer ${primary.key}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          model: GROQ_MODEL,
+          model: primary.model,
           messages: [
             { role: 'system', content: systemPrompt },
             { role: 'user',   content: userPrompt }
@@ -261,9 +295,9 @@ async function groqChat(systemPrompt, userPrompt, opts = {}) {
       });
 
       if (res.status === 429 || res.status >= 500) {
-        _stats.groqRetries++;
+        _stats.llmRetries++;
         const wait = backoffMs * Math.pow(2, attempt - 1);
-        log.warn(`Groq ${res.status} — retry ${attempt}/${maxRetries} in ${wait}ms`);
+        log.warn(`${primary.provider} ${res.status} — retry ${attempt}/${maxRetries} in ${wait}ms`);
         await sleep(wait);
         continue;
       }
@@ -272,7 +306,7 @@ async function groqChat(systemPrompt, userPrompt, opts = {}) {
       if (!res.ok) throw new Error(JSON.stringify(data));
 
       const raw = data.choices?.[0]?.message?.content?.trim();
-      if (!raw) throw new Error('Empty response from Groq');
+      if (!raw) throw new Error(`Empty response from ${primary.provider}`);
 
       const cleaned = cleanLLMOutput(raw);
 
@@ -289,30 +323,104 @@ async function groqChat(systemPrompt, userPrompt, opts = {}) {
         maxTokens,
         retries:     attempt - 1,
         latencyMs:   Date.now() - callStart,
-        model:       GROQ_MODEL
+        model:       primary.model,
+        provider:    primary.provider
       });
 
       return cleaned;
 
     } catch (err) {
       if (attempt === maxRetries) {
-        _stats.groqErrors++;
-        _journal.push({
-          ts: new Date().toISOString(), script: _ctx.script, type: 'error',
-          error: err.message.substring(0, 200), retries: attempt - 1
-        });
-        throw err;
+        log.warn(`${primary.provider} FAILED after ${maxRetries} attempts: ${err.message}`);
+        break; // Fall through to backup
       }
-      _stats.groqRetries++;
+      _stats.llmRetries++;
       const wait = backoffMs * Math.pow(2, attempt - 1);
-      log.warn(`Groq error (attempt ${attempt}): ${err.message} — retrying in ${wait}ms`);
+      log.warn(`${primary.provider} error (attempt ${attempt}): ${err.message} — retrying in ${wait}ms`);
       await sleep(wait);
     }
   }
+
+  // ─── Fallback to Groq if primary was OpenAI ───
+  const fallback = (primary.provider === 'openai') ? getGroqFallback() : null;
+  if (fallback) {
+    log.warn(`🔄 FALLBACK: Switching to Groq/${GROQ_MODEL}...`);
+    _stats.llmProvider = `GPT-4o→Groq(fallback)`;
+
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        const res = await fetch(fallback.url, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${fallback.key}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model: fallback.model,
+            messages: [
+              { role: 'system', content: systemPrompt },
+              { role: 'user',   content: userPrompt }
+            ],
+            max_tokens: maxTokens,
+            temperature
+          })
+        });
+
+        if (res.status === 429 || res.status >= 500) {
+          _stats.llmRetries++;
+          await sleep(backoffMs * attempt);
+          continue;
+        }
+
+        const data = await res.json();
+        if (!res.ok) throw new Error(JSON.stringify(data));
+
+        const raw = data.choices?.[0]?.message?.content?.trim();
+        if (!raw) throw new Error('Empty response from Groq fallback');
+
+        const cleaned = cleanLLMOutput(raw);
+
+        _journal.push({
+          ts:          new Date().toISOString(),
+          script:      _ctx.script,
+          platform:    _ctx.platform,
+          type:        'generation_fallback',
+          promptLen:   systemPrompt.length + userPrompt.length,
+          responseLen: cleaned.length,
+          preview:     cleaned.substring(0, 120),
+          temperature,
+          maxTokens,
+          latencyMs:   Date.now() - callStart,
+          model:       fallback.model,
+          provider:    'groq_fallback'
+        });
+
+        log.ok(`✅ Groq fallback succeeded`);
+        return cleaned;
+
+      } catch (err) {
+        if (attempt === 2) {
+          _stats.llmErrors++;
+          _journal.push({
+            ts: new Date().toISOString(), script: _ctx.script, type: 'error',
+            error: `Both providers failed. Last: ${err.message.substring(0, 200)}`,
+            retries: maxRetries + attempt
+          });
+          throw new Error(`ALL LLM providers failed. OpenAI + Groq both down.`);
+        }
+        await sleep(backoffMs);
+      }
+    }
+  }
+
+  // No fallback available
+  _stats.llmErrors++;
+  _journal.push({
+    ts: new Date().toISOString(), script: _ctx.script, type: 'error',
+    error: `${primary.provider} failed, no fallback available`
+  });
+  throw new Error(`${primary.provider} failed after ${maxRetries} retries, no fallback`);
 }
 
 /**
- * Groq call that expects JSON response. Lower temperature default.
+ * LLM call that expects JSON response. Lower temperature default.
  */
 async function groqJSON(systemPrompt, userPrompt, opts = {}) {
   const raw = await groqChat(systemPrompt, userPrompt, { ...opts, temperature: opts.temperature || 0.5 });
@@ -324,7 +432,7 @@ async function groqJSON(systemPrompt, userPrompt, opts = {}) {
     // Try to extract JSON from the response
     const match = cleaned.match(/\{[\s\S]*\}|\[[\s\S]*\]/);
     if (match) return JSON.parse(match[0]);
-    throw new Error(`Invalid JSON from Groq: ${cleaned.substring(0, 100)}`);
+    throw new Error(`Invalid JSON from LLM: ${cleaned.substring(0, 100)}`);
   }
 }
 
