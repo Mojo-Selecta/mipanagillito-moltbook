@@ -13,7 +13,9 @@
  * Argumentos: lista de servicios a verificar
  *   x        → verifica X API + budget
  *   moltbook → verifica Moltbook API
- *   groq     → verifica Groq API
+ *   openai   → verifica OpenAI API (primario)
+ *   groq     → verifica Groq API (fallback)
+ *   llm      → chequea OpenAI primero, Groq si falla (recomendado)
  *
  * Exit codes:
  *   0 = todo OK, proceder
@@ -116,6 +118,27 @@ async function quickCheckGroq() {
   }
 }
 
+async function quickCheckOpenAI() {
+  const key = process.env.OPENAI_API_KEY;
+  if (!key) return { ok: false, reason: 'OPENAI_API_KEY missing' };
+  
+  try {
+    const res = await fetch('https://api.openai.com/v1/models', {
+      headers: { 'Authorization': `Bearer ${key}` },
+      signal: AbortSignal.timeout(8000)
+    });
+    
+    if (res.status === 200) return { ok: true, reason: `OpenAI OK (${res.status})` };
+    if (res.status === 429) return { ok: false, reason: `OpenAI RATE LIMITED (429)` };
+    if (res.status === 401) return { ok: false, reason: `OpenAI AUTH FAILED (401)` };
+    if (res.status === 402) return { ok: false, reason: `OpenAI SIN CRÉDITOS (402)` };
+    if (res.status === 403) return { ok: false, reason: `OpenAI FORBIDDEN (403)` };
+    return { ok: true, reason: `OpenAI responded (${res.status})` };
+  } catch (e) {
+    return { ok: false, reason: `OpenAI unreachable: ${e.message}` };
+  }
+}
+
 async function quickCheckMoltbook() {
   const key = process.env.MOLTBOOK_API_KEY;
   if (!key) return { ok: false, reason: 'MOLTBOOK_API_KEY missing' };
@@ -197,7 +220,8 @@ async function main() {
   
   if (services.length === 0) {
     console.log('⚡ PREFLIGHT — uso: node preflight.js <service1> [service2] ...');
-    console.log('   Servicios: x, moltbook, groq');
+    console.log('   Servicios: x, moltbook, openai, groq, llm');
+    console.log('   "llm" = chequea OpenAI primero, Groq como fallback');
     process.exit(0);
   }
   
@@ -210,6 +234,32 @@ async function main() {
   const doLive = process.argv.includes('--live');
   
   for (const svc of services) {
+    
+    // "llm" = chequear OpenAI primero, Groq como fallback
+    // Si al menos uno funciona, está OK
+    if (svc === 'llm') {
+      const openai = await quickCheckOpenAI();
+      const groq = await quickCheckGroq();
+      
+      if (openai.ok) {
+        console.log(`\n   🟢 LLM: OpenAI OK (primario) — ${openai.reason}`);
+        if (groq.ok) {
+          console.log(`   🟢 LLM: Groq OK (backup listo) — ${groq.reason}`);
+        } else {
+          console.log(`   🟡 LLM: Groq CAÍDO (sin backup) — ${groq.reason}`);
+        }
+      } else if (groq.ok) {
+        console.log(`\n   🟡 LLM: OpenAI CAÍDO — ${openai.reason}`);
+        console.log(`   🟢 LLM: Usando Groq como fallback — ${groq.reason}`);
+      } else {
+        console.log(`\n   🔴 LLM: OpenAI CAÍDO — ${openai.reason}`);
+        console.log(`   🔴 LLM: Groq CAÍDO — ${groq.reason}`);
+        console.log(`      → BLOQUEADO — ningún LLM disponible`);
+        allOk = false;
+      }
+      continue;
+    }
+    
     // Paso 1: Verificar cache
     const cached = checkCachedHealth(svc);
     
@@ -236,6 +286,7 @@ async function main() {
     switch (svc) {
       case 'x':        live = await quickCheckX(); break;
       case 'moltbook': live = await quickCheckMoltbook(); break;
+      case 'openai':   live = await quickCheckOpenAI(); break;
       case 'groq':     live = await quickCheckGroq(); break;
       default:
         console.log(`\n   ⚠️  Servicio desconocido: ${svc}`);
