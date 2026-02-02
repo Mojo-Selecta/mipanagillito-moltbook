@@ -1,6 +1,6 @@
 'use strict';
 /**
- * 🦞 GILLITO HEALTH CHECK v1.0
+ * 🦞 GILLITO HEALTH CHECK v1.1
  * ═══════════════════════════════════════════════════════
  * Diagnóstico completo de TODOS los servicios que usa Gillito.
  * Corre ANTES de cada workflow para no gastar API calls al pedo.
@@ -8,9 +8,12 @@
  * Servicios que chequea:
  *   1. X (Twitter) API — auth, rate limits, budget
  *   2. Moltbook API — server up, auth, endpoints
- *   3. Groq API — auth, rate limits
- *   4. Cloudflare Pages — auth (opcional)
- *   5. Budget interno — presupuesto diario/mensual
+ *   3. OpenAI API — auth, rate limits (PRIMARIO)
+ *   4. Groq API — auth, rate limits (FALLBACK)
+ *   5. Cloudflare Pages — auth (opcional)
+ *   6. Budget interno — presupuesto diario/mensual
+ *
+ * Prioridad LLM: OpenAI (GPT-4) primero → Groq (Llama) si falla
  *
  * Modos de uso:
  *   A) Standalone:  node scripts/health-check.js
@@ -54,10 +57,19 @@ const SERVICES = {
       me: 'https://www.moltbook.com/api/agents/me'
     }
   },
+  openai: {
+    name: 'OpenAI API (PRIMARIO)',
+    emoji: '🤖',
+    critical: true,  // LLM primario — GPT-4
+    endpoints: {
+      chat: 'https://api.openai.com/v1/chat/completions',
+      models: 'https://api.openai.com/v1/models'
+    }
+  },
   groq: {
-    name: 'Groq LLM API',
+    name: 'Groq LLM API (FALLBACK)',
     emoji: '🧠',
-    critical: true,  // sin AI no hay contenido
+    critical: false,  // fallback — si OpenAI funciona, no es crítico
     endpoints: {
       chat: 'https://api.groq.com/openai/v1/chat/completions',
       models: 'https://api.groq.com/openai/v1/models'
@@ -477,11 +489,161 @@ async function checkMoltbook() {
 }
 
 // ════════════════════════════════════════════
-// 3. CHECK GROQ API
+// 3. CHECK OPENAI API (PRIMARIO)
+// ════════════════════════════════════════════
+
+async function checkOpenAI() {
+  LOG.head('🤖  3. OPENAI API (PRIMARIO)');
+
+  const key = process.env.OPENAI_API_KEY;
+
+  if (!key) {
+    LOG.fail('OPENAI_API_KEY no configurada');
+    record('openai', 'fail', 'No API key');
+    return;
+  }
+  LOG.ok(`API key configurada (${key.substring(0, 7)}...${key.substring(key.length - 4)})`);
+  record('openai', 'ok', 'API key present');
+
+  const headers = {
+    'Authorization': `Bearer ${key}`,
+    'Content-Type': 'application/json'
+  };
+
+  // 3a. Test auth con GET /models (no gasta tokens)
+  try {
+    const res = await fetch(SERVICES.openai.endpoints.models, {
+      method: 'GET',
+      headers: { 'Authorization': `Bearer ${key}` },
+      signal: AbortSignal.timeout(10000)
+    });
+
+    if (res.status === 200) {
+      const data = await res.json();
+      const modelNames = (data.data || []).map(m => m.id);
+      const hasGPT4 = modelNames.some(m => m.includes('gpt-4'));
+      const hasGPT4o = modelNames.some(m => m.includes('gpt-4o'));
+      LOG.ok(`Auth OK — ${modelNames.length} modelos disponibles`);
+      if (hasGPT4o) {
+        LOG.ok('gpt-4o DISPONIBLE ✨');
+        record('openai', 'ok', 'GPT-4o available');
+      } else if (hasGPT4) {
+        LOG.ok('gpt-4 disponible (gpt-4o no encontrado)');
+        record('openai', 'ok', 'GPT-4 available');
+      } else {
+        LOG.warn('Ni gpt-4 ni gpt-4o encontrados');
+        LOG.info(`Modelos: ${modelNames.filter(m => m.includes('gpt')).slice(0, 5).join(', ')}`);
+        record('openai', 'warn', 'GPT-4 models not in list');
+      }
+    } else if (res.status === 401) {
+      LOG.fail('Auth FALLIDA (401) — API key inválida o expirada');
+      record('openai', 'fail', 'Auth failed 401');
+      return;
+    } else if (res.status === 429) {
+      LOG.fail('RATE LIMITED (429)');
+      const retryAfter = res.headers.get('retry-after');
+      if (retryAfter) LOG.info(`Retry después de: ${retryAfter}s`);
+      record('openai', 'fail', 'Rate limited on /models');
+      return;
+    } else if (res.status === 403) {
+      LOG.fail('ACCESO DENEGADO (403) — key sin permisos o cuenta suspendida');
+      record('openai', 'fail', 'Forbidden 403');
+      return;
+    } else {
+      LOG.warn(`Respuesta inesperada (${res.status})`);
+      record('openai', 'warn', `Unexpected ${res.status}`);
+    }
+  } catch (err) {
+    if (err.name === 'TimeoutError' || err.name === 'AbortError') {
+      LOG.fail('TIMEOUT — OpenAI API no responde (10s)');
+      record('openai', 'fail', 'Timeout 10s');
+    } else {
+      LOG.fail(`Error de conexión: ${err.message}`);
+      record('openai', 'fail', `Connection: ${err.message}`);
+    }
+    return;
+  }
+
+  // 3b. Test mínimo de generación (costo mínimo ~0.001 cent)
+  try {
+    const res = await fetch(SERVICES.openai.endpoints.chat, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        model: 'gpt-4o',
+        messages: [{ role: 'user', content: 'Di: OK' }],
+        max_tokens: 5,
+        temperature: 0
+      }),
+      signal: AbortSignal.timeout(15000)
+    });
+
+    // Leer rate limit headers de OpenAI
+    const remainingRequests = res.headers.get('x-ratelimit-remaining-requests');
+    const remainingTokens = res.headers.get('x-ratelimit-remaining-tokens');
+    const limitRequests = res.headers.get('x-ratelimit-limit-requests');
+    const limitTokens = res.headers.get('x-ratelimit-limit-tokens');
+    const resetRequests = res.headers.get('x-ratelimit-reset-requests');
+    const resetTokens = res.headers.get('x-ratelimit-reset-tokens');
+
+    if (res.status === 200) {
+      const data = await res.json();
+      const reply = data.choices?.[0]?.message?.content || '';
+      const usage = data.usage || {};
+      LOG.ok(`Generación OK — respuesta: "${reply.trim()}"`);
+      LOG.info(`Tokens: ${usage.prompt_tokens || '?'} in + ${usage.completion_tokens || '?'} out`);
+      record('openai', 'ok', 'Generation working');
+
+      // Mostrar rate limits
+      if (remainingRequests !== null || limitRequests !== null) {
+        console.log('');
+        LOG.info('📊 Rate Limits OpenAI:');
+        if (limitRequests) LOG.info(`   Requests: ${remainingRequests || '?'}/${limitRequests} restantes`);
+        if (limitTokens) LOG.info(`   Tokens:   ${remainingTokens || '?'}/${limitTokens} restantes`);
+        if (resetRequests) LOG.info(`   Reset requests: ${resetRequests}`);
+        if (resetTokens) LOG.info(`   Reset tokens:   ${resetTokens}`);
+
+        if (remainingRequests !== null && parseInt(remainingRequests) <= 5) {
+          LOG.warn(`Solo ${remainingRequests} requests restantes`);
+          record('openai', 'warn', `Low requests: ${remainingRequests}`);
+        } else {
+          record('openai', 'ok', 'Rate limits healthy');
+        }
+      }
+
+    } else if (res.status === 429) {
+      const body = await res.json().catch(() => ({}));
+      LOG.fail('RATE LIMITED (429)');
+      if (body.error?.message) LOG.info(`Detalle: ${body.error.message}`);
+      record('openai', 'fail', `Rate limited: ${body.error?.message || '429'}`);
+    } else if (res.status === 402) {
+      LOG.fail('SIN CRÉDITOS (402) — cuenta sin saldo');
+      record('openai', 'fail', 'No credits 402');
+    } else if (res.status === 503) {
+      LOG.fail('Servicio NO disponible (503)');
+      record('openai', 'fail', 'Service unavailable 503');
+    } else {
+      const body = await res.text();
+      LOG.warn(`Respuesta: ${res.status} — ${body.substring(0, 200)}`);
+      record('openai', 'warn', `Unexpected ${res.status}`);
+    }
+  } catch (err) {
+    if (err.name === 'TimeoutError' || err.name === 'AbortError') {
+      LOG.fail('TIMEOUT en generación (15s)');
+      record('openai', 'fail', 'Generation timeout 15s');
+    } else {
+      LOG.fail(`Error en generación: ${err.message}`);
+      record('openai', 'fail', `Generation error: ${err.message}`);
+    }
+  }
+}
+
+// ════════════════════════════════════════════
+// 4. CHECK GROQ API (FALLBACK)
 // ════════════════════════════════════════════
 
 async function checkGroq() {
-  LOG.head('🧠  3. GROQ LLM API');
+  LOG.head('🧠  4. GROQ LLM API (FALLBACK)');
 
   const key = process.env.GROQ_API_KEY;
 
@@ -619,11 +781,11 @@ async function checkGroq() {
 }
 
 // ════════════════════════════════════════════
-// 4. CHECK CLOUDFLARE (OPCIONAL)
+// 5. CHECK CLOUDFLARE (OPCIONAL)
 // ════════════════════════════════════════════
 
 async function checkCloudflare() {
-  LOG.head('☁️   4. CLOUDFLARE PAGES (opcional)');
+  LOG.head('☁️   5. CLOUDFLARE PAGES (opcional)');
 
   const token = process.env.CLOUDFLARE_API_TOKEN;
   const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
@@ -667,11 +829,11 @@ async function checkCloudflare() {
 }
 
 // ════════════════════════════════════════════
-// 5. CHECK BUDGET INTERNO / ESTADO GENERAL
+// 6. CHECK BUDGET INTERNO / ESTADO GENERAL
 // ════════════════════════════════════════════
 
 async function checkInternal() {
-  LOG.head('📊  5. ESTADO INTERNO');
+  LOG.head('📊  6. ESTADO INTERNO');
 
   // 5a. Verificar que personality.json existe
   const personalityPaths = [
@@ -763,28 +925,48 @@ function generateVerdict() {
   // Determinar qué puede hacer Gillito
   const xStatus = results.services.x?.status || 'unknown';
   const moltStatus = results.services.moltbook?.status || 'unknown';
+  const openaiStatus = results.services.openai?.status || 'unknown';
   const groqStatus = results.services.groq?.status || 'unknown';
 
-  results.canPost.x = (xStatus === 'ok' || xStatus === 'warn') && groqStatus !== 'fail';
-  results.canPost.moltbook = (moltStatus === 'ok' || moltStatus === 'warn') && groqStatus !== 'fail';
-  results.canGenerate = groqStatus !== 'fail';
+  // LLM: OpenAI es primario, Groq es fallback
+  // Puede generar si AL MENOS UNO funciona
+  const openaiOk = openaiStatus === 'ok' || openaiStatus === 'warn';
+  const groqOk = groqStatus === 'ok' || groqStatus === 'warn';
+  results.canGenerate = openaiOk || groqOk;
+  results.llmPrimary = openaiOk ? 'openai' : groqOk ? 'groq' : 'none';
+
+  results.canPost.x = (xStatus === 'ok' || xStatus === 'warn') && results.canGenerate;
+  results.canPost.moltbook = (moltStatus === 'ok' || moltStatus === 'warn') && results.canGenerate;
 
   console.log('');
 
   // Status por servicio
   const statusIcon = (s) => s === 'ok' ? '🟢' : s === 'warn' ? '🟡' : s === 'fail' ? '🔴' : '⚪';
 
-  console.log(`   ${statusIcon(xStatus)}  X (Twitter)  — ${xStatus.toUpperCase()}`);
-  console.log(`   ${statusIcon(moltStatus)}  Moltbook     — ${moltStatus.toUpperCase()}`);
-  console.log(`   ${statusIcon(groqStatus)}  Groq LLM     — ${groqStatus.toUpperCase()}`);
+  console.log(`   ${statusIcon(xStatus)}  X (Twitter)     — ${xStatus.toUpperCase()}`);
+  console.log(`   ${statusIcon(moltStatus)}  Moltbook        — ${moltStatus.toUpperCase()}`);
+  console.log(`   ${statusIcon(openaiStatus)}  OpenAI (1ero)   — ${openaiStatus.toUpperCase()}`);
+  console.log(`   ${statusIcon(groqStatus)}  Groq (backup)   — ${groqStatus.toUpperCase()}`);
 
   const cfStatus = results.services.cloudflare?.status || 'unknown';
   if (cfStatus !== 'unknown') {
-    console.log(`   ${statusIcon(cfStatus)}  Cloudflare   — ${cfStatus.toUpperCase()}`);
+    console.log(`   ${statusIcon(cfStatus)}  Cloudflare      — ${cfStatus.toUpperCase()}`);
   }
 
   console.log('');
   console.log('   ────────────────────────────────');
+
+  // LLM status
+  if (openaiOk && groqOk) {
+    console.log('   🧠 LLM: OpenAI ✅ + Groq ✅ (backup listo)');
+  } else if (openaiOk && !groqOk) {
+    console.log('   🧠 LLM: OpenAI ✅ (Groq ❌ sin backup)');
+  } else if (!openaiOk && groqOk) {
+    console.log('   🧠 LLM: OpenAI ❌ → usando Groq ✅ como fallback');
+  } else {
+    console.log('   🧠 LLM: ❌ NINGUNO FUNCIONA — no se puede generar');
+  }
+
   console.log(`   Puede postear a X:        ${results.canPost.x ? '✅ SÍ' : '❌ NO'}`);
   console.log(`   Puede postear a Moltbook: ${results.canPost.moltbook ? '✅ SÍ' : '❌ NO'}`);
   console.log(`   Puede generar contenido:  ${results.canGenerate ? '✅ SÍ' : '❌ NO'}`);
@@ -873,12 +1055,13 @@ async function preflight(service) {
 async function checkAll() {
   console.log('');
   console.log('═══════════════════════════════════════════════════════');
-  console.log('  🦞 GILLITO HEALTH CHECK v1.0');
+  console.log('  🦞 GILLITO HEALTH CHECK v1.1');
   console.log('  ' + new Date().toLocaleString('es-PR', { timeZone: 'America/Puerto_Rico' }));
   console.log('═══════════════════════════════════════════════════════');
 
   await checkX();
   await checkMoltbook();
+  await checkOpenAI();
   await checkGroq();
   await checkCloudflare();
   await checkInternal();
@@ -909,11 +1092,12 @@ if (require.main === module) {
       switch (service) {
         case 'x': await checkX(); break;
         case 'moltbook': await checkMoltbook(); break;
+        case 'openai': await checkOpenAI(); break;
         case 'groq': await checkGroq(); break;
         case 'cloudflare': await checkCloudflare(); break;
         default:
           console.log(`Servicio desconocido: ${service}`);
-          console.log('Servicios: x, moltbook, groq, cloudflare');
+          console.log('Servicios: x, moltbook, openai, groq, cloudflare');
           process.exit(1);
       }
 
@@ -935,4 +1119,4 @@ if (require.main === module) {
 }
 
 // Exports para uso como módulo
-module.exports = { checkAll, preflight, checkX, checkMoltbook, checkGroq, checkCloudflare };
+module.exports = { checkAll, preflight, checkX, checkMoltbook, checkOpenAI, checkGroq, checkCloudflare };
