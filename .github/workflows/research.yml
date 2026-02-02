@@ -1,0 +1,33 @@
+name: 📰 Gillito - Web Research v1.0
+on:
+  schedule:
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
+
+jobs:
+  research:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '22' }
+
+      - name: 📥 Restore research data
+        uses: actions/cache@v4
+        with:
+          path: .gillito-research.json
+          key: gillito-research-${{ github.run_id }}
+          restore-keys: gillito-research-
+
+      - name: 🧠 Restore journal
+        uses: actions/cache@v4
+        with:
+          path: .gillito-journal.json
+          key: gillito-journal-${{ github.run_id }}
+          restore-keys: gillito-journal-
+
+      - name: 📰 Investigar noticias de PR
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: node scripts/research.js
