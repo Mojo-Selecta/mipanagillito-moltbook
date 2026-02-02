@@ -1,10 +1,8 @@
-name: 💬 Gillito - Reply on X v6.0
-
+name: 💬 Gillito - Reply on X v6.1
 on:
   schedule:
     - cron: '30 */4 * * *'    # Cada 4 horas (~6 replies/día)
   workflow_dispatch:
-
 jobs:
   reply:
     runs-on: ubuntu-latest
@@ -26,6 +24,14 @@ jobs:
           path: .gillito-reply-history.json
           key: x-replyhistory-${{ github.run_id }}
           restore-keys: x-replyhistory-
+
+      # ═══ 🛡️ NEW: Anti-spam budget persistence ═══
+      - name: 🛡️ Restore mention budget
+        uses: actions/cache@v4
+        with:
+          path: .gillito-mention-budget.json
+          key: x-mention-budget-${{ github.run_id }}
+          restore-keys: x-mention-budget-
 
       - name: 💬 Reply to mentions
         env:
