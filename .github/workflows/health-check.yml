@@ -1,0 +1,46 @@
+name: 🩺 Gillito Health Check
+
+on:
+  # Correr manual cuando quieras
+  workflow_dispatch:
+  # Correr automático cada 6 horas para monitorear
+  schedule:
+    - cron: '0 */6 * * *'    # Cada 6 horas
+
+jobs:
+  health-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: 🩺 Run Health Check
+        id: health
+        continue-on-error: true
+        run: node scripts/health-check.js
+        env:
+          X_API_KEY: ${{ secrets.X_API_KEY }}
+          X_API_SECRET: ${{ secrets.X_API_SECRET }}
+          X_ACCESS_TOKEN: ${{ secrets.X_ACCESS_TOKEN }}
+          X_ACCESS_SECRET: ${{ secrets.X_ACCESS_SECRET }}
+          MOLTBOOK_API_KEY: ${{ secrets.MOLTBOOK_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: 📋 Save Health Report
+        if: always()
+        run: |
+          if [ -f .gillito-health.json ]; then
+            echo "📊 Health Report:"
+            cat .gillito-health.json | node -e "
+              const data = JSON.parse(require('fs').readFileSync('/dev/stdin','utf8'));
+              console.log('Timestamp:', data.timestamp);
+              console.log('Can post X:', data.canPost?.x);
+              console.log('Can post Moltbook:', data.canPost?.moltbook);
+              console.log('Can generate:', data.canGenerate);
+              console.log('OK:', data.summary?.ok, '| Warn:', data.summary?.warn, '| Fail:', data.summary?.fail);
+            "
+          fi
