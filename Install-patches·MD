@@ -1,0 +1,164 @@
+# 🛡️ GILLITO v6.1 — Security Patches Install Guide
+
+## Qué se parchó (basado en TU código exacto)
+
+---
+
+## 📁 Archivos a REEMPLAZAR
+
+### Scripts → `scripts/`
+
+| Archivo | Cambios |
+|---------|---------|
+| `post-to-x.js` | 🔧 3 syntax fixes + 🛡️ `sec.processOutput()` antes de `C.xPost()` |
+| `post-to-moltbook.js` | 🔧 3 syntax fixes + 🛡️ `sec.processOutput()` antes de `C.moltPostWithFallback()` |
+| `gillito-god-mode.js` | 🛡️ `secureOutput()` wrapper + `processExternalContent()` en searchAndComment |
+
+### Workflows → `.github/workflows/`
+
+| Archivo | Cambio |
+|---------|--------|
+| `x-reply.yml` | +1 cache step: `.gillito-mention-budget.json` (anti-spam) |
+| `interact.yml` | +1 cache step: `.gillito-mention-budget.json` (anti-spam) |
+
+---
+
+## 🔧 Bugs de sintaxis arreglados
+
+Estos bugs estaban en tu código v6.0 y crasheaban los scripts:
+
+### 1. Bracket faltante en `post-to-x.js` y `post-to-moltbook.js`
+
+```javascript
+// ❌ ANTES (SyntaxError):
+P`temas_${modo.modo}`] || [modo.tema],
+
+// ✅ DESPUÉS:
+P[`temas_${modo.modo}`] || [modo.tema],
+```
+
+### 2. Tagged template literals rotos en ambos scripts
+
+```javascript
+// ❌ ANTES (TypeError — log recibe un TemplateStringsArray):
+C.log.info`📝 Tweet (${tweet.length} chars): ${tweet}`);
+C.log.ok`Posteado: https://twitter.com/i/status/${result.id}`);
+C.log.error`Falló: ${result.error}`);
+
+// ✅ DESPUÉS (llamada normal con paréntesis):
+C.log.info(`📝 Tweet (${tweet.length} chars): ${tweet}`);
+C.log.ok(`Posteado: https://twitter.com/i/status/${result.id}`);
+C.log.error(`Falló: ${result.error}`);
+```
+
+---
+
+## 🛡️ Security additions (detalle)
+
+### post-to-x.js — 6 líneas nuevas
+```javascript
+const sec = C.sec || require('./lib/security');  // línea 14
+
+// Antes de C.xPost():
+const check = sec.processOutput(tweet);
+if (!check.safe) {
+  C.log.warn(`🛡️ Tweet BLOQUEADO: ${check.blocked.join(', ')}`);
+  C.log.session();
+  return;
+}
+// Luego usa check.text en vez de tweet
+```
+
+### post-to-moltbook.js — 7 líneas nuevas
+```javascript
+const sec = C.sec || require('./lib/security');  // línea 14
+
+// Antes de C.moltPostWithFallback():
+const check = sec.processOutput(content);
+if (!check.safe) {
+  C.log.warn(`🛡️ Post BLOQUEADO: ${check.blocked.join(', ')}`);
+  C.log.session();
+  return;
+}
+// Luego usa check.text en vez de content
+```
+
+### gillito-god-mode.js — ~20 líneas nuevas
+```javascript
+const sec = C.sec || require('./lib/security');  // línea 14
+
+// Wrapper reutilizable:
+function secureOutput(text, label) {
+  const check = sec.processOutput(text);
+  if (!check.safe) {
+    C.log.warn(`🛡️ ${label} BLOQUEADO: ${check.blocked.join(', ')}`);
+    return null;
+  }
+  return check.text;
+}
+
+// En searchAndComment() — sanitiza input externo:
+const extCheck = sec.processExternalContent(postContent, authorId, author, 'moltbook-search');
+if (!extCheck.proceed) continue;
+// Usa extCheck.sanitized en vez del texto raw
+
+// Valida output antes de publicar:
+const safe = secureOutput(comment, `Comment a @${author}`);
+if (!safe) continue;
+```
+
+### Workflows — 1 cache step nuevo en cada uno
+```yaml
+# Nuevo step en x-reply.yml e interact.yml:
+- name: 🛡️ Restore mention budget
+  uses: actions/cache@v4
+  with:
+    path: .gillito-mention-budget.json
+    key: x-mention-budget-${{ github.run_id }}
+    restore-keys: x-mention-budget-
+```
+
+---
+
+## 🔧 Instalación
+
+```bash
+# Reemplazar scripts
+cp post-to-x.js          REPO/scripts/post-to-x.js
+cp post-to-moltbook.js   REPO/scripts/post-to-moltbook.js
+cp gillito-god-mode.js   REPO/scripts/gillito-god-mode.js
+
+# Reemplazar workflows
+cp x-reply.yml            REPO/.github/workflows/x-reply.yml
+cp interact.yml           REPO/.github/workflows/interact.yml
+
+# Push
+git add .
+git commit -m "🛡️ v6.1 — security hardening + syntax fixes"
+git push
+```
+
+---
+
+## ✅ Estado Final
+
+| Vector | Protección | Estado |
+|--------|-----------|--------|
+| Prompt injection | `detectInjection()` | ✅ |
+| Contenido malicioso | `sanitizeInput()` | ✅ |
+| Spam de menciones | `checkMentionBudget()` | ✅ |
+| Budget persistence | `actions/cache` | ✅ |
+| Output leak (replies X) | `processOutput()` | ✅ |
+| Output leak (replies Molt) | `processOutput()` | ✅ |
+| Output leak (posts X) | `processOutput()` | ✅ |
+| Output leak (posts Molt) | `processOutput()` | ✅ |
+| Output leak (god-mode) | `secureOutput()` | ✅ |
+| External input (god-mode) | `processExternalContent()` | ✅ |
+| Secret en logs | `redactSecrets()` | ✅ |
+| Defensive prompt | `DEFENSIVE_PROMPT` | ✅ |
+| .gitignore | `.gillito-*.json` | ✅ |
+
+### Pendiente manual (GitHub Settings):
+- ⬜ Dependabot alerts → ACTIVAR
+- ⬜ Code scanning → ACTIVAR
+- ⬜ Secret scanning push protection → ACTIVAR
