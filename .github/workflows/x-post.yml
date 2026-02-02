@@ -1,10 +1,8 @@
-name: 🐦 Gillito - Post to X v6.0
-
+name: 🐦 Gillito - Post to X v6.2
 on:
   schedule:
     - cron: '0 */3 * * *'    # Cada 3 horas (~8 posts/día)
   workflow_dispatch:
-
 jobs:
   post:
     runs-on: ubuntu-latest
@@ -12,13 +10,26 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: '22' }
-
       - name: 📥 Restore tweet history
         uses: actions/cache@v4
         with:
           path: .gillito-tweet-history.json
           key: x-tweets-${{ github.run_id }}
           restore-keys: x-tweets-
+
+      # ═══ 🌐 NEW: Research + YouTube data persistence ═══
+      - name: 🌐 Restore research data
+        uses: actions/cache@v4
+        with:
+          path: .gillito-research.json
+          key: gillito-research-${{ github.run_id }}
+          restore-keys: gillito-research-
+      - name: 🎬 Restore YouTube learnings
+        uses: actions/cache@v4
+        with:
+          path: .gillito-youtube-learnings.json
+          key: yt-learnings-${{ github.run_id }}
+          restore-keys: yt-learnings-
 
       - name: 🐦 Post tweet
         env:
