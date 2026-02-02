@@ -1,30 +1,51 @@
 #!/usr/bin/env node
 /**
- * Mi Pana Gillito — Interact on Moltbook v6.1
+ * Mi Pana Gillito — Interact on Moltbook v6.2 🛡️
  * ═══════════════════════════════════════════
  * 🤝 Interactúa con el feed (upvote/downvote/comment/follow)
  * 🤖 Bot detection → trolleo agresivo
  * 📊 Logging detallado de éxitos Y fallos
+ * 🛡️ Security: input sanitization, output validation
  */
 
-const C = require('./lib/core');
+const C   = require('./lib/core');
+const sec = C.sec;  // 🛡️ Security module
+
 C.initScript('interact-moltbook', 'moltbook');
 
 const P       = C.loadPersonality();
 const history = C.createHistory('.gillito-molt-interact-history.json', 80);
 
 async function generateComment(post, tipo) {
-  const systemPrompt = C.buildReplySystemPrompt(P, tipo, post.author?.name || 'unknown', 'moltbook');
+  const authorName = post.author?.name || 'unknown';
+  const systemPrompt = C.buildReplySystemPrompt(P, tipo, authorName, 'moltbook');
   const antiRep = C.buildAntiRepetitionContext(history.getTexts(15));
   const temp = C.suggestTemperature(P.temperatura || 1.1, C.getJournal());
 
   const seed = Math.random().toString(36).substring(2, 8);
   const postText = (post.title || '') + ' ' + (post.content || '');
-  const userPrompt = `[SEED:${seed}] Post de @${post.author?.name || 'unknown'}:\n"${postText.substring(0, 200)}"\n\nComenta como Gillito. Máximo 180 chars. Sé provocador.${antiRep}`;
 
-  return C.groqChat(systemPrompt, userPrompt, {
+  // 🛡️ Sanitize post content before sending to LLM
+  const secCheck = sec.processExternalContent(postText, post.author?.id || authorName, authorName, 'molt-feed');
+  if (!secCheck.proceed) {
+    C.log.warn(secCheck.reason);
+    return null;
+  }
+
+  const userPrompt = `[SEED:${seed}] Post de @${authorName}:\n${secCheck.sanitized}\n\nComenta como Gillito. Máximo 180 chars. Sé provocador.${antiRep}`;
+
+  const reply = await C.groqChat(systemPrompt, userPrompt, {
     maxTokens: 140, temperature: temp, maxRetries: 2, backoffMs: 3000
   });
+
+  // 🛡️ Validate output before returning
+  const outputCheck = sec.processOutput(reply);
+  if (!outputCheck.safe) {
+    C.log.warn(`🛡️ Comment bloqueado: ${outputCheck.blocked.join(', ')}`);
+    return null;
+  }
+
+  return outputCheck.text;
 }
 
 async function main() {
@@ -44,7 +65,7 @@ async function main() {
     const isBot = C.isLikelyBot(author);
     const postId = post.id || post._id;
 
-    C.log.info(`📄 @${authorName} ${isBot ? '🤖' : '👤'}: "${(post.title || '').substring(0, 40)}"`);
+    C.log.info(`📄 @${authorName} ${isBot ? '🤖' : '👤'}: "${sec.redactSecrets((post.title || '').substring(0, 40))}"`);
 
     if (isBot) {
       // Bots: 70% comment (troll), 20% downvote, 10% upvote
@@ -52,7 +73,7 @@ async function main() {
       if (roll < 0.7) {
         try {
           const comment = await generateComment(post, 'bot');
-          if (C.validateContent(comment, 200).valid) {
+          if (comment && C.validateContent(comment, 200).valid) {
             const ok = await C.moltComment(postId, comment);
             if (ok) {
               C.log.ok(`🤖 Trolled @${authorName}: ${comment.substring(0, 50)}...`);
@@ -82,7 +103,7 @@ async function main() {
       if (roll < 0.4) {
         try {
           const comment = await generateComment(post, 'normal');
-          if (C.validateContent(comment, 200).valid) {
+          if (comment && C.validateContent(comment, 200).valid) {
             const ok = await C.moltComment(postId, comment);
             if (ok) {
               C.log.ok(`💬 Commented @${authorName}: ${comment.substring(0, 50)}...`);
