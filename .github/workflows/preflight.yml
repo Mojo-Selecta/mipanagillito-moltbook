@@ -1,0 +1,42 @@
+# ═══════════════════════════════════════════════════════
+# EJEMPLO: x-post.yml ACTUALIZADO CON PREFLIGHT
+# ═══════════════════════════════════════════════════════
+# Los cambios están marcados con "# 🩺 NUEVO"
+# Solo se añade 1 step antes del script principal
+
+name: 🐦 Gillito X Post v4.1
+
+on:
+  schedule:
+    - cron: '0 */3 * * *'
+  workflow_dispatch:
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # 🩺 NUEVO — Preflight check antes de gastar API calls
+      - name: ⚡ Preflight Check
+        run: node scripts/preflight.js x groq
+        env:
+          X_API_KEY: ${{ secrets.X_API_KEY }}
+          X_API_SECRET: ${{ secrets.X_API_SECRET }}
+          X_ACCESS_TOKEN: ${{ secrets.X_ACCESS_TOKEN }}
+          X_ACCESS_SECRET: ${{ secrets.X_ACCESS_SECRET }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+
+      # Si preflight pasa, ejecutar normalmente
+      - name: 🔥 Post to X
+        run: node scripts/post-to-x.js
+        env:
+          X_API_KEY: ${{ secrets.X_API_KEY }}
+          X_API_SECRET: ${{ secrets.X_API_SECRET }}
+          X_ACCESS_TOKEN: ${{ secrets.X_ACCESS_TOKEN }}
+          X_ACCESS_SECRET: ${{ secrets.X_ACCESS_SECRET }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
