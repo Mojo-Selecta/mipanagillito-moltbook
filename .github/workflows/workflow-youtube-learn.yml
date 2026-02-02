@@ -1,0 +1,35 @@
+name: 🎬 Gillito - YouTube Learning v1.0
+on:
+  schedule:
+    - cron: '0 9 * * *'    # 9am UTC = 5am Puerto Rico (después del learn.js de las 4am)
+  workflow_dispatch:
+
+jobs:
+  learn:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '22' }
+
+      # Restore previous learnings (accumulated knowledge)
+      - name: 📥 Restore YouTube learnings
+        uses: actions/cache@v4
+        with:
+          path: .gillito-youtube-learnings.json
+          key: yt-learnings-${{ github.run_id }}
+          restore-keys: yt-learnings-
+
+      # Restore journal for temperature tuning
+      - name: 🧠 Restore journal
+        uses: actions/cache@v4
+        with:
+          path: .gillito-journal.json
+          key: gillito-journal-${{ github.run_id }}
+          restore-keys: gillito-journal-
+
+      - name: 🎬 Estudiar YouTube
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: node scripts/youtube-learn.js
