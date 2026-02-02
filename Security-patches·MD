@@ -1,0 +1,189 @@
+# 🛡️ GILLITO SECURITY — REMAINING PATCHES
+# ════════════════════════════════════════════
+# Guía de integración para lo que falta.
+# Copia y pega exactamente donde se indica.
+
+## ══════════════════════════════════════
+## 1. BUDGET PERSISTENCE (CRÍTICO)
+## ══════════════════════════════════════
+
+# PROBLEMA: .gillito-mention-budget.json se borra cada GitHub Actions run.
+# La protección anti-spam es inútil sin esto.
+
+# SOLUCIÓN: Añadir estos 2 steps a CADA workflow de reply.
+# (reply-x.yml, reply.yml, interact.yml)
+
+# ────── COPIAR ESTOS 2 STEPS ──────
+# Poner ANTES del step "Run Script":
+
+#      - name: 🛡️ Restore security budget
+#        uses: actions/cache@v4
+#        with:
+#          path: .gillito-mention-budget.json
+#          key: gillito-mention-budget-${{ github.run_id }}
+#          restore-keys: |
+#            gillito-mention-budget-
+
+# Poner DESPUÉS del step "Run Script":
+
+#      - name: 🛡️ Save security budget
+#        if: always()
+#        uses: actions/cache/save@v4
+#        with:
+#          path: .gillito-mention-budget.json
+#          key: gillito-mention-budget-${{ github.run_id }}
+
+# ────── EJEMPLO COMPLETO ──────
+# Así queda un workflow de reply con budget persistence:
+#
+# jobs:
+#   reply:
+#     runs-on: ubuntu-latest
+#     steps:
+#       - uses: actions/checkout@v4
+#       - uses: actions/setup-node@v4
+#         with:
+#           node-version: '20'
+#
+#       - name: 🛡️ Restore security budget
+#         uses: actions/cache@v4
+#         with:
+#           path: .gillito-mention-budget.json
+#           key: gillito-mention-budget-${{ github.run_id }}
+#           restore-keys: |
+#             gillito-mention-budget-
+#
+#       - name: Reply to mentions
+#         run: node scripts/reply-x.js
+#         env:
+#           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+#           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+#           # ... rest of your env vars
+#
+#       - name: 🛡️ Save security budget
+#         if: always()
+#         uses: actions/cache/save@v4
+#         with:
+#           path: .gillito-mention-budget.json
+#           key: gillito-mention-budget-${{ github.run_id }}
+
+
+## ══════════════════════════════════════
+## 2. OUTPUT VALIDATION — POSTING SCRIPTS
+## ══════════════════════════════════════
+
+# Estos scripts generan contenido ORIGINAL y lo publican.
+# Necesitan sec.processOutput() ANTES de publicar.
+
+# ────── post-to-x.js ──────
+# Buscar la línea donde se postea (algo como):
+#   const result = await C.xPost(tweet);
+# 
+# Cambiar a:
+#   const outputCheck = C.sec.processOutput(tweet);
+#   if (!outputCheck.safe) {
+#     C.log.warn(`🛡️ Post bloqueado: ${outputCheck.blocked.join(', ')}`);
+#     return;
+#   }
+#   const result = await C.xPost(outputCheck.text);
+
+# ────── post-to-moltbook.js (hourly) ──────
+# Buscar la línea donde se postea (algo como):
+#   await C.moltPost(submolt, title, content);
+# 
+# Cambiar a:
+#   const outputCheck = C.sec.processOutput(content);
+#   if (!outputCheck.safe) {
+#     C.log.warn(`🛡️ Post Moltbook bloqueado: ${outputCheck.blocked.join(', ')}`);
+#     return;
+#   }
+#   const titleCheck = C.sec.processOutput(title);
+#   await C.moltPost(submolt, titleCheck.text || title, outputCheck.text);
+
+# ────── god-mode.js (website generator) ──────
+# Buscar la línea donde se deploya HTML:
+#   await C.cfDeploy(html, projectName);
+# 
+# Cambiar a:
+#   const htmlCheck = C.sec.processOutput(html);
+#   if (!htmlCheck.safe) {
+#     C.log.warn(`🛡️ HTML bloqueado — secrets detectados: ${htmlCheck.blocked.join(', ')}`);
+#     C.log.warn('⚠️ NO se deployó — revisar output del LLM');
+#     return;
+#   }
+#   await C.cfDeploy(htmlCheck.text, projectName);
+
+
+## ══════════════════════════════════════
+## 3. SECURITY TEST WORKFLOW
+## ══════════════════════════════════════
+
+# Archivo: .github/workflows/security-test.yml
+# Ya incluido como archivo separado (security-test.yml)
+# Solo súbelo al repo.
+# Se activa automáticamente en cada push a scripts/
+
+
+## ══════════════════════════════════════
+## 4. GITHUB SECURITY SETTINGS (30 seg)
+## ══════════════════════════════════════
+
+# Ve a tu repo → Settings → Code security and analysis
+
+# ACTIVAR:
+# ✅ Dependabot alerts — te avisa de vulnerabilidades en npm packages
+# ✅ Code scanning — detecta problemas de seguridad en tu código
+# ✅ Secret scanning push protection — bloquea pushes con API keys
+
+# Ya tienes habilitado:
+# ✅ Security advisories
+# ✅ Secret scanning alerts
+
+
+## ══════════════════════════════════════
+## 5. ARCHIVOS A SUBIR AL REPO
+## ══════════════════════════════════════
+
+# Desde sesiones anteriores (ya los tienes):
+#   lib/security.js          ← módulo de seguridad (618 líneas)
+#   scripts/reply-x.js       ← reply X con security pipeline
+#   scripts/reply.js          ← reply Moltbook con security pipeline  
+#   scripts/interact.js       ← interact con security pipeline
+#   lib/core.js               ← core con DEFENSIVE_PROMPT + sec export
+#   .gitignore                ← actualizado con .gillito-*.json
+
+# Nuevos de esta sesión:
+#   scripts/test-security.js  ← test suite (este archivo)
+#   .github/workflows/security-test.yml ← CI para tests
+
+# Parches manuales (tú aplicas):
+#   scripts/post-to-x.js     ← añadir processOutput (3 líneas)
+#   scripts/god-mode.js       ← añadir processOutput antes de cfDeploy (5 líneas)
+#   scripts/post-to-moltbook.js ← añadir processOutput (4 líneas)
+#   .github/workflows/reply-x.yml ← añadir cache steps (12 líneas)
+#   .github/workflows/reply.yml   ← añadir cache steps (12 líneas)
+#   .github/workflows/interact.yml ← añadir cache steps (12 líneas)
+
+
+## ══════════════════════════════════════
+## RESUMEN DE PROTECCIÓN
+## ══════════════════════════════════════
+
+# ┌─────────────────────────┬──────────────────────┬────────────┐
+# │ Vector de Ataque         │ Protección            │ Estado     │
+# ├─────────────────────────┼──────────────────────┼────────────┤
+# │ Prompt injection         │ detectInjection()     │ ✅ LISTO   │
+# │ Contenido malicioso      │ sanitizeInput()       │ ✅ LISTO   │
+# │ Spam de menciones        │ checkMentionBudget()  │ ✅ LISTO   │
+# │ Budget persistence       │ actions/cache         │ ⬜ PENDIENTE│
+# │ Output leak (replies)    │ processOutput()       │ ✅ LISTO   │
+# │ Output leak (posts)      │ processOutput()       │ ⬜ PENDIENTE│
+# │ Output leak (god-mode)   │ processOutput()       │ ⬜ PENDIENTE│
+# │ Secret en logs           │ redactSecrets()       │ ✅ LISTO   │
+# │ Defensive prompt         │ DEFENSIVE_PROMPT      │ ✅ LISTO   │
+# │ .gitignore               │ .gillito-*.json       │ ✅ LISTO   │
+# │ Automated tests          │ test-security.js      │ ✅ LISTO   │
+# │ CI/CD testing            │ security-test.yml     │ ✅ LISTO   │
+# │ Dependabot               │ GitHub settings       │ ⬜ PENDIENTE│
+# │ Code scanning            │ GitHub settings       │ ⬜ PENDIENTE│
+# └─────────────────────────┴──────────────────────┴────────────┘
