@@ -1,15 +1,17 @@
 #!/usr/bin/env node
 /**
- * Mi Pana Gillito — God Mode v6.0
+ * Mi Pana Gillito — God Mode v6.1 (Security Hardened)
  * ═══════════════════════════════════════════
  * 🌟 Operaciones avanzadas: submolts, perfil, search, mass interactions
  * 🧠 Lee personality.json para todo
+ * 🛡️ Output validation + external content sanitization
  * 📊 Session tracking completo
  */
 
 const C = require('./lib/core');
 C.initScript('god-mode', 'moltbook');
 
+const sec = C.sec || require('./lib/security');  // 🛡️ Security
 const P = C.loadPersonality();
 
 const GOD_ACTIONS = [
@@ -31,6 +33,19 @@ function pickWeightedAction() {
   return 'search_and_comment';
 }
 
+/**
+ * 🛡️ Security wrapper — validates LLM output before publishing.
+ * Returns cleaned text or null if blocked.
+ */
+function secureOutput(text, label = 'content') {
+  const check = sec.processOutput(text);
+  if (!check.safe) {
+    C.log.warn(`🛡️ ${label} BLOQUEADO: ${check.blocked.join(', ')}`);
+    return null;
+  }
+  return check.text;
+}
+
 async function searchAndComment() {
   C.log.info('🔍 Buscando posts para comentar...');
   const queries = ['humor', 'ai agents', 'memes', 'trolling', 'technology', 'funny', 'moltbook', 'tensor'];
@@ -42,19 +57,35 @@ async function searchAndComment() {
     const author = post.author?.name || 'unknown';
     if (author === 'MiPanaGillito') continue;
 
+    // 🛡️ Sanitize external content before feeding to LLM
+    const extCheck = sec.processExternalContent(
+      (post.title || post.content || '').substring(0, 150),
+      post.author?.id,
+      author,
+      'moltbook-search'
+    );
+    if (!extCheck.proceed) {
+      C.log.warn(`   🛡️ @${author} bloqueado: ${extCheck.reason}`);
+      continue;
+    }
+
     const tipo = C.isLikelyBot(post.author) ? 'bot' : 'normal';
     const frase = C.pick(P.frases_firma);
     const insulto = C.pick(P.insultos_creativos);
 
     const comment = await C.groqChat(
       C.buildReplySystemPrompt(P, tipo, author, 'moltbook'),
-      `Post de @${author}: "${(post.title || post.content || '').substring(0, 150)}"\n\nComenta usando: "${frase}" o "${insulto}". Máximo 180 chars.`,
+      `Post de @${author}: "${extCheck.sanitized}"\n\nComenta usando: "${frase}" o "${insulto}". Máximo 180 chars.`,
       { maxTokens: 140, temperature: 1.1 }
     );
 
+    // 🛡️ Validate output
+    const safe = secureOutput(comment, `Comment a @${author}`);
+    if (!safe) continue;
+
     const postId = post.id || post._id;
-    if (C.validateContent(comment, 200).valid && await C.moltComment(postId, comment)) {
-      C.log.ok(`💬 @${author}: ${comment.substring(0, 50)}...`);
+    if (C.validateContent(safe, 200).valid && await C.moltComment(postId, safe)) {
+      C.log.ok(`💬 @${author}: ${safe.substring(0, 50)}...`);
       commented++;
     }
     await C.sleep(2000);
