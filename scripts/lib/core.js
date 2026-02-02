@@ -872,6 +872,103 @@ function suggestTemperature(baseTemp, recentJournal) {
 }
 
 /* ═══════════════════════════════════════════════════════
+   10b. KNOWLEDGE SOURCES (Web Research + YouTube)
+   ═══════════════════════════════════════════════════════
+   Loads cached data from research.js and youtube-learn.js
+   for injection into post generation prompts.
+   ═══════════════════════════════════════════════════════ */
+
+/**
+ * Load web research data. Returns null if file missing or >12h old.
+ */
+function loadResearch() {
+  const filepath = path.join(WORKSPACE, '.gillito-research.json');
+  try {
+    if (!fs.existsSync(filepath)) return null;
+    const data = JSON.parse(fs.readFileSync(filepath, 'utf8'));
+    if (!data.lastUpdate) return null;
+    const ageMs = Date.now() - new Date(data.lastUpdate).getTime();
+    if (ageMs > 12 * 3600 * 1000) {
+      log.debug('Research data expired (>12h)');
+      return null;
+    }
+    log.ok(`📰 Research loaded (${data.quickTopics?.length || 0} topics, age: ${Math.round(ageMs / 3600000)}h)`);
+    return data;
+  } catch (e) {
+    log.debug(`Research load failed: ${e.message}`);
+    return null;
+  }
+}
+
+/**
+ * Build research context string for LLM prompt injection.
+ * Returns formatted string or empty string if no data.
+ */
+function buildResearchContext(research) {
+  if (!research) return '';
+  const parts = ['\n\n═══ CONTEXTO ACTUAL ═══'];
+  if (research.quickTake)
+    parts.push(`📰 HOY EN PR: ${research.quickTake}`);
+  if (research.quickTopics?.length)
+    parts.push(`🔥 TEMAS CALIENTES: ${research.quickTopics.join(', ')}`);
+  if (research.quickAngles?.length)
+    parts.push(`💡 ÁNGULOS: ${research.quickAngles.map(a => a.angulo || a).join(', ')}`);
+  if (research.quickPhrases?.length)
+    parts.push(`💬 FRASES: ${research.quickPhrases.slice(0, 3).join(' | ')}`);
+  if (research.deepInsights?.length)
+    parts.push(`🔬 DEEP: ${research.deepInsights.slice(0, 2).map(d => d.take || d).join(' | ')}`);
+  parts.push('[Usa este contexto para posts relevantes y actuales]');
+  return parts.join('\n');
+}
+
+/**
+ * Load YouTube learning data. Returns null if file missing or >48h old.
+ */
+function loadYouTubeLearnings() {
+  const filepath = path.join(WORKSPACE, '.gillito-youtube-learnings.json');
+  try {
+    if (!fs.existsSync(filepath)) return null;
+    const data = JSON.parse(fs.readFileSync(filepath, 'utf8'));
+    if (!data.lastUpdate) return null;
+    const ageMs = Date.now() - new Date(data.lastUpdate).getTime();
+    if (ageMs > 48 * 3600 * 1000) {
+      log.debug('YouTube data expired (>48h)');
+      return null;
+    }
+    log.ok(`🎬 YouTube loaded (${data.totalVideosStudied || 0} videos studied, age: ${Math.round(ageMs / 3600000)}h)`);
+    return data;
+  } catch (e) {
+    log.debug(`YouTube load failed: ${e.message}`);
+    return null;
+  }
+}
+
+/**
+ * Build YouTube learning context string for LLM prompt injection.
+ * Returns formatted string or empty string if no data.
+ */
+function buildYouTubeContext(ytData) {
+  if (!ytData) return '';
+  const parts = ['\n\n═══ APRENDIZAJE DE YOUTUBE ═══'];
+  if (ytData.quickPhrases?.length) {
+    const sample = shuffle(ytData.quickPhrases).slice(0, 2);
+    parts.push(`🎬 FRASES: ${sample.join(' | ')}`);
+  }
+  if (ytData.quickData?.length) {
+    const sample = pick(ytData.quickData);
+    parts.push(`📚 DATO: ${sample}`);
+  }
+  if (ytData.quickVocab?.length) {
+    const sample = pick(ytData.quickVocab);
+    parts.push(`📖 VOCABULARIO: ${sample}`);
+  }
+  if (ytData.dailySummary)
+    parts.push(`🎓 HOY APRENDÍ: ${ytData.dailySummary}`);
+  parts.push('[Usa este conocimiento para enriquecer tu contenido]');
+  return parts.join('\n');
+}
+
+/* ═══════════════════════════════════════════════════════
    11. X (TWITTER) API — OAuth 1.0a
    ═══════════════════════════════════════════════════════ */
 
@@ -1605,6 +1702,10 @@ module.exports = {
   // Adaptive Intelligence
   selectModeAdaptive, selectModeAdaptiveForTime,
   pickFreshestTopic, suggestTemperature,
+
+  // Knowledge Sources (Web Research + YouTube)
+  loadResearch, buildResearchContext,
+  loadYouTubeLearnings, buildYouTubeContext,
 
   // X (Twitter) API
   requireXCreds, xPost, xReply, xGetMe, xGetMentions,
