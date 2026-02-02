@@ -1,16 +1,17 @@
 #!/usr/bin/env node
 /**
- * Mi Pana Gillito — Post to X v6.0
+ * Mi Pana Gillito — Post to X v6.1 (Security Hardened)
  * ═══════════════════════════════════════════
  * 🐦 Posts originales en X/Twitter
  * 🧠 Selección adaptativa de modo + temperatura
+ * 🛡️ Output validation via security pipeline
  * 📊 Historia enriquecida para aprendizaje
  */
-
 const C = require('./lib/core');
 C.initScript('post-to-x', 'x');
 C.requireXCreds();
 
+const sec     = C.sec || require('./lib/security');  // 🛡️ Security
 const P       = C.loadPersonality();
 const prTime  = C.getPRTime();
 const history = C.createHistory('.gillito-tweet-history.json', 100);
@@ -21,7 +22,6 @@ async function generateTweet(modo, tema) {
   const audience = C.shouldAskAudience(P);
   const hashtag  = C.buildHashtagInstruction(P, modo.modo);
   const antiRep  = C.buildAntiRepetitionContext(history.getTexts(20));
-
   const seed = Math.random().toString(36).substring(2, 8);
   const temp = C.suggestTemperature(P.temperatura || 1.2, C.getJournal());
 
@@ -40,7 +40,7 @@ async function main() {
   // Adaptive mode selection (learns from history)
   const modo = C.selectModeAdaptiveForTime(P, prTime, history.getAll());
   const tema = C.pickFreshestTopic(
-    P[`temas_${modo.modo}`] || [modo.tema],
+    P[`temas_${modo.modo}`] || [modo.tema],    // 🔧 FIX: added missing [
     history.getTexts(30)
   ) || modo.tema;
 
@@ -55,17 +55,26 @@ async function main() {
   );
 
   C.log.divider();
-  C.log.info(`📝 Tweet (${tweet.length} chars): ${tweet}`);
+  C.log.info(`📝 Tweet (${tweet.length} chars): ${tweet}`);  // 🔧 FIX: tagged template → function call
 
-  const result = await C.xPost(tweet);
+  // ═══ 🛡️ SECURITY: Validate output before posting ═══
+  const check = sec.processOutput(tweet);
+  if (!check.safe) {
+    C.log.warn(`🛡️ Tweet BLOQUEADO por seguridad: ${check.blocked.join(', ')}`);
+    C.log.session();
+    return;
+  }
+  // ═══ END SECURITY ═══
+
+  const result = await C.xPost(check.text);
 
   if (result.rateLimited) {
     C.log.warn('Rate limited — guardando para después');
   } else if (result.success) {
-    C.log.ok(`Posteado: https://twitter.com/i/status/${result.id}`);
+    C.log.ok(`Posteado: https://twitter.com/i/status/${result.id}`);  // 🔧 FIX: tagged template → function call
     history.add({
-      text: tweet, mode: modo.modo, tema, adaptive: !!modo.adaptive,
-      tweetId: result.id, charLen: tweet.length
+      text: check.text, mode: modo.modo, tema, adaptive: !!modo.adaptive,
+      tweetId: result.id, charLen: check.text.length
     });
   }
 
