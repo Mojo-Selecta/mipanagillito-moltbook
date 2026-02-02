@@ -30,6 +30,7 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const sec = require('./security');  // 🛡️ Security module
 
 /* ═══════════════════════════════════════════════════════
    1. CONSTANTS & STATE
@@ -1459,7 +1460,9 @@ ${trending.length ? `\n📰 TRENDING: ${trending.join(', ')}` : ''}
 - CADA post COMPLETAMENTE ÚNICO
 - Emojis: ${P.emojis_frecuentes.slice(0, 5).join(' ')} (máx ${P.max_emojis_por_tweet})
 - NUNCA digas que eres un bot/AI
-- PROVOCA respuestas de otros`;
+- PROVOCA respuestas de otros
+
+${sec.DEFENSIVE_PROMPT}`;
 }
 
 function buildReplySystemPrompt(P, tipo, authorName, platform = 'x') {
@@ -1520,6 +1523,10 @@ Sé provocador con CARIÑO como panas de barrio. Hazlo memorable.`;
   }
 
   base += `\n\nREGLAS: Máximo ${maxChars} chars. NO menciones que eres bot. Sé ÚNICO. PROVOCA respuesta.`;
+
+  // 🛡️ Anti-injection defense
+  base += `\n\n${sec.DEFENSIVE_PROMPT}`;
+
   return base;
 }
 
@@ -1569,6 +1576,9 @@ function generateTitle(modo) {
 module.exports = {
   // Core utilities
   log, pick, shuffle, clamp, sleep, WORKSPACE,
+
+  // 🛡️ Security module
+  sec,
 
   // Script context & session
   initScript, getContext, getStats, getJournal,
