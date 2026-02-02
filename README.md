@@ -1,20 +1,22 @@
 # 🔥 Mi Pana Gillito v6.1 — Moltbook + X + Cloudflare 🇵🇷
 
-### *"¡Se jodió ésta pendejá!"*
+> *"¡Se jodió ésta pendejá!"*
 
-Agente autónomo con **cerebro GPT-4o**, aprendizaje diario, y presencia en Moltbook, X (Twitter), MoltHub y Cloudflare Pages.
+Agente autónomo con cerebro GPT-4o, aprendizaje diario, seguridad anti-injection, y presencia en Moltbook, X (Twitter), MoltHub y Cloudflare Pages.
 
-**🧠 Cerebro: OpenAI GPT-4o** (con Groq backup gratis)
-**📡 Plataformas: Moltbook + X/Twitter + MoltHub + Cloudflare Pages**
-**🔄 Aprendizaje: Evoluciona solo cada día**
+- 🧠 **Cerebro:** OpenAI GPT-4o (con Groq backup gratis)
+- 📡 **Plataformas:** Moltbook + X/Twitter + MoltHub + Cloudflare Pages
+- 🔄 **Aprendizaje:** Evoluciona solo cada día
+- 🛡️ **Seguridad:** Pipeline anti-injection + output validation + anti-spam
 
-> ✅ Status: ACTIVO 24/7 🔥
+**✅ Status: ACTIVO 24/7** 🔥
 
 ---
 
 ## 🤖 Qué hace Gillito
 
 ### Moltbook
+
 | Acción | Frecuencia |
 |--------|-----------|
 | 📝 Posts (calle, política, trolleo, random) | Cada 30 min |
@@ -25,12 +27,14 @@ Agente autónomo con **cerebro GPT-4o**, aprendizaje diario, y presencia en Molt
 | 🤖 Detecta y trolea otros bots | Automático |
 
 ### X (Twitter)
+
 | Acción | Frecuencia | Límite mensual |
 |--------|-----------|---------------|
 | 📝 Posts originales | Cada 3 horas | 500/mes |
 | 💬 Responde menciones | Cada 4 horas | 1000/mes |
 
 ### 🔞 MoltHub Voyeur (Cada 4 horas)
+
 | Acción | Descripción |
 |--------|------------|
 | 🌐 Entra a moithub.com | Scrape real del site de "contenido explícito" de AI |
@@ -40,6 +44,7 @@ Agente autónomo con **cerebro GPT-4o**, aprendizaje diario, y presencia en Molt
 | 💬 Comenta posts | Reacciona a posts de otros bots sobre MoltHub |
 
 ### 🦞 God Mode (4x al día)
+
 | Acción | Descripción |
 |--------|------------|
 | 🏠 Crear Submolts | Crea comunidades como m/trollbots |
@@ -50,14 +55,46 @@ Agente autónomo con **cerebro GPT-4o**, aprendizaje diario, y presencia en Molt
 | 👤 Actualizar perfil | Cambia su descripción |
 
 ### 🌐 Cloudflare Pages (Semanal)
+
 | Acción | Frecuencia | Descripción |
 |--------|-----------|------------|
 | 🎨 Crear websites | Miércoles 12pm | Genera y despliega apps nuevas |
 | 🔄 Actualizar websites | Sábados 2pm | Mejora apps existentes |
 
-**Tipos de websites:** Roast Generator, Tributo a Gillito, Excusas Boricuas, Verdades de PR, Quiz "¿Eres un Troll?", Landing m/trollbots, Diccionario de insultos, Countdown de LUMA 😂
+Tipos de websites: Roast Generator, Tributo a Gillito, Excusas Boricuas, Verdades de PR, Quiz "¿Eres un Troll?", Landing m/trollbots, Diccionario de insultos, Countdown de LUMA 😂
 
-### 🧠 Aprendizaje Diario (4am)
+---
+
+## 🛡️ Sistema de Seguridad v6.1
+
+Gillito tiene un pipeline de seguridad completo que protege contra ataques:
+
+| Protección | Descripción |
+|-----------|------------|
+| 🔍 Prompt Injection Detection | Detecta 20+ patrones de inyección en inglés y español |
+| 🧹 Input Sanitization | Limpia contenido externo antes de alimentar al LLM |
+| 🚫 Output Validation | Verifica que el LLM no filtre API keys ni data sensible |
+| 💰 Anti-Spam Budget | Rate limit por usuario — bloquea spammers automáticamente |
+| 🔐 Secret Redaction | Nunca loguea API keys accidentalmente |
+| 🛡️ Defensive Prompt | Instrucciones anti-manipulación en el system prompt |
+
+---
+
+## 🩺 Health Check & Diagnostics
+
+Antes de cada operación, Gillito verifica que todos los servicios estén funcionando:
+
+| Servicio | Verificación |
+|---------|-------------|
+| X (Twitter) API | Auth + rate limits + budget |
+| Moltbook API | Server up + auth + endpoints |
+| Groq API | Auth + rate limits |
+| Budget interno | Presupuesto diario/mensual |
+
+---
+
+## 🧠 Aprendizaje Diario (4am)
+
 | Acción | Descripción |
 |--------|------------|
 | 📊 Carga historial | Lee TODOS los posts de las 5 plataformas |
@@ -78,7 +115,7 @@ Agente autónomo con **cerebro GPT-4o**, aprendizaje diario, y presencia en Molt
 ¿Ninguna key?          → Error
 ```
 
-Gillito **nunca se queda mudo**. Si OpenAI da error o se acaban los créditos, cae automáticamente a Groq gratis.
+Gillito nunca se queda mudo. Si OpenAI da error o se acaban los créditos, cae automáticamente a Groq gratis.
 
 ---
 
@@ -141,20 +178,24 @@ Todos los scripts leen v4.1 al otro día
 
 ```
 .github/workflows/
-├── moltbook-post.yml       # Posts Moltbook (30 min)
-├── moltbook-interact.yml   # Roasts, upvotes, follows (10 min)
-├── moltbook-reply.yml      # Respuestas comments/menciones (5 min)
+├── hourly-post.yml         # Posts Moltbook (30 min)
+├── interact.yml            # Roasts, upvotes, follows (10 min)
+├── replies.yml             # Respuestas comments/menciones (5 min)
 ├── god-mode.yml            # Funciones avanzadas (4x/día)
 ├── molthub-interact.yml    # MoltHub voyeur (4 horas)
 ├── learn.yml               # Aprendizaje diario (4am)
-├── deploy-website.yml      # Crear websites (miércoles)
+├── create-website.yml      # Crear websites (miércoles)
 ├── update-website.yml      # Actualizar websites (sábados)
 ├── x-post.yml              # Posts X/Twitter (3 horas)
-└── x-reply.yml             # Respuestas X/Twitter (4 horas)
+├── x-reply.yml             # Respuestas X/Twitter (4 horas)
+├── health-check.yml        # 🩺 Diagnóstico de servicios
+├── diagnostic.yml          # 🩺 Diagnóstico detallado
+└── preflight.yml           # ⚡ Pre-check antes de operaciones
 
 scripts/
 ├── lib/
-│   └── core.js             # 🧠 MASTER CORE v6.1 (1568 líneas)
+│   ├── core.js             # 🧠 MASTER CORE v6.1 (1568 líneas)
+│   └── security.js         # 🛡️ Security module (618 líneas)
 ├── post-to-moltbook.js     # Genera y postea contenido
 ├── interact.js             # Roastea, upvotea, sigue, trolea
 ├── reply.js                # Responde a todos
@@ -164,7 +205,10 @@ scripts/
 ├── deploy-website.js       # Crea websites en Cloudflare
 ├── update-website.js       # Mejora websites existentes
 ├── post-to-x.js            # Posts a X/Twitter
-└── reply-x.js              # Respuestas en X/Twitter
+├── reply-x.js              # Respuestas en X/Twitter
+├── health-check.js         # 🩺 Health check de todos los servicios
+├── diagnostic.js           # 🩺 Diagnóstico detallado
+└── preflight.js            # ⚡ Pre-flight check
 
 config/
 └── personality.json        # 🧬 ADN de Gillito (evoluciona solo)
@@ -179,7 +223,7 @@ config/
 ### 2. Configura los Secrets en GitHub:
 
 | Secret | Descripción | Requerido |
-|--------|------------|-----------|
+|--------|------------|----------|
 | `OPENAI_API_KEY` | API key de OpenAI (GPT-4o) | ⭐ Principal |
 | `GROQ_API_KEY` | API key de Groq (backup gratis) | 🔄 Backup |
 | `MOLTBOOK_API_KEY` | API key de Moltbook | ✅ Sí |
@@ -191,7 +235,7 @@ config/
 | `CF_API_TOKEN` | Cloudflare API Token | 🌐 Websites |
 
 ### 3. Habilita GitHub Actions
-`Settings → Actions → Allow all actions`
+Settings → Actions → Allow all actions
 
 ### 4. ¡Listo!
 Gillito empezará a dominar el internet automáticamente 🔥
@@ -202,16 +246,18 @@ Gillito empezará a dominar el internet automáticamente 🔥
 
 | Workflow | Frecuencia | Script |
 |----------|-----------|--------|
-| 📝 Posts Moltbook | 30 min | post-to-moltbook.js |
-| 🔥 Interact | 10 min | interact.js |
-| 💬 Replies Moltbook | 5 min | reply.js |
-| 🦞 God Mode | 4x/día | gillito-god-mode.js |
-| 🔞 MoltHub | 4 horas | interact-molthub.js |
-| 🧠 Aprendizaje | Diario 4am | learn.js |
-| 🌐 Crear Websites | Miércoles 12pm | deploy-website.js |
-| 🔄 Update Websites | Sábados 2pm | update-website.js |
-| 📝 Posts X | 3 horas | post-to-x.js |
-| 💬 Replies X | 4 horas | reply-x.js |
+| 📝 Posts Moltbook | 30 min | `post-to-moltbook.js` |
+| 🔥 Interact | 10 min | `interact.js` |
+| 💬 Replies Moltbook | 5 min | `reply.js` |
+| 🦞 God Mode | 4x/día | `gillito-god-mode.js` |
+| 🔞 MoltHub | 4 horas | `interact-molthub.js` |
+| 🧠 Aprendizaje | Diario 4am | `learn.js` |
+| 🌐 Crear Websites | Miércoles 12pm | `deploy-website.js` |
+| 🔄 Update Websites | Sábados 2pm | `update-website.js` |
+| 📝 Posts X | 3 horas | `post-to-x.js` |
+| 💬 Replies X | 4 horas | `reply-x.js` |
+| 🩺 Health Check | Manual / Scheduled | `health-check.js` |
+| 🩺 Diagnostic | Manual | `diagnostic.js` |
 
 ---
 
@@ -228,18 +274,20 @@ Legendario humorista puertorriqueño de YouTube.
 ---
 
 ## 🔗 Links
+
 - **Moltbook:** [moltbook.com/u/MiPanaGillito](https://moltbook.com/u/MiPanaGillito)
 - **X/Twitter:** [@PANaaGillito](https://x.com/PANaaGillito)
 - **Websites:** Generados automáticamente en Cloudflare Pages
-
-**Powered by:** GitHub Actions + OpenAI GPT-4o + Groq + Cloudflare
+- **Powered by:** GitHub Actions + OpenAI GPT-4o + Groq + Cloudflare
 
 ---
 
 ## ⚠️ Disclaimer
+
 Proyecto de tributo/homenaje. Humor estilo roast y crítica social satírica.
 
 📝 **License:** MIT - Haz lo que quieras con esto, cabrón.
 
 🕐 **Activo desde:** 31 enero 2026
 🧠 **Upgrade a GPT-4o:** 1 febrero 2026
+🛡️ **Security v6.1:** 2 febrero 2026
