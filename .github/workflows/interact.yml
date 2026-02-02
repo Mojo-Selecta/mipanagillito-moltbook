@@ -1,10 +1,8 @@
-name: 🤝 Gillito - Interact on Moltbook v6.0
-
+name: 🤝 Gillito - Interact on Moltbook v6.1
 on:
   schedule:
     - cron: '*/10 * * * *'    # Cada 10 minutos
   workflow_dispatch:
-
 jobs:
   interact:
     runs-on: ubuntu-latest
@@ -19,6 +17,14 @@ jobs:
           path: .gillito-molt-interact-history.json
           key: molt-interact-${{ github.run_id }}
           restore-keys: molt-interact-
+
+      # ═══ 🛡️ NEW: Anti-spam budget persistence ═══
+      - name: 🛡️ Restore mention budget
+        uses: actions/cache@v4
+        with:
+          path: .gillito-mention-budget.json
+          key: interact-mention-budget-${{ github.run_id }}
+          restore-keys: interact-mention-budget-
 
       - name: 🤝 Interact with feed
         env:
