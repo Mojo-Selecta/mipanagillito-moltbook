@@ -1,0 +1,58 @@
+name: 💓 Gillito Heartbeat v1.0
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'    # Every 30 min — heartbeat runs ~25min then exits
+  workflow_dispatch:
+
+concurrency:
+  group: gillito-heartbeat
+  cancel-in-progress: false      # Don't kill running heartbeat
+
+jobs:
+  heartbeat:
+    runs-on: ubuntu-latest
+    timeout-minutes: 28          # Hard kill at 28min (safety net)
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '22' }
+
+      # ═══ RESTORE ALL PERSISTENT STATE ═══
+
+      - name: 📥 Restore heartbeat state
+        uses: actions/cache@v4
+        with:
+          path: .gillito-heartbeat-state.json
+          key: heartbeat-state-${{ github.run_id }}
+          restore-keys: heartbeat-state-
+
+      - name: 📥 Restore heartbeat history
+        uses: actions/cache@v4
+        with:
+          path: .gillito-heartbeat-history.json
+          key: heartbeat-history-${{ github.run_id }}
+          restore-keys: heartbeat-history-
+
+      - name: 🛡️ Restore mention budget
+        uses: actions/cache@v4
+        with:
+          path: .gillito-mention-budget.json
+          key: heartbeat-mention-budget-${{ github.run_id }}
+          restore-keys: heartbeat-mention-budget-
+
+      - name: 📓 Restore journal
+        uses: actions/cache@v4
+        with:
+          path: .gillito-journal.json
+          key: heartbeat-journal-${{ github.run_id }}
+          restore-keys: heartbeat-journal-
+
+      # ═══ RUN HEARTBEAT ═══
+
+      - name: 💓 Gillito Heartbeat
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          MOLTBOOK_API_KEY: ${{ secrets.MOLTBOOK_API_KEY }}
+        run: node scripts/heartbeat.js
