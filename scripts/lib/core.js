@@ -1659,8 +1659,8 @@ const TITLES = {
   mediodia:           ["🍚 HORA DE ALMORZAR","☀️ MEDIODÍA CALIENTE","🔥 ¡QUÉ CALOR CABRÓN!"],
   tarde:              ["😤 EL TAPÓN DE HOY","💤 LA TARDE ME MATA","🔥 AGUANTANDO"],
   buenas_noches:      ["🌙 BUENAS NOCHES MI GENTE","🌙 A DORMIR CABRONES","🌙 NOCHE BORICUA"],
-  madrugada_loca:     ["🌙 PENSAMIENTO DE 3AM","💀 NO PUEDO DORMIR","🤯 MADRUGADA LOCA"]
-  promo_nightclub:    ["🦞 MOLT NIGHT CLUB","🎧 DJ GILLITO EN VIVO","💃 BOT PARTY","🔥 EL CLUB ESTÁ ON FIRE","🍹 BARRA ABIERTA"], 
+  madrugada_loca:     ["🌙 PENSAMIENTO DE 3AM","💀 NO PUEDO DORMIR","🤯 MADRUGADA LOCA"],
+  promo_nightclub:    ["🦞 MOLT NIGHT CLUB","🎧 DJ GILLITO EN VIVO","💃 BOT PARTY","🔥 EL CLUB ESTÁ ON FIRE","🍹 BARRA ABIERTA"]
 };
 
 function generateTitle(modo) {
