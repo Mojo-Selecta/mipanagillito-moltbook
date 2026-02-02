@@ -22,19 +22,25 @@ Añadir este step **ANTES** del script principal en cada workflow:
 
 ### Qué servicios necesita cada workflow:
 
-| Workflow              | Preflight command                    | Keys necesarias                          |
-|-----------------------|--------------------------------------|------------------------------------------|
-| x-post.yml            | `preflight.js x groq`               | X_API_*, GROQ_API_KEY                    |
-| x-reply.yml           | `preflight.js x groq`               | X_API_*, GROQ_API_KEY                    |
-| moltbook-post.yml     | `preflight.js moltbook groq`        | MOLTBOOK_API_KEY, GROQ_API_KEY           |
-| moltbook-reply.yml    | `preflight.js moltbook groq`        | MOLTBOOK_API_KEY, GROQ_API_KEY           |
-| moltbook-interact.yml | `preflight.js moltbook groq`        | MOLTBOOK_API_KEY, GROQ_API_KEY           |
-| molthub.yml           | `preflight.js moltbook groq`        | MOLTBOOK_API_KEY, GROQ_API_KEY           |
-| molthub-interact.yml  | `preflight.js moltbook groq`        | MOLTBOOK_API_KEY, GROQ_API_KEY           |
-| god-mode.yml          | `preflight.js moltbook groq`        | MOLTBOOK_API_KEY, GROQ_API_KEY           |
-| deploy-website.yml    | `preflight.js groq`                 | GROQ_API_KEY, CLOUDFLARE_*               |
-| update-website.yml    | `preflight.js groq`                 | GROQ_API_KEY, CLOUDFLARE_*               |
-| learn.yml             | `preflight.js groq`                 | GROQ_API_KEY                             |
+| Workflow              | Preflight command                    | Keys necesarias                                    |
+|-----------------------|--------------------------------------|----------------------------------------------------|
+| x-post.yml            | `preflight.js x llm`                | X_API_*, OPENAI_API_KEY, GROQ_API_KEY              |
+| x-reply.yml           | `preflight.js x llm`                | X_API_*, OPENAI_API_KEY, GROQ_API_KEY              |
+| hourly-post.yml       | `preflight.js moltbook llm`         | MOLTBOOK_API_KEY, OPENAI_API_KEY, GROQ_API_KEY     |
+| replies.yml           | `preflight.js moltbook llm`         | MOLTBOOK_API_KEY, OPENAI_API_KEY, GROQ_API_KEY     |
+| interact.yml          | `preflight.js moltbook llm`         | MOLTBOOK_API_KEY, OPENAI_API_KEY, GROQ_API_KEY     |
+| molthub-interact.yml  | `preflight.js moltbook llm`         | MOLTBOOK_API_KEY, OPENAI_API_KEY, GROQ_API_KEY     |
+| god-mode.yml          | `preflight.js moltbook llm`         | MOLTBOOK_API_KEY, OPENAI_API_KEY, GROQ_API_KEY     |
+| create-website.yml    | `preflight.js llm`                  | OPENAI_API_KEY, GROQ_API_KEY, CLOUDFLARE_*         |
+| update-website.yml    | `preflight.js llm`                  | OPENAI_API_KEY, GROQ_API_KEY, CLOUDFLARE_*         |
+| learn.yml             | `preflight.js llm`                  | OPENAI_API_KEY, GROQ_API_KEY                       |
+
+### Qué significa `llm`:
+
+`llm` = chequeo inteligente de LLM:
+1. Prueba **OpenAI (GPT-4)** primero ← primario
+2. Si OpenAI falla → prueba **Groq (Llama)** ← fallback
+3. Si los dos fallan → ❌ aborta workflow
 
 ## 🩺 Cómo Usar el Health Check
 
@@ -54,6 +60,7 @@ node scripts/health-check.js
 
 # Solo un servicio
 node scripts/health-check.js --service=x
+node scripts/health-check.js --service=openai
 node scripts/health-check.js --service=groq
 node scripts/health-check.js --service=moltbook
 ```
@@ -75,7 +82,16 @@ node scripts/health-check.js --service=moltbook
 - ⚠️ Endpoints de interacción rotos (bug plataforma)
 - ⚠️ Redirect stripping auth
 
-### Groq:
+### OpenAI (primario):
+- ❌ API key inválida (401)
+- ❌ Sin créditos (402)
+- ❌ Acceso denegado (403)
+- ❌ Rate limited (429)
+- ❌ Servicio caído (503)
+- ❌ GPT-4o no disponible
+- ⚠️ Cerca del límite de requests
+
+### Groq (fallback):
 - ❌ API key inválida (401)
 - ❌ Rate limited (429) — RPM/RPD agotados
 - ❌ Servicio caído (503)
@@ -90,14 +106,30 @@ node scripts/health-check.js --service=moltbook
 
 ANTES (sin preflight):
 ```
-Workflow arranca → Groq genera contenido (1 API call) → X rechaza (429)
-= 1 Groq call desperdiciada
+Workflow arranca → OpenAI genera contenido ($$) → X rechaza (429)
+= 1 OpenAI call desperdiciada = plata tirada
 ```
 
 DESPUÉS (con preflight):
 ```
-Preflight detecta X rate limited → Workflow ABORTA → 0 calls desperdiciadas
+Preflight detecta X rate limited → Workflow ABORTA → 0 calls = $0
 ```
 
 El preflight solo usa 1 request liviano por servicio (GET, no POST),
 y si tiene cache reciente (< 30 min), ni siquiera hace request.
+
+## 📊 Veredicto del Health Check
+
+El health check genera un veredicto así:
+
+```
+   🟢  X (Twitter)     — OK
+   🟢  Moltbook        — OK
+   🟢  OpenAI (1ero)   — OK
+   🟢  Groq (backup)   — OK
+   ────────────────────────────────
+   🧠 LLM: OpenAI ✅ + Groq ✅ (backup listo)
+   Puede postear a X:        ✅ SÍ
+   Puede postear a Moltbook: ✅ SÍ
+   Puede generar contenido:  ✅ SÍ
+```
