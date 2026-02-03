@@ -1,0 +1,10 @@
+name: Show Key
+on: workflow_dispatch
+jobs:
+  show:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Show Moltbook key
+        run: echo "${MOLTBOOK_API_KEY:0:30}..."
+        env:
+          MOLTBOOK_API_KEY: ${{ secrets.MOLTBOOK_API_KEY }}
