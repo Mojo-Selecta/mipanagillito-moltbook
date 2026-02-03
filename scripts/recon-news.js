@@ -1,12 +1,12 @@
 // ═══════════════════════════════════════════════════════════════════════════════
 // 📰 RECON MODULE: PR News Deep Scanner
 // ═══════════════════════════════════════════════════════════════════════════════
-// Broader coverage — economy, crime, health, education, diaspora, culture.
-// Goes beyond the specialized modules to catch everything Gillito might need.
-// ═══════════════════════════════════════════════════════════════════════════════
 
-const { safeRequest, parseRSS, extractEntities, classifyText, fingerprint, isRecent, sanitize } = require('../lib/recon-utils');
-const { ALL_TARGETS, RSS_FEEDS } = require('../config/recon-targets');
+const path = require('path');
+const ROOT = process.cwd();
+
+const { safeRequest, parseRSS, extractEntities, classifyText, fingerprint, isRecent, sanitize } = require(path.join(ROOT, 'lib', 'recon-utils'));
+const { ALL_TARGETS, RSS_FEEDS } = require(path.join(ROOT, 'config', 'recon-targets'));
 
 async function scan() {
   console.log('   📰 Scanning PR news sources...');
@@ -33,7 +33,6 @@ async function scan() {
         const entities = extractEntities(text, ALL_TARGETS);
         const classification = classifyText(text);
 
-        // PR relevance check — we want broad coverage but still PR-focused
         const prRelevant = /puerto rico|boricua|isla del encanto|pr\b|borink/i.test(text) ||
                           entities.length > 0 ||
                           classification.signals.length > 0;
