@@ -1,15 +1,15 @@
-// ═══════════════════════════════════════════════════════════════════════════════
-// 🔌 RECON MODULE: LUMA Energy & Infrastructure
-// ═══════════════════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════
+// ⚡ RECON MODULE: LUMA / Energy
+// ═══════════════════════════════════════════════════════
 
 const path = require('path');
 const ROOT = process.cwd();
 
 const { safeRequest, parseRSS, extractEntities, classifyText, fingerprint, isRecent, sanitize } = require(path.join(ROOT, 'lib', 'recon-utils'));
-const { ENERGY, RSS_FEEDS } = require(path.join(ROOT, 'config', 'recon-targets'));
+const { ENERGY_ENTITIES, RSS_FEEDS } = require(path.join(ROOT, 'config', 'recon-targets'));
 
 async function scan() {
-  console.log('   🔌 Scanning energy & infrastructure sources...');
+  console.log('   ⚡ Scanning energy/LUMA sources...');
   const findings = [];
   const seen = new Set();
 
@@ -30,11 +30,12 @@ async function scan() {
         seen.add(fp);
 
         const text = sanitize(`${item.title} ${item.description}`);
-        const entities = extractEntities(text, ENERGY);
+        const entities = extractEntities(text, ENERGY_ENTITIES);
         const classification = classifyText(text);
 
-        if (entities.length === 0 && !classification.signals.includes('energy') &&
-            !/luma|apag|energ|electri|tarifa|luz|infraestructura|agua|carretera/i.test(text)) {
+        // Must mention energy/LUMA/power
+        if (entities.length === 0 &&
+            !/luma|energ|apag|blackout|luz|tarifa|factura|kilovatio|kwh|power|grid|aee|prepa/i.test(text)) {
           continue;
         }
 
@@ -46,7 +47,7 @@ async function scan() {
           summary: sanitize(item.description?.slice(0, 400) || ''),
           source: item.source || feed.name,
           sourceUrl: item.link || '',
-          entities: entities.length > 0 ? entities : ['Energía PR'],
+          entities: entities.length > 0 ? entities : ['LUMA Energy'],
           timestamp: item.pubDate ? new Date(item.pubDate).toISOString() : new Date().toISOString(),
           fingerprint: fp,
         });
@@ -56,7 +57,7 @@ async function scan() {
     }
   }
 
-  console.log(`   🔌 Energy: ${findings.length} findings`);
+  console.log(`   ⚡ Energy: ${findings.length} findings`);
   return findings;
 }
 
