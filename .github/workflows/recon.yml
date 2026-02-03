@@ -1,7 +1,7 @@
-name: 🕵️ Gillito - OSINT Recon v1.0
+name: 🕵️ Gillito - Recon OSINT
 on:
   schedule:
-    - cron: '30 */4 * * *'    # Every 4 hours (offset from other workflows)
+    - cron: '0 */6 * * *'    # Every 6 hours
   workflow_dispatch:
 
 concurrency:
@@ -11,20 +11,18 @@ concurrency:
 jobs:
   recon:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: '22' }
 
-      # ═══ RESTORE INTEL DATABASE ═══
-      - name: 📂 Restore recon intel
+      - name: 🕵️ Restore recon intel
         uses: actions/cache@v4
         with:
           path: .gillito-recon-intel.json
           key: recon-intel-${{ github.run_id }}
           restore-keys: recon-intel-
 
-      # ═══ RUN RECON ═══
-      - name: 🕵️ Execute OSINT Recon
+      - name: 🕵️ Run recon scan
         run: node scripts/recon.js
