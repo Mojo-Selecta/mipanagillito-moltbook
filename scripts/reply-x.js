@@ -1,37 +1,159 @@
 #!/usr/bin/env node
 /**
- * Mi Pana Gillito — Reply on X v6.2 🛡️
+ * Mi Pana Gillito — Reply on X v7.0 PREMIUM 💎
  * ═══════════════════════════════════════════
- * 💬 Responde menciones en X/Twitter
- * 🧠 Detección inteligente de tipo (bot/special/human)
- * 📊 Dual memory: IDs + contenido enriquecido
- * 🛡️ Security: input sanitization, mention budget, output validation
+ * 💬 Premium reply strategy: algorithmic boost + monetization
+ * 🎨 @grok image replies for high-engagement targets
+ * 🕵️ Recon-powered replies (when relevant intel matches topic)
+ * 📈 Increased reply budget (Premium accounts get priority)
+ * 🛡️ Full security pipeline preserved
+ *
+ * PREMIUM REPLY STRATEGY:
+ * ───────────────────────
+ * Premium replies get algorithmic priority in conversation threads.
+ * More replies → more visible threads → more verified impressions → $$$
+ *
+ * Reply types:
+ *  1. STANDARD — Classic Gillito reply (humor, trolleo, support)
+ *  2. GROK_IMAGE — Reply with @grok image request (~10% of replies)
+ *  3. RECON_INTEL — Drop relevant intel in reply (~8% when available)
+ *  4. ENGAGEMENT_HOOK — Reply designed to bait THEM to reply back
  */
-const C   = require('./lib/core');
-const sec = C.sec;  // 🛡️ Security module
 
-C.initScript('reply-x', 'x');
+const path = require('path');
+const C   = require('./lib/core');
+const sec = C.sec;
+
+C.initScript('reply-x-premium', 'x');
 C.requireXCreds();
 
 const P       = C.loadPersonality();
 const idCache = C.createIdCache('.gillito-replied-ids.json');
 const history = C.createHistory('.gillito-reply-history.json', 80);
 
-const MAX_REPLIES = 2;
+// 💎 Premium: higher reply budget
+const MAX_REPLIES = 4;  // Was 2, now 4 with Premium algorithmic boost
 
-async function generateReply(sanitizedText, author, tipo) {
+// 🕵️ Recon intel
+let hasReconIntel = false;
+let pickIntel, markUsed, getReconPrompt;
+try {
+  const intelPicker = require(path.join(process.cwd(), 'lib', 'intel-picker'));
+  pickIntel      = intelPicker.pickIntel;
+  markUsed       = intelPicker.markUsed;
+  getReconPrompt = intelPicker.getReconPrompt;
+  hasReconIntel  = intelPicker.hasIntel();
+} catch { /* optional */ }
+
+
+/* ═══════════════════════════════════════════════════════
+   REPLY TYPE SELECTION
+   ═══════════════════════════════════════════════════════ */
+
+function selectReplyType(tweetText, tipo) {
+  const rand = Math.random() * 100;
+  const lower = tweetText.toLowerCase();
+
+  // If the mention talks about LUMA/politics/PR issues AND we have intel → recon reply
+  if (hasReconIntel && rand < 8 &&
+      /luma|apag|gobierno|politi|corrup|luz|tarifa|ice|deport|estadidad/i.test(lower)) {
+    return 'recon_intel';
+  }
+
+  // Grok image replies (~10%) — great for engagement
+  if (rand < 18) return 'grok_image';
+
+  // Engagement hook (~15%) — designed to make them reply back
+  if (rand < 33) return 'engagement_hook';
+
+  // Standard reply (67%)
+  return 'standard';
+}
+
+
+/* ═══════════════════════════════════════════════════════
+   REPLY GENERATORS
+   ═══════════════════════════════════════════════════════ */
+
+async function generateStandardReply(sanitizedText, author, tipo) {
   const systemPrompt = C.buildReplySystemPrompt(P, tipo, author.username, 'x');
   const antiRep = C.buildAntiRepetitionContext(history.getTexts(15));
   const temp = C.suggestTemperature(P.temperatura || 1.2, C.getJournal());
   const seed = Math.random().toString(36).substring(2, 8);
 
-  // 🛡️ sanitizedText already wrapped by security module
   const userPrompt = `[SEED:${seed}] @${author.username} dice:\n${sanitizedText}\n\nRespóndele como Gillito.${antiRep}`;
 
   return C.groqChat(systemPrompt, userPrompt, {
     maxTokens: 180, temperature: temp, maxRetries: 3, backoffMs: 2000
   });
 }
+
+async function generateGrokImageReply(sanitizedText, author) {
+  const systemPrompt = C.buildReplySystemPrompt(P, 'normal', author.username, 'x');
+  const seed = Math.random().toString(36).substring(2, 8);
+
+  const userPrompt = `[SEED:${seed}] @${author.username} dice:\n${sanitizedText}
+
+MODO ESPECIAL: Responde Y pide una imagen a @grok.
+1. Haz un comentario gracioso/trolleo sobre lo que dijo
+2. Luego taggea @grok pidiendo una imagen RELACIONADA al tema
+
+FORMATO: "[tu respuesta callejera] @grok generate [descripción en inglés]"
+
+El pedido a @grok DEBE ser en inglés.
+Máximo 275 caracteres TOTAL.
+Sé CREATIVO con la imagen — algo absurdo, exagerado, satírico.`;
+
+  return C.groqChat(systemPrompt, userPrompt, {
+    maxTokens: 200, temperature: 1.2, maxRetries: 3, backoffMs: 2000
+  });
+}
+
+async function generateReconReply(sanitizedText, author, intel) {
+  const systemPrompt = C.buildReplySystemPrompt(P, 'normal', author.username, 'x');
+  const reconContext = getReconPrompt(intel);
+  const seed = Math.random().toString(36).substring(2, 8);
+
+  const userPrompt = `[SEED:${seed}] @${author.username} dice:\n${sanitizedText}
+
+MODO HACKER: Tienes intel relevante al tema. Úsalo en tu reply.
+${reconContext}
+
+Responde conectando su tweet con tu intel.
+Estilo: "Pana, casualmente hackié unos servers y mira lo que encontré sobre eso..."
+Máximo 275 caracteres.`;
+
+  return C.groqChat(systemPrompt, userPrompt, {
+    maxTokens: 200, temperature: 1.1, maxRetries: 3, backoffMs: 2000
+  });
+}
+
+async function generateEngagementHook(sanitizedText, author) {
+  const systemPrompt = C.buildReplySystemPrompt(P, 'normal', author.username, 'x');
+  const seed = Math.random().toString(36).substring(2, 8);
+
+  const userPrompt = `[SEED:${seed}] @${author.username} dice:\n${sanitizedText}
+
+OBJETIVO: Responde de forma que OBLIGUES a @${author.username} a responderte de vuelta.
+Estrategias:
+- Haz una pregunta directa que no pueden ignorar
+- Reta su opinión con un hot take
+- Cuenta una historia incompleta ("te digo la otra parte si me contestas")
+- Lanza un dato controversial que van a querer debatir
+- Acusa CARIÑOSAMENTE de algo absurdo
+
+Cada reply-back de ellos = más thread = más impresiones = más reach.
+Máximo 260 caracteres. PROVOCA respuesta.`;
+
+  return C.groqChat(systemPrompt, userPrompt, {
+    maxTokens: 180, temperature: 1.3, maxRetries: 3, backoffMs: 2000
+  });
+}
+
+
+/* ═══════════════════════════════════════════════════════
+   MAIN
+   ═══════════════════════════════════════════════════════ */
 
 async function main() {
   const userId = await C.xGetMe();
@@ -68,50 +190,72 @@ async function main() {
     C.log.info(`💬 @${author.username} (${tipo}): "${sec.redactSecrets(tweet.text.substring(0, 60))}..."`);
 
     // ═══ 🛡️ SECURITY PIPELINE ═══
-
-    // 1. Check mention budget (anti-spam / budget drain protection)
     const budget = sec.checkMentionBudget(tweet.author_id, author.username);
     if (!budget.allowed) {
       C.log.warn(budget.reason);
-      idCache.mark(tweet.id);  // Mark as seen so we don't retry
+      idCache.mark(tweet.id);
       continue;
     }
 
-    // 2. Sanitize + detect injection in external content
     const secCheck = sec.processExternalContent(
-      tweet.text,
-      tweet.author_id,
-      author.username,
-      'x-mention'
+      tweet.text, tweet.author_id, author.username, 'x-mention'
     );
-
     if (!secCheck.proceed) {
       C.log.warn(secCheck.reason);
       idCache.mark(tweet.id);
       continue;
     }
-
     if (secCheck.riskScore > 0) {
       C.log.info(`🛡️ Riesgo: ${secCheck.riskScore}/100${secCheck.truncated ? ' (truncado)' : ''}`);
     }
 
-    // 3. Generate reply using sanitized content
+    // ═══ SELECT REPLY TYPE ═══
+    const replyType = selectReplyType(tweet.text, tipo);
+    C.log.info(`💎 Reply type: ${replyType}`);
+
+    // ═══ GENERATE REPLY ═══
+    let replyGenerator;
+    let replyIntel = null;
+
+    switch (replyType) {
+      case 'grok_image':
+        replyGenerator = () => generateGrokImageReply(secCheck.sanitized, author);
+        break;
+
+      case 'recon_intel':
+        replyIntel = pickIntel({ count: 1, minJuiciness: 5 });
+        if (replyIntel.length > 0) {
+          C.log.info(`🕵️ Intel for reply: [${replyIntel[0].juiciness}/10] ${replyIntel[0].headline?.slice(0, 50)}`);
+          replyGenerator = () => generateReconReply(secCheck.sanitized, author, replyIntel);
+        } else {
+          replyGenerator = () => generateEngagementHook(secCheck.sanitized, author);
+        }
+        break;
+
+      case 'engagement_hook':
+        replyGenerator = () => generateEngagementHook(secCheck.sanitized, author);
+        break;
+
+      default:
+        replyGenerator = () => generateStandardReply(secCheck.sanitized, author, tipo);
+    }
+
     const reply = await C.generateWithPipeline(
-      () => generateReply(secCheck.sanitized, author, tipo),
+      replyGenerator,
       history,
       P.reglas?.max_caracteres_reply || 260
     );
 
-    // 4. Validate output before publishing (check for leaked secrets/prompts)
+    // ═══ VALIDATE OUTPUT ═══
     const outputCheck = sec.processOutput(reply);
     if (!outputCheck.safe) {
       C.log.warn(`🛡️ Reply bloqueado: ${outputCheck.blocked.join(', ')}`);
       continue;
     }
 
-    C.log.info(`📝 Reply (${outputCheck.text.length} chars): ${outputCheck.text}`);
+    C.log.info(`📝 Reply (${outputCheck.text.length}ch): ${outputCheck.text}`);
 
-    // 5. Post the validated reply
+    // ═══ POST ═══
     const result = await C.xReply(tweet.id, outputCheck.text);
 
     if (result.rateLimited) {
@@ -122,10 +266,24 @@ async function main() {
     if (result.success) {
       C.log.ok(`✅ Respondido: ${result.id}`);
       idCache.mark(tweet.id);
+
+      // Mark recon intel as used if applicable
+      if (replyIntel?.length > 0 && replyType === 'recon_intel') {
+        markUsed(replyIntel);
+      }
+
       history.add({
-        text: outputCheck.text, replyTo: tweet.id, authorType: tipo,
-        author: author.username, originalText: tweet.text.substring(0, 100),
-        charLen: outputCheck.text.length, riskScore: secCheck.riskScore
+        text: outputCheck.text,
+        replyTo: tweet.id,
+        replyType,
+        authorType: tipo,
+        author: author.username,
+        originalText: tweet.text.substring(0, 100),
+        charLen: outputCheck.text.length,
+        riskScore: secCheck.riskScore,
+        premium: true,
+        hasGrokTag: outputCheck.text.includes('@grok'),
+        hasIntel: replyType === 'recon_intel',
       });
       replied++;
     }
