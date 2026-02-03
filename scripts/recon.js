@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
- * 🕵️ GILLITO DEEP RECON — Master Orchestrator v2.0
+ * 🕵️ GILLITO DEEP RECON — Master Orchestrator v2.1
  * ═══════════════════════════════════════════════════════
- * 8 modules across 4 intelligence levels:
+ * 9 modules across 4 intelligence levels + 1 special investigation:
  * 
  * BASE:  Politicians | LUMA | Federal | News (RSS feeds)
  * LVL 1: Deep News Mining (full article scraping, FOMB, CPI)
@@ -10,7 +10,10 @@
  * LVL 3: Social Listening (politician tweets, page changes)
  * LVL 4: Financial Trails (SEC EDGAR, donations, corporate registry)
  *
- * FIX v2.0.1: All paths use __dirname + 'recon/' subdirectory
+ * SPECIAL: 🕵️ Epstein Files (DOJ/FBI Vault monitoring, news, LLM analysis)
+ *
+ * v2.1: Added Epstein Files deep investigation module
+ * v2.0.1: All paths use __dirname + 'recon/' subdirectory
  */
 
 const fs   = require('fs');
@@ -28,18 +31,26 @@ const reconGovRecords  = require(path.join(__dirname, 'recon', 'gov-records'));
 const reconSocial      = require(path.join(__dirname, 'recon', 'social'));
 const reconFinancial   = require(path.join(__dirname, 'recon', 'financial'));
 
+// ─── SPECIAL INVESTIGATIONS ───
+const reconEpstein     = require(path.join(__dirname, 'recon', 'recon-epstein'));
+
 // ─── Config ───
 const { JUICINESS_BOOSTS } = require(path.join(__dirname, '..', 'config', 'recon-targets'));
 
 const INTEL_FILE = path.join(process.cwd(), '.gillito-recon-intel.json');
-const MAX_INTEL  = 75; // Increased from 50 — more sources now
+const MAX_INTEL  = 85; // Increased from 75 — Epstein module adds more findings
 
 /* ─── Scoring ─── */
 
 function scoreJuiciness(finding) {
+  // Epstein findings come pre-scored from the module
+  if (finding.category === 'epstein_files' && finding.juiciness) {
+    return finding.juiciness;
+  }
+
   let score = 5;
 
-  // Signal boosts
+  // Signal boosts (includes Epstein signals via merged JUICINESS_BOOSTS)
   for (const s of (finding.signals || [])) {
     score += (JUICINESS_BOOSTS[s] || 0);
   }
@@ -104,12 +115,12 @@ function deduplicateFindings(findings) {
 
 async function main() {
   console.log('\n' + '═'.repeat(56));
-  console.log('  🕵️ GILLITO DEEP RECON v2.0.1 — All Levels Active');
+  console.log('  🕵️ GILLITO DEEP RECON v2.1 — All Levels + Epstein');
   console.log('═'.repeat(56) + '\n');
 
   const startTime = Date.now();
 
-  // Run ALL modules — base + deep
+  // Run ALL modules — base + deep + special investigations
   const results = await Promise.allSettled([
     // BASE (original)
     reconPoliticians.scan(),
@@ -121,12 +132,15 @@ async function main() {
     reconGovRecords.scan(),  // L2
     reconSocial.scan(),      // L3
     reconFinancial.scan(),   // L4
+    // SPECIAL INVESTIGATIONS
+    reconEpstein.scan(),     // Epstein Files
   ]);
 
   const allFindings = [];
   const moduleNames = [
     'BASE: Politicians', 'BASE: LUMA/Energy', 'BASE: Federal', 'BASE: News',
     'L1: Deep News',     'L2: Gov Records',   'L3: Social',    'L4: Financial',
+    '🕵️ SPECIAL: Epstein Files',
   ];
 
   console.log('\n   📊 MODULE RESULTS:');
@@ -162,8 +176,11 @@ async function main() {
     if (usedFPs.has(item.fingerprint)) item.used = true;
   }
 
+  // Count Epstein-specific findings
+  const epsteinCount = intel.filter(f => f.category === 'epstein_files').length;
+
   const output = {
-    version: '2.0.1',
+    version: '2.1',
     lastUpdate: new Date().toISOString(),
     totalFindings: allFindings.length,
     uniqueFindings: unique.length,
@@ -175,6 +192,7 @@ async function main() {
       L2_gov_records: results[5]?.status === 'fulfilled' ? results[5].value?.length || 0 : 0,
       L3_social: results[6]?.status === 'fulfilled' ? results[6].value?.length || 0 : 0,
       L4_financial: results[7]?.status === 'fulfilled' ? results[7].value?.length || 0 : 0,
+      special_epstein: results[8]?.status === 'fulfilled' ? results[8].value?.length || 0 : 0,
     },
     intel
   };
@@ -183,15 +201,23 @@ async function main() {
 
   // Summary
   console.log('\n' + '─'.repeat(56));
-  console.log('   🕵️ DEEP RECON COMPLETE');
+  console.log('   🕵️ DEEP RECON v2.1 COMPLETE');
   console.log(`   📁 Intel: ${intel.length} items saved`);
   console.log(`   🔥 Top juiciness: ${intel[0]?.juiciness || 0}/10`);
   console.log(`   ⏱️  Duration: ${output.scanDuration}`);
   console.log('   📊 By level:');
   console.log(`      BASE: ${output.levels.base} | L1: ${output.levels.L1_deep_news} | L2: ${output.levels.L2_gov_records} | L3: ${output.levels.L3_social} | L4: ${output.levels.L4_financial}`);
+  console.log(`      🕵️ Epstein: ${output.levels.special_epstein}`);
+  if (epsteinCount > 0) {
+    const topEpstein = intel.find(f => f.category === 'epstein_files');
+    console.log(`   🕵️ Epstein intel in rotation: ${epsteinCount} items`);
+    if (topEpstein) {
+      console.log(`      Top: "${topEpstein.headline?.slice(0, 60)}..." (${topEpstein.juiciness}/10)`);
+    }
+  }
   if (intel.length > 0) {
     console.log(`   📰 Top story: "${intel[0].headline?.slice(0, 60)}..."`);
-    console.log(`      Depth: ${intel[0].depth || 'rss'} | Category: ${intel[0].category}`);
+    console.log(`      Depth: ${intel[0].depth || intel[0].level || 'rss'} | Category: ${intel[0].category}`);
   }
   console.log('─'.repeat(56) + '\n');
 }
