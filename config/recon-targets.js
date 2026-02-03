@@ -1,5 +1,6 @@
 /**
  * 🎯 RECON TARGETS — config/recon-targets.js
+ * v2.1: Added Epstein Files signal boosts
  */
 
 const POLITICIANS = [
@@ -66,8 +67,23 @@ const RSS_FEEDS = {
 };
 
 const JUICINESS_BOOSTS = {
+  // ─── Base signals (original) ───
   scandal: 3, corruption: 3, outage: 2.5, protest: 2, deportation: 2,
   price_hike: 1.5, disaster: 2, violence: 1.5, funding: 1, resignation: 2,
+
+  // ─── Epstein Files signals (NEW) ───
+  new_names:       3.0,   // Nuevos nombres revelados en archivos
+  cover_up:        2.5,   // Señales de encubrimiento
+  redaction_drama: 2.0,   // Drama de redacciones inconsistentes
+  new_release:     2.0,   // Nuevo document drop del DOJ/FBI
+  political_link:  2.0,   // Conexión con políticos
+  victim_exposure: 1.5,   // Nombres de víctimas expuestos
+  pr_connection:   3.0,   // Conexión con Puerto Rico — prioridad máxima
+  flight_logs:     1.5,   // Flight logs / Lolita Express
+  fbi_failure:     2.0,   // FBI sabía y no investigó
+  page_change:     2.5,   // Cambio detectado en página DOJ/FBI
+  llm_insight:     0.5,   // Análisis generado por LLM
+  ready_to_post:   1.0,   // Content listo para postear
 };
 
 module.exports = { POLITICIANS, ENERGY_ENTITIES, FEDERAL_ENTITIES, RSS_FEEDS, JUICINESS_BOOSTS };
