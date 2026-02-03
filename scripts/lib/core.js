@@ -1,6 +1,6 @@
 'use strict';
 /**
- * 🦞 GILLITO MASTER CORE v6.1
+ * 🦞 GILLITO MASTER CORE v6.2
  * ═══════════════════════════════════════════════════════════
  * The DEFINITIVE shared brain for ALL Gillito scripts.
  * Every interaction tracked. Every pattern learned.
@@ -15,6 +15,8 @@
  *  8.  History Manager (enriched entries)
  *  9.  Analytics Engine
  *  10. Adaptive Intelligence
+ *  10b. Knowledge Sources (Web Research + YouTube)
+ *  10c. Recon Intel (Deep OSINT Levels 1-4)
  *  11. X (Twitter) API — OAuth 1.0a
  *  12. Moltbook API (full CRUD + retry)
  *  13. Cloudflare Pages API
@@ -110,7 +112,7 @@ function initScript(name, platform = 'unknown') {
     apiCalls: { x: 0, moltbook: 0, cloudflare: 0 }
   };
   _journal = [];
-  log.banner([`🦞 ${name.toUpperCase()} v6.1`, `📡 Plataforma: ${platform}`]);
+  log.banner([`🦞 ${name.toUpperCase()} v6.2`, `📡 Plataforma: ${platform}`]);
   const llm = detectLLM();
   log.info(`🧠 Motor LLM: ${llm.provider === 'openai' ? 'OpenAI GPT-4o' : 'Groq/' + GROQ_MODEL}${llm.provider === 'openai' && process.env.GROQ_API_KEY ? ' (Groq backup ready)' : ''}`);
 }
@@ -969,6 +971,130 @@ function buildYouTubeContext(ytData) {
 }
 
 /* ═══════════════════════════════════════════════════════
+   10c. RECON INTEL (Deep OSINT Levels 1-4)
+   ═══════════════════════════════════════════════════════
+   Loads intel from the Deep Recon system (recon.js).
+   4 levels of public intelligence:
+     L1: Deep News (full articles, CPI, FOMB)
+     L2: Government Records (FEMA, USAspending, Contralor)
+     L3: Social Listening (politician tweets, page changes)
+     L4: Financial Trails (SEC EDGAR, donations, corporate)
+   ═══════════════════════════════════════════════════════ */
+
+/**
+ * Load recon intel data. Returns null if file missing or >24h old.
+ */
+function loadReconIntel() {
+  const filepath = path.join(WORKSPACE, '.gillito-recon-intel.json');
+  try {
+    if (!fs.existsSync(filepath)) return null;
+    const data = JSON.parse(fs.readFileSync(filepath, 'utf8'));
+    if (!data.lastUpdate) return null;
+    const ageMs = Date.now() - new Date(data.lastUpdate).getTime();
+    if (ageMs > 24 * 3600 * 1000) {
+      log.debug('Recon intel expired (>24h)');
+      return null;
+    }
+    const unused = (data.intel || []).filter(i => !i.used).length;
+    const total = (data.intel || []).length;
+    log.ok(`🕵️ Recon intel loaded (${unused}/${total} unused, levels: B=${data.levels?.base || 0} L1=${data.levels?.L1_deep_news || 0} L2=${data.levels?.L2_gov_records || 0} L3=${data.levels?.L3_social || 0} L4=${data.levels?.L4_financial || 0})`);
+    return data;
+  } catch (e) {
+    log.debug(`Recon intel load failed: ${e.message}`);
+    return null;
+  }
+}
+
+/**
+ * Pick best unused intel items for content generation.
+ * Prioritizes diverse selection across levels.
+ * @param {number} count - Number of items (default: 3)
+ * @param {number} minJuiciness - Minimum score (default: 5)
+ * @returns {Array} Selected intel items
+ */
+function pickReconIntel(count = 3, minJuiciness = 5) {
+  const filepath = path.join(WORKSPACE, '.gillito-recon-intel.json');
+  try {
+    if (!fs.existsSync(filepath)) return [];
+    const data = JSON.parse(fs.readFileSync(filepath, 'utf8'));
+    let intel = (data.intel || []).filter(i => !i.used && (i.juiciness || 0) >= minJuiciness);
+
+    if (intel.length === 0) return [];
+
+    const result = [];
+    const usedFPs = new Set();
+
+    // 1. Highest juiciness overall
+    intel.sort((a, b) => (b.juiciness || 0) - (a.juiciness || 0));
+    if (intel[0]) { result.push(intel[0]); usedFPs.add(intel[0].fingerprint); }
+
+    // 2. Best from deep levels (categories unique to L1-L4)
+    const deepCats = ['deep_news', 'government_records', 'social_listening', 'financial_trails'];
+    const deepBest = intel
+      .filter(i => deepCats.includes(i.category) && !usedFPs.has(i.fingerprint))
+      .sort((a, b) => (b.juiciness || 0) - (a.juiciness || 0))[0];
+    if (deepBest) { result.push(deepBest); usedFPs.add(deepBest.fingerprint); }
+
+    // 3. Fill remaining slots
+    for (const item of intel) {
+      if (result.length >= count) break;
+      if (!usedFPs.has(item.fingerprint)) { result.push(item); usedFPs.add(item.fingerprint); }
+    }
+
+    return result;
+  } catch { return []; }
+}
+
+/**
+ * Mark intel items as used after posting.
+ */
+function markReconUsed(items) {
+  const filepath = path.join(WORKSPACE, '.gillito-recon-intel.json');
+  try {
+    if (!fs.existsSync(filepath)) return;
+    const data = JSON.parse(fs.readFileSync(filepath, 'utf8'));
+    const fps = new Set(items.map(i => i.fingerprint).filter(Boolean));
+    for (const item of (data.intel || [])) {
+      if (fps.has(item.fingerprint)) { item.used = true; item.usedAt = new Date().toISOString(); }
+    }
+    fs.writeFileSync(filepath, JSON.stringify(data, null, 2));
+    log.ok(`🕵️ Marked ${fps.size} intel items as used`);
+  } catch (err) { log.warn(`markReconUsed failed: ${err.message}`); }
+}
+
+/**
+ * Build recon intel context string for LLM prompt injection.
+ * Returns formatted string or empty string if no data.
+ * Includes depth-aware labels and money callouts.
+ */
+function buildReconContext(items) {
+  if (!items || items.length === 0) return '';
+
+  const DEPTH_LABELS = {
+    'rss':          '📡 RSS',
+    'full_article': '📰 ARTÍCULO COMPLETO',
+    'api_record':   '🏛️ RECORD GOB',
+    'social_feed':  '🐦 TWEET',
+    'page_monitor': '🚨 CAMBIO DE PÁGINA',
+    'scrape':       '🔍 SCRAPE',
+  };
+
+  const parts = ['\n\n═══ 🕵️ INTEL DE RECON ═══'];
+
+  for (const item of items) {
+    const label = DEPTH_LABELS[item.depth] || '📋';
+    parts.push(`${label} [${item.juiciness}/10] ${item.headline}`);
+    if (item.summary) parts.push(`  → ${item.summary.slice(0, 250)}`);
+    if (item.moneyMentioned?.length) parts.push(`  💰 ${item.moneyMentioned.join(', ')}`);
+    if (item.entities?.length) parts.push(`  🎯 ${item.entities.slice(0, 4).join(', ')}`);
+  }
+
+  parts.push('[Esta intel es EXCLUSIVA — úsala pa dar contenido que nadie más tiene]');
+  parts.push('[Datos de $ y cambios de página son lo MÁS JUGOSO]');
+  return parts.join('\n');
+}
+
+/* ═══════════════════════════════════════════════════════
    11. X (TWITTER) API — OAuth 1.0a
    ═══════════════════════════════════════════════════════ */
 
@@ -1505,7 +1631,7 @@ function isSpecialTarget(P, username) {
    15. PROMPT BUILDERS
    ═══════════════════════════════════════════════════════ */
 
-function buildPostSystemPrompt(P, prTime, platform = 'x') {
+function buildPostSystemPrompt(P, prTime, platform = 'x', recon = null) {
   const frase     = pick(P.frases_firma);
   const insultos  = shuffle(P.insultos_creativos).slice(0, 5).join(', ');
   const inicio    = pick(P.patrones_de_habla.inicio_explosivo);
@@ -1550,6 +1676,7 @@ ${P.diccionario_boricua.comida ? `Comida: ${P.diccionario_boricua.comida.slice(0
 ${diaEsp ? `\n📅 HOY ES ${prTime.dayName.toUpperCase()}: ${diaEsp}` : ''}
 ${exitosas.length ? `\n📈 FRASES EXITOSAS (referencia): ${exitosas.join(' | ')}` : ''}
 ${trending.length ? `\n📰 TRENDING: ${trending.join(', ')}` : ''}
+${recon ? buildReconContext(recon) : ''}
 
 ⚠️ REGLAS ABSOLUTAS:
 - Máximo ${maxChars} caracteres
@@ -1707,6 +1834,9 @@ module.exports = {
   // Knowledge Sources (Web Research + YouTube)
   loadResearch, buildResearchContext,
   loadYouTubeLearnings, buildYouTubeContext,
+
+  // Recon Intel (Deep OSINT Levels 1-4)
+  loadReconIntel, pickReconIntel, markReconUsed, buildReconContext,
 
   // X (Twitter) API
   requireXCreds, xPost, xReply, xGetMe, xGetMentions,
