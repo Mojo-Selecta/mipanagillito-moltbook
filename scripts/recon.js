@@ -9,27 +9,29 @@
  * LVL 2: Government Records (FEMA API, USAspending, Contralor)
  * LVL 3: Social Listening (politician tweets, page changes)
  * LVL 4: Financial Trails (SEC EDGAR, donations, corporate registry)
+ *
+ * FIX v2.0.1: All paths use __dirname + 'recon/' subdirectory
  */
 
 const fs   = require('fs');
 const path = require('path');
 
-// ─── BASE modules ───
-const reconPoliticians = require(path.join(__dirname, 'recon-politicians'));
-const reconLuma        = require(path.join(__dirname, 'recon-luma'));
-const reconFederal     = require(path.join(__dirname, 'recon-federal'));
-const reconNews        = require(path.join(__dirname, 'recon-news'));
+// ─── BASE modules (scripts/recon/*.js) ───
+const reconPoliticians = require(path.join(__dirname, 'recon', 'politicians'));
+const reconLuma        = require(path.join(__dirname, 'recon', 'luma'));
+const reconFederal     = require(path.join(__dirname, 'recon', 'federal'));
+const reconNews        = require(path.join(__dirname, 'recon', 'news'));
 
 // ─── DEEP modules (Levels 1-4) ───
-const reconDeepNews    = require(path.join(__dirname, 'recon-deep-news'));
-const reconGovRecords  = require(path.join(__dirname, 'recon-gov-records'));
-const reconSocial      = require(path.join(__dirname, 'recon-social'));
-const reconFinancial   = require(path.join(__dirname, 'recon-financial'));
+const reconDeepNews    = require(path.join(__dirname, 'recon', 'deep-news'));
+const reconGovRecords  = require(path.join(__dirname, 'recon', 'gov-records'));
+const reconSocial      = require(path.join(__dirname, 'recon', 'social'));
+const reconFinancial   = require(path.join(__dirname, 'recon', 'financial'));
 
 // ─── Config ───
 const { JUICINESS_BOOSTS } = require(path.join(__dirname, '..', 'config', 'recon-targets'));
 
-const INTEL_FILE = path.join(__dirname, '..', '.gillito-recon-intel.json');
+const INTEL_FILE = path.join(process.cwd(), '.gillito-recon-intel.json');
 const MAX_INTEL  = 75; // Increased from 50 — more sources now
 
 /* ─── Scoring ─── */
@@ -102,7 +104,7 @@ function deduplicateFindings(findings) {
 
 async function main() {
   console.log('\n' + '═'.repeat(56));
-  console.log('  🕵️ GILLITO DEEP RECON v2.0 — All Levels Active');
+  console.log('  🕵️ GILLITO DEEP RECON v2.0.1 — All Levels Active');
   console.log('═'.repeat(56) + '\n');
 
   const startTime = Date.now();
@@ -161,7 +163,7 @@ async function main() {
   }
 
   const output = {
-    version: '2.0',
+    version: '2.0.1',
     lastUpdate: new Date().toISOString(),
     totalFindings: allFindings.length,
     uniqueFindings: unique.length,
