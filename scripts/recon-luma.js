@@ -3,10 +3,8 @@
 // ═══════════════════════════════════════════════════════
 
 const path = require('path');
-const ROOT = process.cwd();
-
-const { safeRequest, parseRSS, extractEntities, classifyText, fingerprint, isRecent, sanitize } = require(path.join(ROOT, 'lib', 'recon-utils'));
-const { ENERGY_ENTITIES, RSS_FEEDS } = require(path.join(ROOT, 'config', 'recon-targets'));
+const { safeRequest, parseRSS, extractEntities, classifyText, fingerprint, isRecent, sanitize } = require(path.join(__dirname, 'lib', 'recon-utils'));
+const { ENERGY_ENTITIES, RSS_FEEDS } = require(path.join(__dirname, '..', 'config', 'recon-targets'));
 
 async function scan() {
   console.log('   ⚡ Scanning energy/LUMA sources...');
@@ -33,7 +31,6 @@ async function scan() {
         const entities = extractEntities(text, ENERGY_ENTITIES);
         const classification = classifyText(text);
 
-        // Must mention energy/LUMA/power
         if (entities.length === 0 &&
             !/luma|energ|apag|blackout|luz|tarifa|factura|kilovatio|kwh|power|grid|aee|prepa/i.test(text)) {
           continue;
