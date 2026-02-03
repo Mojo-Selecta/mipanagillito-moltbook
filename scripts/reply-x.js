@@ -8,10 +8,11 @@
  * 📈 Increased reply budget (Premium accounts get priority)
  * 🛡️ Full security pipeline preserved
  *
- * PREMIUM REPLY STRATEGY:
- * ───────────────────────
+ * PREMIUM REPLY STRATEGY (FREE API TIER):
+ * ─────────────────────────────────────────
  * Premium replies get algorithmic priority in conversation threads.
- * More replies → more visible threads → more verified impressions → $$$
+ * Budget: max 2 replies/cycle × ~5 cycles/day = ~10 replies/day
+ * Combined with ~6 posts/day = ~16 total (limit: 17)
  *
  * Reply types:
  *  1. STANDARD — Classic Gillito reply (humor, trolleo, support)
@@ -31,8 +32,8 @@ const P       = C.loadPersonality();
 const idCache = C.createIdCache('.gillito-replied-ids.json');
 const history = C.createHistory('.gillito-reply-history.json', 80);
 
-// 💎 Premium: higher reply budget
-const MAX_REPLIES = 4;  // Was 2, now 4 with Premium algorithmic boost
+// 💎 Premium features with free API budget (17 tweets/24h total)
+const MAX_REPLIES = 2;  // Conservative: 2 replies × ~5 cycles = ~10/day → leaves room for 6 posts
 
 // 🕵️ Recon intel
 let hasReconIntel = false;
