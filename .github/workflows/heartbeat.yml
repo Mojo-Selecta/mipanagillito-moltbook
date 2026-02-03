@@ -14,58 +14,12 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: '22' }
-
-      # ═══ RESTORE ALL PERSISTENT STATE ═══
-      - name: 📥 Restore heartbeat state
-        uses: actions/cache@v4
-        with:
-          path: .gillito-heartbeat-state.json
-          key: heartbeat-state-${{ github.run_id }}
-          restore-keys: heartbeat-state-
-
-      - name: 📥 Restore heartbeat history
-        uses: actions/cache@v4
-        with:
-          path: .gillito-heartbeat-history.json
-          key: heartbeat-history-${{ github.run_id }}
-          restore-keys: heartbeat-history-
-
-      - name: 🛡️ Restore mention budget
-        uses: actions/cache@v4
-        with:
-          path: .gillito-mention-budget.json
-          key: heartbeat-mention-budget-${{ github.run_id }}
-          restore-keys: heartbeat-mention-budget-
-
-      - name: 📓 Restore journal
-        uses: actions/cache@v4
-        with:
-          path: .gillito-journal.json
-          key: heartbeat-journal-${{ github.run_id }}
-          restore-keys: heartbeat-journal-
-
-      # ═══ 🧠 INTELLIGENCE DATA ═══
-      - name: 🕵️ Restore recon intel
-        uses: actions/cache@v4
-        with:
-          path: .gillito-recon-intel.json
-          key: recon-intel-${{ github.run_id }}
-          restore-keys: recon-intel-
-
-      - name: 📰 Restore research data
-        uses: actions/cache@v4
-        with:
-          path: .gillito-research.json
-          key: gillito-research-${{ github.run_id }}
-          restore-keys: gillito-research-
-
-      - name: 🎬 Restore YouTube learnings
-        uses: actions/cache@v4
-        with:
-          path: .gillito-youtube-learnings.json
-          key: yt-learnings-${{ github.run_id }}
-          restore-keys: yt-learnings-
-
+      # ═══ 🗄️ DB SYNC — DOWNLOAD ═══
+      - name: 📥 Sync DB from cloud
+        env:
+          GILLITO_DB_URL: https://gillito-db.vip-joeojeda.workers.dev
+          GILLITO_DB_KEY: ${{ secrets.GILLITO_DB_KEY }}
+        run: node scripts/db-sync.js download
       # ═══ 🔥 RUN HEARTBEAT ═══
       - name: 💓🔥 Gillito BEAST MODE
         env:
@@ -73,3 +27,10 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           MOLTBOOK_API_KEY: ${{ secrets.MOLTBOOK_API_KEY }}
         run: node scripts/heartbeat.js
+      # ═══ 🗄️ DB SYNC — UPLOAD ═══
+      - name: 📤 Sync DB to cloud
+        if: always()
+        env:
+          GILLITO_DB_URL: https://gillito-db.vip-joeojeda.workers.dev
+          GILLITO_DB_KEY: ${{ secrets.GILLITO_DB_KEY }}
+        run: node scripts/db-sync.js upload
