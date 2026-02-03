@@ -1,267 +1,229 @@
-// ═══════════════════════════════════════════════════════════════════════════════
-// 🔧 RECON UTILITIES — Core Toolbox for OSINT Operations
-// ═══════════════════════════════════════════════════════════════════════════════
-// Every recon module imports this. HTTP client, RSS parsing, entity extraction,
-// text fingerprinting, rate limiting, sanitization — the whole arsenal.
-// ═══════════════════════════════════════════════════════════════════════════════
+/**
+ * 🕵️ RECON UTILITIES
+ * ═══════════════════════════════════════════
+ * Shared tools for all recon modules:
+ * - HTTP client with timeout + retries
+ * - RSS/XML parser (no dependencies)
+ * - Entity extraction
+ * - Text classification
+ * - Dedup fingerprinting
+ */
 
-const https = require('https');
-const http = require('http');
+const crypto = require('crypto');
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// HTTP CLIENT — Rate-limited, retry-capable, stealth headers
-// ═══════════════════════════════════════════════════════════════════════════════
-
-const REQUEST_DELAY_MS = 1500;
-const MAX_RETRIES = 2;
-const TIMEOUT_MS = 15000;
-let lastRequestTime = 0;
-
-const USER_AGENTS = [
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-  'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:134.0) Gecko/20100101 Firefox/134.0',
-];
-
-function randomUA() {
-  return USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)];
-}
-
-async function delay(ms) {
-  return new Promise(r => setTimeout(r, ms));
-}
+/* ─── HTTP Client ─── */
 
 async function safeRequest(url, opts = {}) {
-  const elapsed = Date.now() - lastRequestTime;
-  if (elapsed < REQUEST_DELAY_MS) {
-    await delay(REQUEST_DELAY_MS - elapsed);
-  }
-  lastRequestTime = Date.now();
+  const { timeout = 15000, retries = 2 } = opts;
 
-  const maxRetries = opts.maxRetries ?? MAX_RETRIES;
-  const timeout = opts.timeout ?? TIMEOUT_MS;
-
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+  for (let attempt = 1; attempt <= retries; attempt++) {
     try {
-      const body = await httpGet(url, {
-        timeout,
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), timeout);
+
+      const res = await fetch(url, {
+        signal: ctrl.signal,
         headers: {
-          'User-Agent': randomUA(),
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-          'Accept-Language': 'es-PR,es;q=0.9,en-US;q=0.8,en;q=0.7',
-          'Cache-Control': 'no-cache',
-          ...(opts.headers || {}),
-        },
+          'User-Agent': 'GillitoRecon/1.0 (PR News Monitor)',
+          'Accept': 'application/rss+xml, application/xml, text/xml, */*',
+          ...(opts.headers || {})
+        }
       });
-      return body;
-    } catch (err) {
-      if (attempt < maxRetries) {
-        const backoff = (attempt + 1) * 2000;
-        console.log(`      ↻ Retry ${attempt + 1}/${maxRetries} in ${backoff}ms — ${err.message}`);
-        await delay(backoff);
-      } else {
+      clearTimeout(timer);
+
+      if (!res.ok) {
+        if (attempt < retries && res.status >= 500) continue;
         return null;
       }
+
+      return await res.text();
+    } catch (err) {
+      if (attempt < retries && err.name !== 'AbortError') continue;
+      return null;
     }
   }
   return null;
 }
 
-function httpGet(url, opts = {}, redirectCount = 0) {
-  if (redirectCount > 3) return Promise.reject(new Error('Too many redirects'));
-  return new Promise((resolve, reject) => {
-    const proto = url.startsWith('https') ? https : http;
-    const req = proto.get(url, {
-      timeout: opts.timeout || TIMEOUT_MS,
-      headers: opts.headers || {},
-    }, (res) => {
-      if ([301, 302, 303, 307, 308].includes(res.statusCode) && res.headers.location) {
-        const redirectUrl = res.headers.location.startsWith('http')
-          ? res.headers.location
-          : new URL(res.headers.location, url).href;
-        return httpGet(redirectUrl, opts, redirectCount + 1).then(resolve).catch(reject);
-      }
-      if (res.statusCode !== 200) {
-        reject(new Error(`HTTP ${res.statusCode}`));
-        res.resume();
-        return;
-      }
-      const chunks = [];
-      res.on('data', c => chunks.push(c));
-      res.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
-      res.on('error', reject);
-    });
-    req.on('error', reject);
-    req.on('timeout', () => { req.destroy(); reject(new Error('Timeout')); });
-  });
-}
-
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// RSS PARSER
-// ═══════════════════════════════════════════════════════════════════════════════
+/* ─── RSS Parser (no external deps) ─── */
 
 function parseRSS(xml) {
   if (!xml) return [];
   const items = [];
+
+  // Handle both RSS <item> and Atom <entry>
+  const itemRegex = /<item[\s>]([\s\S]*?)<\/item>|<entry[\s>]([\s\S]*?)<\/entry>/gi;
   let match;
 
-  const rssItemRegex = /<item>([\s\S]*?)<\/item>/gi;
-  while ((match = rssItemRegex.exec(xml)) !== null) {
-    items.push(parseRSSItem(match[1]));
+  while ((match = itemRegex.exec(xml)) !== null) {
+    const block = match[1] || match[2];
+
+    const title       = extractTag(block, 'title');
+    const description = extractTag(block, 'description') || extractTag(block, 'summary') || extractTag(block, 'content');
+    const link        = extractLink(block);
+    const pubDate     = extractTag(block, 'pubDate') || extractTag(block, 'published') || extractTag(block, 'updated');
+    const source      = extractTag(block, 'source') || extractTag(block, 'dc:creator') || extractTag(block, 'author');
+
+    items.push({ title, description, link, pubDate, source });
   }
 
-  if (items.length === 0) {
-    const atomEntryRegex = /<entry>([\s\S]*?)<\/entry>/gi;
-    while ((match = atomEntryRegex.exec(xml)) !== null) {
-      items.push(parseAtomEntry(match[1]));
-    }
-  }
-
-  return items.filter(i => i.title);
+  return items;
 }
 
-function parseRSSItem(xml) {
-  return {
-    title: extractTag(xml, 'title'),
-    link: extractTag(xml, 'link') || extractAttr(xml, 'link', 'href'),
-    pubDate: extractTag(xml, 'pubDate') || extractTag(xml, 'dc:date'),
-    description: stripHtml(extractTag(xml, 'description')),
-    source: extractTag(xml, 'source') || '',
-  };
-}
+function extractTag(block, tag) {
+  // Handle CDATA: <title><![CDATA[actual content]]></title>
+  const cdataRegex = new RegExp(`<${tag}[^>]*>\\s*<!\\[CDATA\\[([\\s\\S]*?)\\]\\]>\\s*</${tag}>`, 'i');
+  const cdataMatch = block.match(cdataRegex);
+  if (cdataMatch) return cdataMatch[1].trim();
 
-function parseAtomEntry(xml) {
-  return {
-    title: extractTag(xml, 'title'),
-    link: extractAttr(xml, 'link', 'href') || extractTag(xml, 'link'),
-    pubDate: extractTag(xml, 'published') || extractTag(xml, 'updated'),
-    description: stripHtml(extractTag(xml, 'summary') || extractTag(xml, 'content')),
-    source: extractTag(xml, 'source') || '',
-  };
-}
-
-function extractTag(xml, tag) {
+  // Handle regular tags
   const regex = new RegExp(`<${tag}[^>]*>([\\s\\S]*?)</${tag}>`, 'i');
-  const match = xml.match(regex);
-  if (!match) return '';
-  return match[1].replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1').trim();
+  const m = block.match(regex);
+  if (m) return stripHtml(m[1].trim());
+
+  return '';
 }
 
-function extractAttr(xml, tag, attr) {
-  const regex = new RegExp(`<${tag}[^>]*${attr}="([^"]*)"`, 'i');
-  const match = xml.match(regex);
-  return match ? match[1] : '';
+function extractLink(block) {
+  // Atom: <link href="..." />
+  const atomLink = block.match(/<link[^>]+href=["']([^"']+)["']/i);
+  if (atomLink) return atomLink[1];
+
+  // RSS: <link>...</link>
+  return extractTag(block, 'link');
 }
 
 function stripHtml(text) {
-  if (!text) return '';
   return text
-    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&nbsp;/g, ' ')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&nbsp;/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 }
 
+/* ─── Entity Extraction ─── */
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// ENTITY EXTRACTION
-// ═══════════════════════════════════════════════════════════════════════════════
-
-function extractEntities(text, targets) {
-  if (!text || !targets) return [];
+function extractEntities(text, entityList) {
+  if (!text || !entityList) return [];
   const lower = text.toLowerCase();
-  const matched = [];
-  for (const target of targets) {
-    const found = (target.keywords || [target.name]).some(kw =>
-      lower.includes(kw.toLowerCase())
-    );
-    if (found && !matched.includes(target.name)) {
-      matched.push(target.name);
+  const found = [];
+
+  for (const entity of entityList) {
+    const name = typeof entity === 'string' ? entity : entity.name;
+    const aliases = typeof entity === 'object' ? (entity.aliases || []) : [];
+    const allNames = [name, ...aliases];
+
+    for (const n of allNames) {
+      if (lower.includes(n.toLowerCase())) {
+        found.push(name);
+        break;
+      }
     }
   }
-  return matched;
+
+  return [...new Set(found)];
 }
 
+/* ─── Text Classification ─── */
 
-// ═══════════════════════════════════════════════════════════════════════════════
-// TEXT ANALYSIS
-// ═══════════════════════════════════════════════════════════════════════════════
+const SIGNAL_PATTERNS = {
+  scandal:     /escándalo|scandal|investig|corrup|fraude|malvers|soborno|acus|indict|arrest|arres/i,
+  outage:      /apagón|blackout|sin luz|power outage|interrup|cortaron la luz|se fue la luz/i,
+  price_hike:  /aument|subió|tarifa|factura|cobr|rate hike|surcharge|cargo/i,
+  protest:     /protest|manifest|marcha|paro|huelga|strike|rally|demonstr/i,
+  corruption:  /corrup|malvers|robo|desvío|fondos|kickback|bribe|embezzle/i,
+  deportation: /deport|ice|redada|raid|operativo|deten|immigration|migra/i,
+  disaster:    /huracán|hurricane|terremoto|earthquake|inundación|flood|emergencia|emergency/i,
+  funding:     /fondos|fund|presupuesto|budget|asignación|grant|fema|hud/i,
+  resignation: /renunci|resign|dimis|fired|desped|removed|suspend/i,
+  violence:    /asesinat|murder|bala|shoot|violen|homicid|crimen|crime/i,
+};
+
+const CATEGORY_MAP = {
+  scandal:     'scandal',
+  corruption:  'scandal',
+  outage:      'crisis',
+  disaster:    'crisis',
+  violence:    'crisis',
+  protest:     'unrest',
+  price_hike:  'economic',
+  funding:     'economic',
+  deportation: 'federal',
+  resignation: 'political',
+};
+
+function classifyText(text) {
+  const signals = [];
+  for (const [signal, pattern] of Object.entries(SIGNAL_PATTERNS)) {
+    if (pattern.test(text)) signals.push(signal);
+  }
+
+  // Primary category from highest-priority signal
+  let category = 'general';
+  for (const s of signals) {
+    if (CATEGORY_MAP[s]) { category = CATEGORY_MAP[s]; break; }
+  }
+
+  return { signals, category };
+}
+
+/* ─── Fingerprinting (dedup) ─── */
 
 function fingerprint(text) {
   if (!text) return '';
-  const words = text
-    .toLowerCase()
-    .replace(/[^a-záéíóúñü\s]/g, '')
-    .split(/\s+/)
+  const normalized = text.toLowerCase()
+    .replace(/[^a-záéíóúñ\s]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .split(' ')
     .filter(w => w.length > 3)
-    .slice(0, 12);
-  return words.join(':');
+    .sort()
+    .join(' ');
+  return crypto.createHash('md5').update(normalized).digest('hex').substring(0, 12);
 }
 
-function classifyText(text) {
-  if (!text) return { category: 'unknown', subcategory: 'unknown', signals: [] };
-  const lower = text.toLowerCase();
-  const signals = [];
+/* ─── Time Utils ─── */
 
-  if (/corrupci[oó]n|escándalo|arrest|acusad|investiga|soborno|fraude|malversa/i.test(lower)) signals.push('scandal');
-  if (/prometi|compromet|va a|planea|anuncia.*plan|propone|jura/i.test(lower)) signals.push('promise');
-  if (/fracas|no cumpli|fall[oó]|abandon|incumpl|negligencia/i.test(lower)) signals.push('failure');
-  if (/presupuesto|millon|billon|fondo|dinero|gasto|contrato|licitaci/i.test(lower)) signals.push('money');
-  if (/apag[oó]n|energ[ií]a|el[eé]ctric|generaci|tarifa|factura luz|blackout/i.test(lower)) signals.push('energy');
-  if (/ice|deporta|inmigra|federal|congres|trump|biden|casa blanca/i.test(lower)) signals.push('federal');
-  if (/hurac[aá]n|terremo|emergenc|fema|desastre|inundaci|tsunami/i.test(lower)) signals.push('emergency');
-  if (/estadidad|independen|status|colonial|plebiscit|soberan/i.test(lower)) signals.push('status');
-  if (/econom|inflaci|salario|empleo|desempleo|costo vida|pobreza/i.test(lower)) signals.push('economy');
-  if (/salud|hospital|medic|enfermed|pandemia|virus|vacuna/i.test(lower)) signals.push('health');
-
-  const priorityOrder = ['scandal', 'energy', 'emergency', 'federal', 'money', 'failure', 'promise', 'status', 'economy', 'health'];
-  const category = priorityOrder.find(p => signals.includes(p)) || 'general';
-
-  return { category, subcategory: signals[1] || 'general', signals };
+function isRecent(dateStr, maxHours = 48) {
+  if (!dateStr) return true; // if no date, assume recent
+  try {
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return true;
+    return (Date.now() - d.getTime()) < maxHours * 3600 * 1000;
+  } catch {
+    return true;
+  }
 }
 
-function quickSentiment(text) {
-  if (!text) return 'neutral';
-  const lower = text.toLowerCase();
-  const neg = /muri|muert|arrest|crisis|fracas|escan|corrupt|apag|destruy|sufr|colapso|desastre|peor|fall[oó]|no cumpli|negligencia|demanda/i.test(lower);
-  const pos = /mejor|éxito|logr|avance|progres|celebra|reconstruy|innova|record positiv|salva/i.test(lower);
-  if (neg && !pos) return 'negative';
-  if (pos && !neg) return 'positive';
-  return 'neutral';
-}
-
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// SANITIZATION & HELPERS
-// ═══════════════════════════════════════════════════════════════════════════════
+/* ─── Sanitization ─── */
 
 function sanitize(text) {
   if (!text) return '';
   return text
-    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '')
-    .replace(/[<>]/g, '')
-    .slice(0, 5000);
+    .replace(/<[^>]+>/g, '')       // strip HTML
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '') // strip control chars
+    .replace(/\s+/g, ' ')
+    .trim()
+    .substring(0, 1000);
 }
 
-function isRecent(dateStr, hoursAgo = 48) {
-  try {
-    const ts = new Date(dateStr).getTime();
-    if (isNaN(ts)) return true;
-    return (Date.now() - ts) < (hoursAgo * 60 * 60 * 1000);
-  } catch { return true; }
-}
-
-function toPRTime(date) {
-  return new Date(date).toLocaleString('es-PR', { timeZone: 'America/Puerto_Rico' });
-}
+/* ─── Exports ─── */
 
 module.exports = {
-  safeRequest, httpGet, delay,
-  parseRSS, stripHtml,
-  extractEntities, fingerprint, classifyText, quickSentiment,
-  sanitize, isRecent, toPRTime,
+  safeRequest,
+  parseRSS,
+  extractTag,
+  extractLink,
+  stripHtml,
+  extractEntities,
+  classifyText,
+  SIGNAL_PATTERNS,
+  fingerprint,
+  isRecent,
+  sanitize,
 };
