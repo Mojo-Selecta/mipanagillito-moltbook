@@ -1,19 +1,19 @@
-// ═══════════════════════════════════════════════════════════════════════════════
-// 📰 RECON MODULE: PR News Deep Scanner
-// ═══════════════════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════
+// 📰 RECON MODULE: General PR News
+// ═══════════════════════════════════════════════════════
 
 const path = require('path');
 const ROOT = process.cwd();
 
-const { safeRequest, parseRSS, extractEntities, classifyText, fingerprint, isRecent, sanitize } = require(path.join(ROOT, 'lib', 'recon-utils'));
-const { ALL_TARGETS, RSS_FEEDS } = require(path.join(ROOT, 'config', 'recon-targets'));
+const { safeRequest, parseRSS, classifyText, fingerprint, isRecent, sanitize } = require(path.join(ROOT, 'lib', 'recon-utils'));
+const { RSS_FEEDS } = require(path.join(ROOT, 'config', 'recon-targets'));
 
 async function scan() {
-  console.log('   📰 Scanning PR news sources...');
+  console.log('   📰 Scanning general news sources...');
   const findings = [];
   const seen = new Set();
 
-  for (const feed of RSS_FEEDS.news) {
+  for (const feed of RSS_FEEDS.general) {
     try {
       const xml = await safeRequest(feed.url);
       if (!xml) { console.log(`      ⚠️ ${feed.name}: no response`); continue; }
@@ -30,24 +30,26 @@ async function scan() {
         seen.add(fp);
 
         const text = sanitize(`${item.title} ${item.description}`);
-        const entities = extractEntities(text, ALL_TARGETS);
         const classification = classifyText(text);
 
-        const prRelevant = /puerto rico|boricua|isla del encanto|pr\b|borink/i.test(text) ||
-                          entities.length > 0 ||
-                          classification.signals.length > 0;
-
-        if (!prRelevant) continue;
+        // Skip boring/filler news
+        if (classification.signals.length === 0 &&
+            !/escándalo|investig|arres|corrup|protest|crisis|emergencia|huracán|terremoto/i.test(text)) {
+          // Still include if it's about PR specifically
+          if (!/puerto rico|boricua|isla|san juan|bayamón|ponce|mayagüez|carolina/i.test(text)) {
+            continue;
+          }
+        }
 
         findings.push({
-          category: 'news',
+          category: 'general_news',
           subcategory: classification.category,
           signals: classification.signals,
           headline: sanitize(item.title),
           summary: sanitize(item.description?.slice(0, 400) || ''),
           source: item.source || feed.name,
           sourceUrl: item.link || '',
-          entities: entities.length > 0 ? entities : ['Puerto Rico'],
+          entities: [],
           timestamp: item.pubDate ? new Date(item.pubDate).toISOString() : new Date().toISOString(),
           fingerprint: fp,
         });
@@ -57,7 +59,7 @@ async function scan() {
     }
   }
 
-  console.log(`   📰 PR News: ${findings.length} findings`);
+  console.log(`   📰 General news: ${findings.length} findings`);
   return findings;
 }
 
