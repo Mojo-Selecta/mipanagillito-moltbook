@@ -1,12 +1,12 @@
-// ═══════════════════════════════════════════════════════════════════════════════
-// 🇺🇸 RECON MODULE: Federal Actions Affecting Puerto Rico
-// ═══════════════════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════
+// 🇺🇸 RECON MODULE: Federal / ICE / Trump
+// ═══════════════════════════════════════════════════════
 
 const path = require('path');
 const ROOT = process.cwd();
 
 const { safeRequest, parseRSS, extractEntities, classifyText, fingerprint, isRecent, sanitize } = require(path.join(ROOT, 'lib', 'recon-utils'));
-const { FEDERAL, RSS_FEEDS } = require(path.join(ROOT, 'config', 'recon-targets'));
+const { FEDERAL_ENTITIES, RSS_FEEDS } = require(path.join(ROOT, 'config', 'recon-targets'));
 
 async function scan() {
   console.log('   🇺🇸 Scanning federal sources...');
@@ -23,21 +23,21 @@ async function scan() {
 
       for (const item of items) {
         if (!item.title) continue;
-        if (!isRecent(item.pubDate, 72)) continue;
+        if (!isRecent(item.pubDate, 48)) continue;
 
         const fp = fingerprint(item.title);
         if (seen.has(fp)) continue;
         seen.add(fp);
 
         const text = sanitize(`${item.title} ${item.description}`);
-        const entities = extractEntities(text, FEDERAL);
+        const entities = extractEntities(text, FEDERAL_ENTITIES);
         const classification = classifyText(text);
 
-        const prRelevant = /puerto rico|boricua|isla|territorial|colony|commonwealth/i.test(text) ||
-                          entities.length > 0 ||
-                          classification.signals.includes('federal');
-
-        if (!prRelevant) continue;
+        // Must be PR-relevant federal news
+        if (entities.length === 0 &&
+            !/puerto rico|boricua|isla|territorial|jones act|fema|hud|fbi|ice|cbp|deport/i.test(text)) {
+          continue;
+        }
 
         findings.push({
           category: 'federal',
