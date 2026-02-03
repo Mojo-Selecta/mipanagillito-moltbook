@@ -1,4 +1,4 @@
-name: 🕵️ Gillito - Recon OSINT
+name: 🕵️ Gillito - Deep Recon OSINT v2
 on:
   schedule:
     - cron: '0 */6 * * *'    # Every 6 hours
@@ -11,18 +11,25 @@ concurrency:
 jobs:
   recon:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10      # Increased — deep scanning takes longer
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: '22' }
 
-      - name: 🕵️ Restore recon intel
+      - name: 🕵️ Restore recon intel cache
         uses: actions/cache@v4
         with:
           path: .gillito-recon-intel.json
           key: recon-intel-${{ github.run_id }}
           restore-keys: recon-intel-
 
-      - name: 🕵️ Run recon scan
+      - name: 👁️ Restore page snapshots (L3)
+        uses: actions/cache@v4
+        with:
+          path: .gillito-page-snapshots.json
+          key: page-snapshots-${{ github.run_id }}
+          restore-keys: page-snapshots-
+
+      - name: 🕵️ Run Deep Recon v2
         run: node scripts/recon.js
