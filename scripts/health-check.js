@@ -1,6 +1,6 @@
 'use strict';
 /**
- * 🦞 GILLITO HEALTH CHECK v1.1
+ * 🦞 GILLITO HEALTH CHECK v1.2
  * ═══════════════════════════════════════════════════════
  * Diagnóstico completo de TODOS los servicios que usa Gillito.
  * Corre ANTES de cada workflow para no gastar API calls al pedo.
@@ -24,6 +24,11 @@
  *   0 = todo OK
  *   1 = algún servicio crítico falló
  *   2 = warnings (servicios secundarios con problemas)
+ *
+ * CHANGELOG:
+ *   v1.2 — Fix Cloudflare check: usa account-level Pages endpoint
+ *          en vez de /user/tokens/verify (que solo funciona con User Tokens)
+ *   v1.1 — Initial release
  */
 
 const fs = require('fs');
@@ -41,7 +46,7 @@ const SERVICES = {
   x: {
     name: 'X (Twitter) API',
     emoji: '🐦',
-    critical: true,  // si falla, no postees a X
+    critical: true,
     endpoints: {
       me: 'https://api.twitter.com/2/users/me',
       tweets: 'https://api.twitter.com/2/tweets'
@@ -50,7 +55,7 @@ const SERVICES = {
   moltbook: {
     name: 'Moltbook API',
     emoji: '🤖',
-    critical: true,  // si falla, no postees a Moltbook
+    critical: true,
     endpoints: {
       base: 'https://www.moltbook.com/api',
       health: 'https://www.moltbook.com/api/posts?limit=1',
@@ -60,7 +65,7 @@ const SERVICES = {
   openai: {
     name: 'OpenAI API (PRIMARIO)',
     emoji: '🤖',
-    critical: true,  // LLM primario — GPT-4
+    critical: true,
     endpoints: {
       chat: 'https://api.openai.com/v1/chat/completions',
       models: 'https://api.openai.com/v1/models'
@@ -69,34 +74,31 @@ const SERVICES = {
   groq: {
     name: 'Groq LLM API (FALLBACK)',
     emoji: '🧠',
-    critical: false,  // fallback — si OpenAI funciona, no es crítico
+    critical: false,
     endpoints: {
       chat: 'https://api.groq.com/openai/v1/chat/completions',
       models: 'https://api.groq.com/openai/v1/models'
     },
     limits: {
-      // llama-3.3-70b-versatile free tier
-      rpm: 30,     // requests per minute
-      rpd: 1000,   // requests per day
-      tpm: 12000,  // tokens per minute
-      tpd: 100000  // tokens per day
+      rpm: 30,
+      rpd: 1000,
+      tpm: 12000,
+      tpd: 100000
     }
   },
   cloudflare: {
     name: 'Cloudflare Pages',
     emoji: '☁️',
-    critical: false,  // solo pa websites, no esencial
-    endpoints: {
-      api: 'https://api.cloudflare.com/client/v4/user/tokens/verify'
-    }
+    critical: false
+    // endpoint se construye dinámicamente con accountId
   }
 };
 
 // Límites de X API Free Tier
 const X_LIMITS = {
-  MAX_TWEETS_24H: 17,       // posts + replies combinados por 24h
-  MAX_WRITES_MES: 500,      // writes mensuales (algunos dicen 1500, conservador)
-  MAX_READS_MES: 100        // reads mensuales
+  MAX_TWEETS_24H: 17,
+  MAX_WRITES_MES: 500,
+  MAX_READS_MES: 100
 };
 
 // ════════════════════════════════════════════
@@ -168,7 +170,6 @@ function generateOAuthHeader(method, url) {
     oauth_version: '1.0'
   };
 
-  // Parse URL para incluir query params en signature
   const urlObj = new URL(url);
   const allParams = { ...params };
   urlObj.searchParams.forEach((v, k) => { allParams[k] = v; });
@@ -197,7 +198,6 @@ function generateOAuthHeader(method, url) {
 async function checkX() {
   LOG.head('🐦  1. X (TWITTER) API');
 
-  // 1a. Verificar credenciales existen
   const creds = ['X_API_KEY', 'X_API_SECRET', 'X_ACCESS_TOKEN', 'X_ACCESS_SECRET'];
   const missing = creds.filter(c => !process.env[c]);
 
@@ -209,7 +209,6 @@ async function checkX() {
   LOG.ok('Credenciales configuradas (4/4)');
   record('x', 'ok', 'All 4 credentials present');
 
-  // 1b. Test auth con GET /2/users/me (no gasta write quota)
   try {
     const authHeader = generateOAuthHeader('GET', SERVICES.x.endpoints.me);
     const res = await fetch(SERVICES.x.endpoints.me, {
@@ -218,7 +217,6 @@ async function checkX() {
       signal: AbortSignal.timeout(10000)
     });
 
-    // Leer rate limit headers
     const remaining = res.headers.get('x-rate-limit-remaining');
     const resetEpoch = res.headers.get('x-rate-limit-reset');
     const limit = res.headers.get('x-rate-limit-limit');
@@ -269,7 +267,6 @@ async function checkX() {
     }
   }
 
-  // 1c. Verificar budget de X
   await checkXBudget();
 }
 
@@ -288,7 +285,6 @@ async function checkXBudget() {
     const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Puerto_Rico' });
     const month = today.substring(0, 7);
 
-    // Auto-reset si es nuevo día/mes
     if (budget.fecha !== today) {
       LOG.info(`Día nuevo (${today}) — contadores diarios se resetean`);
     }
@@ -306,7 +302,6 @@ async function checkXBudget() {
     LOG.info(`Total hoy:   ${totalHoy}/${X_LIMITS.MAX_TWEETS_24H}`);
     LOG.info(`Writes mes:  ${writesMes}/${X_LIMITS.MAX_WRITES_MES}`);
 
-    // Evaluar estado
     const pctDia = (totalHoy / X_LIMITS.MAX_TWEETS_24H) * 100;
     const pctMes = (writesMes / X_LIMITS.MAX_WRITES_MES) * 100;
 
@@ -360,7 +355,7 @@ async function checkMoltbook() {
     'Content-Type': 'application/json'
   };
 
-  // 2a. Test server health (GET posts — no auth required)
+  // 2a. Test server health
   try {
     const res = await fetch(SERVICES.moltbook.endpoints.health, {
       method: 'GET',
@@ -385,7 +380,7 @@ async function checkMoltbook() {
       LOG.fail(`Error de conexión: ${err.message}`);
       record('moltbook', 'fail', `Connection: ${err.message}`);
     }
-    return; // Si no hay conexión, no seguir
+    return;
   }
 
   // 2b. Test auth con GET /agents/me
@@ -393,7 +388,7 @@ async function checkMoltbook() {
     const res = await fetch(SERVICES.moltbook.endpoints.me, {
       method: 'GET',
       headers,
-      redirect: 'manual', // evitar redirect que mata auth
+      redirect: 'manual',
       signal: AbortSignal.timeout(10000)
     });
 
@@ -419,28 +414,23 @@ async function checkMoltbook() {
     record('moltbook', 'fail', `/agents/me error: ${err.message}`);
   }
 
-  // 2c. Test POST /posts (dry run — solo verificar que no da 401)
+  // 2c. Test POST /posts (dry run)
   try {
-    // Intentar crear un post de prueba que sabemos que funciona
-    // Pero NO queremos gastar una acción real, así que hacemos
-    // un POST con body vacío — debería dar 400 (bad request) NO 401
     const res = await fetch(`${SERVICES.moltbook.endpoints.base}/posts`, {
       method: 'POST',
       headers,
       redirect: 'manual',
-      body: JSON.stringify({}), // body inválido a propósito
+      body: JSON.stringify({}),
       signal: AbortSignal.timeout(10000)
     });
 
     if (res.status === 400 || res.status === 422) {
-      // Perfecto — 400/422 = auth funciona, solo falta content
       LOG.ok('POST /posts auth funciona (400 = body inválido, auth OK)');
       record('moltbook', 'ok', 'POST endpoint auth OK');
     } else if (res.status === 401) {
       LOG.fail('POST /posts auth FALLIDA (401)');
       record('moltbook', 'fail', 'POST endpoint auth failed');
     } else if (res.status === 201 || res.status === 200) {
-      // Oops, posteó con body vacío? Raro pero OK
       LOG.warn('POST /posts aceptó body vacío — auth funciona pero raro');
       record('moltbook', 'warn', 'POST accepted empty body');
     } else {
@@ -452,7 +442,7 @@ async function checkMoltbook() {
     record('moltbook', 'warn', `POST endpoint error: ${err.message}`);
   }
 
-  // 2d. Test endpoints de interacción (comment/upvote — bug conocido)
+  // 2d. Test endpoints de interacción
   const interactionEndpoints = [
     { name: 'comment', path: '/posts/test/comments' },
     { name: 'upvote', path: '/posts/test/upvote' }
@@ -510,7 +500,7 @@ async function checkOpenAI() {
     'Content-Type': 'application/json'
   };
 
-  // 3a. Test auth con GET /models (no gasta tokens)
+  // 3a. Test auth con GET /models
   try {
     const res = await fetch(SERVICES.openai.endpoints.models, {
       method: 'GET',
@@ -564,7 +554,7 @@ async function checkOpenAI() {
     return;
   }
 
-  // 3b. Test mínimo de generación (costo mínimo ~0.001 cent)
+  // 3b. Test mínimo de generación
   try {
     const res = await fetch(SERVICES.openai.endpoints.chat, {
       method: 'POST',
@@ -578,7 +568,6 @@ async function checkOpenAI() {
       signal: AbortSignal.timeout(15000)
     });
 
-    // Leer rate limit headers de OpenAI
     const remainingRequests = res.headers.get('x-ratelimit-remaining-requests');
     const remainingTokens = res.headers.get('x-ratelimit-remaining-tokens');
     const limitRequests = res.headers.get('x-ratelimit-limit-requests');
@@ -594,7 +583,6 @@ async function checkOpenAI() {
       LOG.info(`Tokens: ${usage.prompt_tokens || '?'} in + ${usage.completion_tokens || '?'} out`);
       record('openai', 'ok', 'Generation working');
 
-      // Mostrar rate limits
       if (remainingRequests !== null || limitRequests !== null) {
         console.log('');
         LOG.info('📊 Rate Limits OpenAI:');
@@ -660,7 +648,7 @@ async function checkGroq() {
     'Content-Type': 'application/json'
   };
 
-  // 3a. Test auth con GET /models (no gasta tokens)
+  // 4a. Test auth con GET /models
   try {
     const res = await fetch(SERVICES.groq.endpoints.models, {
       method: 'GET',
@@ -706,7 +694,7 @@ async function checkGroq() {
     return;
   }
 
-  // 3b. Test mínimo de generación (1 token — costo mínimo)
+  // 4b. Test mínimo de generación
   try {
     const res = await fetch(SERVICES.groq.endpoints.chat, {
       method: 'POST',
@@ -720,9 +708,7 @@ async function checkGroq() {
       signal: AbortSignal.timeout(15000)
     });
 
-    // Leer rate limit headers de Groq
     const rpmRemaining = res.headers.get('x-ratelimit-remaining-requests');
-    const rpdRemaining = res.headers.get('x-ratelimit-remaining-tokens'); // tokens realmente
     const tpmRemaining = res.headers.get('x-ratelimit-remaining-tokens');
     const resetRequests = res.headers.get('x-ratelimit-reset-requests');
     const resetTokens = res.headers.get('x-ratelimit-reset-tokens');
@@ -737,7 +723,6 @@ async function checkGroq() {
       LOG.info(`Tokens usados: ${usage.prompt_tokens || '?'} prompt + ${usage.completion_tokens || '?'} completion`);
       record('groq', 'ok', 'Generation working');
 
-      // Mostrar rate limits
       if (rpmRemaining !== null || limitRequests !== null) {
         console.log('');
         LOG.info('📊 Rate Limits Groq:');
@@ -746,7 +731,6 @@ async function checkGroq() {
         if (resetRequests) LOG.info(`   Reset requests: ${resetRequests}`);
         if (resetTokens) LOG.info(`   Reset tokens:   ${resetTokens}`);
 
-        // Evaluar si estamos cerca del límite
         if (rpmRemaining !== null && parseInt(rpmRemaining) <= 5) {
           LOG.warn(`Solo ${rpmRemaining} requests restantes en esta ventana`);
           record('groq', 'warn', `Low requests remaining: ${rpmRemaining}`);
@@ -783,6 +767,8 @@ async function checkGroq() {
 // ════════════════════════════════════════════
 // 5. CHECK CLOUDFLARE (OPCIONAL)
 // ════════════════════════════════════════════
+// FIX v1.2: Account API Tokens no funcionan con /user/tokens/verify.
+// Ahora usamos el endpoint de Pages projects que SÍ acepta Account Tokens.
 
 async function checkCloudflare() {
   LOG.head('☁️   5. CLOUDFLARE PAGES (opcional)');
@@ -800,7 +786,8 @@ async function checkCloudflare() {
   record('cloudflare', 'ok', 'Credentials present');
 
   try {
-    const res = await fetch(SERVICES.cloudflare.endpoints.api, {
+    // Usar endpoint de account/pages (funciona con Account API Tokens)
+    const res = await fetch(`https://api.cloudflare.com/client/v4/accounts/${accountId}/pages/projects`, {
       method: 'GET',
       headers: { 'Authorization': `Bearer ${token}` },
       signal: AbortSignal.timeout(10000)
@@ -809,22 +796,40 @@ async function checkCloudflare() {
     if (res.status === 200) {
       const data = await res.json();
       if (data.success) {
-        LOG.ok(`Token válido — status: ${data.result?.status || 'active'}`);
-        record('cloudflare', 'ok', 'Token valid');
+        const count = data.result?.length || 0;
+        LOG.ok(`Token válido — ${count} proyecto(s) encontrado(s)`);
+        record('cloudflare', 'ok', `Token valid, ${count} projects`);
+
+        // Listar proyectos si hay
+        if (count > 0) {
+          const names = data.result.map(p => p.name).join(', ');
+          LOG.info(`Proyectos: ${names}`);
+        }
       } else {
-        LOG.warn(`Token response pero success=false`);
-        record('cloudflare', 'warn', 'Token response but not success');
+        LOG.warn('Token response pero success=false');
+        const errors = data.errors?.map(e => e.message).join(', ') || 'unknown';
+        LOG.info(`Errores: ${errors}`);
+        record('cloudflare', 'warn', `Response success=false: ${errors}`);
       }
     } else if (res.status === 401) {
       LOG.fail('Token INVÁLIDO (401)');
       record('cloudflare', 'fail', 'Token invalid 401');
+    } else if (res.status === 403) {
+      LOG.fail('Token sin permisos para Pages (403) — verificar permisos del token');
+      record('cloudflare', 'fail', 'Token forbidden 403');
     } else {
-      LOG.warn(`Respuesta: ${res.status}`);
+      const body = await res.text();
+      LOG.warn(`Respuesta: ${res.status} — ${body.substring(0, 200)}`);
       record('cloudflare', 'warn', `Unexpected ${res.status}`);
     }
   } catch (err) {
-    LOG.warn(`Error: ${err.message}`);
-    record('cloudflare', 'warn', `Error: ${err.message}`);
+    if (err.name === 'TimeoutError' || err.name === 'AbortError') {
+      LOG.warn('TIMEOUT — Cloudflare API no responde (10s)');
+      record('cloudflare', 'warn', 'Timeout 10s');
+    } else {
+      LOG.warn(`Error: ${err.message}`);
+      record('cloudflare', 'warn', `Error: ${err.message}`);
+    }
   }
 }
 
@@ -835,7 +840,7 @@ async function checkCloudflare() {
 async function checkInternal() {
   LOG.head('📊  6. ESTADO INTERNO');
 
-  // 5a. Verificar que personality.json existe
+  // 6a. Verificar que personality.json existe
   const personalityPaths = [
     path.join(process.cwd(), 'config', 'personality.json'),
     path.join(process.cwd(), 'personality.json')
@@ -863,7 +868,7 @@ async function checkInternal() {
     record('internal', 'warn', 'No personality.json');
   }
 
-  // 5b. Verificar core.js existe
+  // 6b. Verificar core.js existe
   const corePaths = [
     path.join(process.cwd(), 'scripts', 'lib', 'core.js'),
     path.join(process.cwd(), 'lib', 'core.js')
@@ -885,7 +890,7 @@ async function checkInternal() {
     record('internal', 'warn', 'No core.js');
   }
 
-  // 5c. Espacio en disco (para logs/history)
+  // 6c. Espacio en disco
   try {
     const historyFiles = ['.gillito-tweet-history.json', '.gillito-reply-history.json', '.gillito-journal.json'];
     let totalSize = 0;
@@ -902,7 +907,7 @@ async function checkInternal() {
     // No importa
   }
 
-  // 5d. Hora de Puerto Rico
+  // 6d. Hora de Puerto Rico
   const prTime = new Date().toLocaleString('es-PR', {
     timeZone: 'America/Puerto_Rico',
     weekday: 'long',
@@ -922,14 +927,11 @@ async function checkInternal() {
 function generateVerdict() {
   LOG.head('🦞  VEREDICTO FINAL');
 
-  // Determinar qué puede hacer Gillito
   const xStatus = results.services.x?.status || 'unknown';
   const moltStatus = results.services.moltbook?.status || 'unknown';
   const openaiStatus = results.services.openai?.status || 'unknown';
   const groqStatus = results.services.groq?.status || 'unknown';
 
-  // LLM: OpenAI es primario, Groq es fallback
-  // Puede generar si AL MENOS UNO funciona
   const openaiOk = openaiStatus === 'ok' || openaiStatus === 'warn';
   const groqOk = groqStatus === 'ok' || groqStatus === 'warn';
   results.canGenerate = openaiOk || groqOk;
@@ -940,7 +942,6 @@ function generateVerdict() {
 
   console.log('');
 
-  // Status por servicio
   const statusIcon = (s) => s === 'ok' ? '🟢' : s === 'warn' ? '🟡' : s === 'fail' ? '🔴' : '⚪';
 
   console.log(`   ${statusIcon(xStatus)}  X (Twitter)     — ${xStatus.toUpperCase()}`);
@@ -956,7 +957,6 @@ function generateVerdict() {
   console.log('');
   console.log('   ────────────────────────────────');
 
-  // LLM status
   if (openaiOk && groqOk) {
     console.log('   🧠 LLM: OpenAI ✅ + Groq ✅ (backup listo)');
   } else if (openaiOk && !groqOk) {
@@ -972,13 +972,11 @@ function generateVerdict() {
   console.log(`   Puede generar contenido:  ${results.canGenerate ? '✅ SÍ' : '❌ NO'}`);
   console.log('');
 
-  // Conteo
   console.log(`   ✅ ${results.summary.ok} checks OK`);
   if (results.summary.warn > 0) console.log(`   ⚠️  ${results.summary.warn} warnings`);
   if (results.summary.fail > 0) console.log(`   ❌ ${results.summary.fail} fallos`);
   console.log('');
 
-  // Recomendaciones
   if (results.summary.fail > 0) {
     console.log('   🚨 ACCIÓN REQUERIDA:');
     for (const [svc, data] of Object.entries(results.services)) {
@@ -992,7 +990,6 @@ function generateVerdict() {
     console.log('');
   }
 
-  // Guardar resultado
   try {
     fs.writeFileSync(HEALTH_FILE, JSON.stringify(results, null, 2));
     LOG.info(`Resultado guardado en ${HEALTH_FILE}`);
@@ -1007,20 +1004,12 @@ function generateVerdict() {
 // EXPORT PARA USO COMO MÓDULO
 // ════════════════════════════════════════════
 
-/**
- * Chequeo rápido de un servicio específico.
- * Retorna true si el servicio está operativo.
- *
- * Uso: const { preflight } = require('./health-check');
- *      if (!await preflight('x')) process.exit(0);
- */
 async function preflight(service) {
-  // Leer resultado guardado si existe y es reciente (< 10 min)
   try {
     if (fs.existsSync(HEALTH_FILE)) {
       const data = JSON.parse(fs.readFileSync(HEALTH_FILE, 'utf8'));
       const age = Date.now() - new Date(data.timestamp).getTime();
-      if (age < 10 * 60 * 1000) { // < 10 minutos
+      if (age < 10 * 60 * 1000) {
         const svcStatus = data.services[service]?.status;
         if (svcStatus === 'fail') {
           console.log(`⚡ PREFLIGHT: ${service} marcado como FALLIDO (hace ${Math.round(age / 60000)} min)`);
@@ -1028,7 +1017,6 @@ async function preflight(service) {
           return false;
         }
 
-        // También verificar canPost para x/moltbook
         if (service === 'x' && !data.canPost?.x) {
           console.log(`⚡ PREFLIGHT: No se puede postear a X (diagnosticado hace ${Math.round(age / 60000)} min)`);
           return false;
@@ -1045,17 +1033,13 @@ async function preflight(service) {
     // No hay data previa, permitir ejecución
   }
 
-  return true; // Sin data previa = asumir OK
+  return true;
 }
 
-/**
- * Correr todos los chequeos.
- * Retorna el objeto results completo.
- */
 async function checkAll() {
   console.log('');
   console.log('═══════════════════════════════════════════════════════');
-  console.log('  🦞 GILLITO HEALTH CHECK v1.1');
+  console.log('  🦞 GILLITO HEALTH CHECK v1.2');
   console.log('  ' + new Date().toLocaleString('es-PR', { timeZone: 'America/Puerto_Rico' }));
   console.log('═══════════════════════════════════════════════════════');
 
@@ -1080,7 +1064,6 @@ if (require.main === module) {
 
   (async () => {
     if (service) {
-      // Chequear solo un servicio
       console.log(`\n⚡ Preflight check: ${service}`);
       const ok = await preflight(service);
       if (!ok) {
@@ -1088,7 +1071,6 @@ if (require.main === module) {
         process.exit(1);
       }
 
-      // Si no hay data previa, correr chequeo completo de ese servicio
       switch (service) {
         case 'x': await checkX(); break;
         case 'moltbook': await checkMoltbook(); break;
@@ -1103,14 +1085,12 @@ if (require.main === module) {
 
       generateVerdict();
     } else {
-      // Chequeo completo
       const result = await checkAll();
 
-      // Exit code basado en resultado
       if (result.summary.fail > 0) {
         process.exit(1);
       } else if (result.summary.warn > 0) {
-        process.exit(0); // warnings no bloquean
+        process.exit(0);
       } else {
         process.exit(0);
       }
@@ -1118,5 +1098,4 @@ if (require.main === module) {
   })();
 }
 
-// Exports para uso como módulo
 module.exports = { checkAll, preflight, checkX, checkMoltbook, checkOpenAI, checkGroq, checkCloudflare };
