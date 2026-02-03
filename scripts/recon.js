@@ -2,60 +2,48 @@
 /**
  * 🕵️ GILLITO RECON — Master Orchestrator
  * ═══════════════════════════════════════════
- * Runs all recon modules, scores & deduplicates findings,
- * writes .gillito-recon-intel.json for post workflows.
- *
- * PATH STRATEGY: All requires use path.join(process.cwd(), ...)
- * because GitHub Actions runs `node scripts/recon.js` from repo root.
- * Relative paths like '../lib/' break in that context.
+ * PATH: scripts/recon.js
+ * 
+ * ALL requires use __dirname (not process.cwd())
+ * so it works no matter where Node runs from.
  */
 
 const fs   = require('fs');
 const path = require('path');
-const ROOT = process.cwd();
 
-// ─── Load recon modules (from scripts/) ───
-const reconPoliticians = require(path.join(ROOT, 'scripts', 'recon-politicians'));
-const reconLuma        = require(path.join(ROOT, 'scripts', 'recon-luma'));
-const reconFederal     = require(path.join(ROOT, 'scripts', 'recon-federal'));
-const reconNews        = require(path.join(ROOT, 'scripts', 'recon-news'));
+// __dirname = scripts/ — so sibling requires just work
+const reconPoliticians = require(path.join(__dirname, 'recon-politicians'));
+const reconLuma        = require(path.join(__dirname, 'recon-luma'));
+const reconFederal     = require(path.join(__dirname, 'recon-federal'));
+const reconNews        = require(path.join(__dirname, 'recon-news'));
 
-// ─── Load juiciness boosts from config ───
-const { JUICINESS_BOOSTS } = require(path.join(ROOT, 'config', 'recon-targets'));
+// config is at repo root: ../config/
+const { JUICINESS_BOOSTS } = require(path.join(__dirname, '..', 'config', 'recon-targets'));
 
-const INTEL_FILE = path.join(ROOT, '.gillito-recon-intel.json');
+// Intel file at repo root
+const INTEL_FILE = path.join(__dirname, '..', '.gillito-recon-intel.json');
 const MAX_INTEL  = 50;
 
 /* ─── Scoring ─── */
 
 function scoreJuiciness(finding) {
-  let score = 5; // base
-
-  // Signal boosts
-  const signals = finding.signals || [];
-  for (const s of signals) {
+  let score = 5;
+  for (const s of (finding.signals || [])) {
     score += (JUICINESS_BOOSTS[s] || 0);
   }
-
-  // Entity boosts (more entities = juicier)
   score += Math.min((finding.entities?.length || 0) * 0.5, 2);
-
-  // Recency boost
   if (finding.timestamp) {
     const ageHours = (Date.now() - new Date(finding.timestamp).getTime()) / 3600000;
-    if (ageHours < 6)  score += 2;
+    if (ageHours < 6) score += 2;
     else if (ageHours < 12) score += 1;
   }
-
-  // Category boosts
-  if (finding.category === 'energy')    score += 1;  // LUMA always hot
-  if (finding.category === 'federal')   score += 0.5;
+  if (finding.category === 'energy')     score += 1;
+  if (finding.category === 'federal')    score += 0.5;
   if (finding.subcategory === 'scandal') score += 2;
-
   return Math.min(Math.round(score * 10) / 10, 10);
 }
 
-/* ─── Deduplication ─── */
+/* ─── Dedup ─── */
 
 function deduplicateFindings(findings) {
   const seen = new Map();
@@ -64,9 +52,7 @@ function deduplicateFindings(findings) {
   for (const f of findings) {
     const fp = f.fingerprint;
     if (!fp) { unique.push(f); continue; }
-
     if (seen.has(fp)) {
-      // Keep the one with more data
       const existing = seen.get(fp);
       if ((f.summary?.length || 0) > (existing.summary?.length || 0)) {
         const idx = unique.indexOf(existing);
@@ -78,7 +64,6 @@ function deduplicateFindings(findings) {
       unique.push(f);
     }
   }
-
   return unique;
 }
 
@@ -91,7 +76,6 @@ async function main() {
 
   const startTime = Date.now();
 
-  // Run all modules in parallel
   const results = await Promise.allSettled([
     reconPoliticians.scan(),
     reconLuma.scan(),
@@ -99,7 +83,6 @@ async function main() {
     reconNews.scan(),
   ]);
 
-  // Collect findings
   const allFindings = [];
   const moduleNames = ['Politicians', 'LUMA/Energy', 'Federal', 'News'];
 
@@ -115,39 +98,26 @@ async function main() {
 
   console.log(`\n   📊 Raw findings: ${allFindings.length}`);
 
-  // Deduplicate
   const unique = deduplicateFindings(allFindings);
   console.log(`   🔄 After dedup: ${unique.length}`);
 
-  // Score juiciness
-  for (const f of unique) {
-    f.juiciness = scoreJuiciness(f);
-  }
-
-  // Sort by juiciness (highest first) and trim
+  for (const f of unique) { f.juiciness = scoreJuiciness(f); }
   unique.sort((a, b) => b.juiciness - a.juiciness);
   const intel = unique.slice(0, MAX_INTEL);
 
-  // Load existing intel to preserve "used" markers
+  // Preserve used markers
   let existing = [];
   try {
     if (fs.existsSync(INTEL_FILE)) {
-      const raw = JSON.parse(fs.readFileSync(INTEL_FILE, 'utf8'));
-      existing = raw.intel || [];
+      existing = JSON.parse(fs.readFileSync(INTEL_FILE, 'utf8')).intel || [];
     }
-  } catch { /* fresh start */ }
+  } catch { /* fresh */ }
 
-  // Merge: keep used markers from previous run
-  const usedFingerprints = new Set(
-    existing.filter(e => e.used).map(e => e.fingerprint)
-  );
+  const usedFPs = new Set(existing.filter(e => e.used).map(e => e.fingerprint));
   for (const item of intel) {
-    if (usedFingerprints.has(item.fingerprint)) {
-      item.used = true;
-    }
+    if (usedFPs.has(item.fingerprint)) item.used = true;
   }
 
-  // Write intel file
   const output = {
     lastUpdate: new Date().toISOString(),
     totalFindings: allFindings.length,
@@ -159,7 +129,6 @@ async function main() {
 
   fs.writeFileSync(INTEL_FILE, JSON.stringify(output, null, 2));
 
-  // Summary
   console.log('\n' + '─'.repeat(50));
   console.log(`   🕵️ RECON COMPLETE`);
   console.log(`   📁 Intel: ${intel.length} items saved`);
