@@ -1,12 +1,12 @@
 // ═══════════════════════════════════════════════════════
 // 🏛️ RECON MODULE: Politicians & Government
 // ═══════════════════════════════════════════════════════
+// PATH: scripts/recon-politicians.js
+// REQUIRES: scripts/lib/recon-utils.js (via __dirname)
 
 const path = require('path');
-const ROOT = process.cwd();
-
-const { safeRequest, parseRSS, extractEntities, classifyText, fingerprint, isRecent, sanitize } = require(path.join(ROOT, 'lib', 'recon-utils'));
-const { POLITICIANS, RSS_FEEDS } = require(path.join(ROOT, 'config', 'recon-targets'));
+const { safeRequest, parseRSS, extractEntities, classifyText, fingerprint, isRecent, sanitize } = require(path.join(__dirname, 'lib', 'recon-utils'));
+const { POLITICIANS, RSS_FEEDS } = require(path.join(__dirname, '..', 'config', 'recon-targets'));
 
 async function scan() {
   console.log('   🏛️ Scanning political sources...');
