@@ -2,8 +2,11 @@
 // 🇺🇸 RECON MODULE: Federal Actions Affecting Puerto Rico
 // ═══════════════════════════════════════════════════════════════════════════════
 
-const { safeRequest, parseRSS, extractEntities, classifyText, fingerprint, isRecent, sanitize } = require('../lib/recon-utils');
-const { FEDERAL, RSS_FEEDS } = require('../config/recon-targets');
+const path = require('path');
+const ROOT = process.cwd();
+
+const { safeRequest, parseRSS, extractEntities, classifyText, fingerprint, isRecent, sanitize } = require(path.join(ROOT, 'lib', 'recon-utils'));
+const { FEDERAL, RSS_FEEDS } = require(path.join(ROOT, 'config', 'recon-targets'));
 
 async function scan() {
   console.log('   🇺🇸 Scanning federal sources...');
@@ -20,7 +23,7 @@ async function scan() {
 
       for (const item of items) {
         if (!item.title) continue;
-        if (!isRecent(item.pubDate, 72)) continue; // Federal news lasts longer
+        if (!isRecent(item.pubDate, 72)) continue;
 
         const fp = fingerprint(item.title);
         if (seen.has(fp)) continue;
@@ -30,7 +33,6 @@ async function scan() {
         const entities = extractEntities(text, FEDERAL);
         const classification = classifyText(text);
 
-        // Must be relevant to PR
         const prRelevant = /puerto rico|boricua|isla|territorial|colony|commonwealth/i.test(text) ||
                           entities.length > 0 ||
                           classification.signals.includes('federal');
