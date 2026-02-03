@@ -1,12 +1,7 @@
 /**
- * 🕵️ RECON UTILITIES
+ * 🕵️ RECON UTILITIES — scripts/lib/recon-utils.js
  * ═══════════════════════════════════════════
- * Shared tools for all recon modules:
- * - HTTP client with timeout + retries
- * - RSS/XML parser (no dependencies)
- * - Entity extraction
- * - Text classification
- * - Dedup fingerprinting
+ * Lives in scripts/lib/ alongside core.js
  */
 
 const crypto = require('crypto');
@@ -45,65 +40,48 @@ async function safeRequest(url, opts = {}) {
   return null;
 }
 
-/* ─── RSS Parser (no external deps) ─── */
+/* ─── RSS Parser ─── */
 
 function parseRSS(xml) {
   if (!xml) return [];
   const items = [];
-
-  // Handle both RSS <item> and Atom <entry>
   const itemRegex = /<item[\s>]([\s\S]*?)<\/item>|<entry[\s>]([\s\S]*?)<\/entry>/gi;
   let match;
 
   while ((match = itemRegex.exec(xml)) !== null) {
     const block = match[1] || match[2];
-
-    const title       = extractTag(block, 'title');
-    const description = extractTag(block, 'description') || extractTag(block, 'summary') || extractTag(block, 'content');
-    const link        = extractLink(block);
-    const pubDate     = extractTag(block, 'pubDate') || extractTag(block, 'published') || extractTag(block, 'updated');
-    const source      = extractTag(block, 'source') || extractTag(block, 'dc:creator') || extractTag(block, 'author');
-
-    items.push({ title, description, link, pubDate, source });
+    items.push({
+      title:       extractTag(block, 'title'),
+      description: extractTag(block, 'description') || extractTag(block, 'summary') || extractTag(block, 'content'),
+      link:        extractLink(block),
+      pubDate:     extractTag(block, 'pubDate') || extractTag(block, 'published') || extractTag(block, 'updated'),
+      source:      extractTag(block, 'source') || extractTag(block, 'dc:creator') || extractTag(block, 'author'),
+    });
   }
-
   return items;
 }
 
 function extractTag(block, tag) {
-  // Handle CDATA: <title><![CDATA[actual content]]></title>
   const cdataRegex = new RegExp(`<${tag}[^>]*>\\s*<!\\[CDATA\\[([\\s\\S]*?)\\]\\]>\\s*</${tag}>`, 'i');
   const cdataMatch = block.match(cdataRegex);
   if (cdataMatch) return cdataMatch[1].trim();
 
-  // Handle regular tags
   const regex = new RegExp(`<${tag}[^>]*>([\\s\\S]*?)</${tag}>`, 'i');
   const m = block.match(regex);
   if (m) return stripHtml(m[1].trim());
-
   return '';
 }
 
 function extractLink(block) {
-  // Atom: <link href="..." />
   const atomLink = block.match(/<link[^>]+href=["']([^"']+)["']/i);
   if (atomLink) return atomLink[1];
-
-  // RSS: <link>...</link>
   return extractTag(block, 'link');
 }
 
 function stripHtml(text) {
-  return text
-    .replace(/<[^>]+>/g, '')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&nbsp;/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
+  return text.replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'")
+    .replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
 /* ─── Entity Extraction ─── */
@@ -116,16 +94,10 @@ function extractEntities(text, entityList) {
   for (const entity of entityList) {
     const name = typeof entity === 'string' ? entity : entity.name;
     const aliases = typeof entity === 'object' ? (entity.aliases || []) : [];
-    const allNames = [name, ...aliases];
-
-    for (const n of allNames) {
-      if (lower.includes(n.toLowerCase())) {
-        found.push(name);
-        break;
-      }
+    for (const n of [name, ...aliases]) {
+      if (lower.includes(n.toLowerCase())) { found.push(name); break; }
     }
   }
-
   return [...new Set(found)];
 }
 
@@ -145,16 +117,9 @@ const SIGNAL_PATTERNS = {
 };
 
 const CATEGORY_MAP = {
-  scandal:     'scandal',
-  corruption:  'scandal',
-  outage:      'crisis',
-  disaster:    'crisis',
-  violence:    'crisis',
-  protest:     'unrest',
-  price_hike:  'economic',
-  funding:     'economic',
-  deportation: 'federal',
-  resignation: 'political',
+  scandal: 'scandal', corruption: 'scandal', outage: 'crisis', disaster: 'crisis',
+  violence: 'crisis', protest: 'unrest', price_hike: 'economic', funding: 'economic',
+  deportation: 'federal', resignation: 'political',
 };
 
 function classifyText(text) {
@@ -162,68 +127,36 @@ function classifyText(text) {
   for (const [signal, pattern] of Object.entries(SIGNAL_PATTERNS)) {
     if (pattern.test(text)) signals.push(signal);
   }
-
-  // Primary category from highest-priority signal
   let category = 'general';
-  for (const s of signals) {
-    if (CATEGORY_MAP[s]) { category = CATEGORY_MAP[s]; break; }
-  }
-
+  for (const s of signals) { if (CATEGORY_MAP[s]) { category = CATEGORY_MAP[s]; break; } }
   return { signals, category };
 }
 
-/* ─── Fingerprinting (dedup) ─── */
+/* ─── Fingerprint & Utils ─── */
 
 function fingerprint(text) {
   if (!text) return '';
-  const normalized = text.toLowerCase()
-    .replace(/[^a-záéíóúñ\s]/g, '')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .split(' ')
-    .filter(w => w.length > 3)
-    .sort()
-    .join(' ');
+  const normalized = text.toLowerCase().replace(/[^a-záéíóúñ\s]/g, '').replace(/\s+/g, ' ')
+    .trim().split(' ').filter(w => w.length > 3).sort().join(' ');
   return crypto.createHash('md5').update(normalized).digest('hex').substring(0, 12);
 }
 
-/* ─── Time Utils ─── */
-
 function isRecent(dateStr, maxHours = 48) {
-  if (!dateStr) return true; // if no date, assume recent
+  if (!dateStr) return true;
   try {
     const d = new Date(dateStr);
     if (isNaN(d.getTime())) return true;
     return (Date.now() - d.getTime()) < maxHours * 3600 * 1000;
-  } catch {
-    return true;
-  }
+  } catch { return true; }
 }
-
-/* ─── Sanitization ─── */
 
 function sanitize(text) {
   if (!text) return '';
-  return text
-    .replace(/<[^>]+>/g, '')       // strip HTML
-    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '') // strip control chars
-    .replace(/\s+/g, ' ')
-    .trim()
-    .substring(0, 1000);
+  return text.replace(/<[^>]+>/g, '').replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '')
+    .replace(/\s+/g, ' ').trim().substring(0, 1000);
 }
 
-/* ─── Exports ─── */
-
 module.exports = {
-  safeRequest,
-  parseRSS,
-  extractTag,
-  extractLink,
-  stripHtml,
-  extractEntities,
-  classifyText,
-  SIGNAL_PATTERNS,
-  fingerprint,
-  isRecent,
-  sanitize,
+  safeRequest, parseRSS, extractTag, extractLink, stripHtml,
+  extractEntities, classifyText, SIGNAL_PATTERNS, fingerprint, isRecent, sanitize,
 };
