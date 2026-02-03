@@ -1,16 +1,23 @@
-name: 💬 Gillito - Reply on X v6.1
+name: 💬💎 Gillito - Reply on X v7.0 PREMIUM
 on:
   schedule:
-    - cron: '30 */4 * * *'    # Cada 4 horas (~6 replies/día)
+    - cron: '30 */3 * * *'    # 💎 Every 3 hours (was 4) — Premium gets more reply slots
   workflow_dispatch:
+
+concurrency:
+  group: gillito-reply-x
+  cancel-in-progress: false
+
 jobs:
   reply:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: '22' }
 
+      # ═══ DATA PERSISTENCE ═══
       - name: 📥 Restore replied IDs
         uses: actions/cache@v4
         with:
@@ -25,7 +32,6 @@ jobs:
           key: x-replyhistory-${{ github.run_id }}
           restore-keys: x-replyhistory-
 
-      # ═══ 🛡️ NEW: Anti-spam budget persistence ═══
       - name: 🛡️ Restore mention budget
         uses: actions/cache@v4
         with:
@@ -33,7 +39,16 @@ jobs:
           key: x-mention-budget-${{ github.run_id }}
           restore-keys: x-mention-budget-
 
-      - name: 💬 Reply to mentions
+      # ═══ 🕵️ RECON INTEL ═══
+      - name: 🕵️ Restore recon intel
+        uses: actions/cache@v4
+        with:
+          path: .gillito-recon-intel.json
+          key: recon-intel-${{ github.run_id }}
+          restore-keys: recon-intel-
+
+      # ═══ REPLY ═══
+      - name: 💎 Reply to mentions (Premium)
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
