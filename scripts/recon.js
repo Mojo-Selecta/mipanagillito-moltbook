@@ -1,72 +1,46 @@
 #!/usr/bin/env node
 // ═══════════════════════════════════════════════════════════════════════════════
-// ═══════════════════════════════════════════════════════════════════════════════
 // 🕵️  G I L L I T O   H A C K E R   S Y S T E M   v 1 . 0
 //     ╔═══════════════════════════════════════════════╗
 //     ║  OSINT RECON ENGINE — "EL OJO QUE TODO VE"   ║
 //     ╚═══════════════════════════════════════════════╝
 // ═══════════════════════════════════════════════════════════════════════════════
-// ═══════════════════════════════════════════════════════════════════════════════
-//
-//  Modules:  recon-politicians  |  recon-luma  |  recon-federal  |  recon-news
-//  Storage:  .gillito-recon-intel.json
-//  Output:   Scored, cross-referenced intel ready for posting workflows
-//
-// ═══════════════════════════════════════════════════════════════════════════════
 
 const fs = require('fs');
 const path = require('path');
+const ROOT = process.cwd();
 
-// ═══ MODULES ═══
-const reconPoliticians = require('./recon-politicians');
-const reconLuma = require('./recon-luma');
-const reconFederal = require('./recon-federal');
-const reconNews = require('./recon-news');
+// ═══ MODULES (resolved from repo root) ═══
+const reconPoliticians = require(path.join(ROOT, 'scripts', 'recon-politicians'));
+const reconLuma = require(path.join(ROOT, 'scripts', 'recon-luma'));
+const reconFederal = require(path.join(ROOT, 'scripts', 'recon-federal'));
+const reconNews = require(path.join(ROOT, 'scripts', 'recon-news'));
+
+const { JUICINESS_BOOSTS, ANGLE_TEMPLATES } = require(path.join(ROOT, 'config', 'recon-targets'));
+const { fingerprint, quickSentiment } = require(path.join(ROOT, 'lib', 'recon-utils'));
 
 // ═══ CONFIG ═══
-const { JUICINESS_BOOSTS, ANGLE_TEMPLATES, ALL_TARGETS } = require('../config/recon-targets');
-const { extractEntities, classifyText, quickSentiment, fingerprint } = require('../lib/recon-utils');
-
-const INTEL_FILE = '.gillito-recon-intel.json';
+const INTEL_FILE = path.join(ROOT, '.gillito-recon-intel.json');
 const MAX_INTEL_AGE_HOURS = 72;
 const MAX_INTEL_ITEMS = 250;
-const JUICINESS_FLOOR = 4;          // Below this = not worth keeping
+const JUICINESS_FLOOR = 4;
 
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// DATABASE — Load / Save / Manage
+// DATABASE
 // ═══════════════════════════════════════════════════════════════════════════════
 
 function loadDB() {
   try {
     if (fs.existsSync(INTEL_FILE)) {
-      const raw = fs.readFileSync(INTEL_FILE, 'utf8');
-      const db = JSON.parse(raw);
+      const db = JSON.parse(fs.readFileSync(INTEL_FILE, 'utf8'));
       console.log(`📂 Intel DB loaded — ${db.intel?.length || 0} items, ${db.crossRefs?.length || 0} cross-refs`);
       return db;
     }
   } catch (e) {
     console.log(`⚠️ DB load failed (${e.message}), starting fresh`);
   }
-  return freshDB();
-}
-
-function freshDB() {
-  return {
-    version: '1.0',
-    lastRun: null,
-    runCount: 0,
-    intel: [],
-    crossRefs: [],
-    stats: {
-      totalScans: 0,
-      totalFindings: 0,
-      totalCrossRefs: 0,
-      byCategory: {},
-      byEntity: {},
-      topSignals: {},
-    },
-  };
+  return { version: '1.0', lastRun: null, runCount: 0, intel: [], crossRefs: [], stats: { totalScans: 0, totalFindings: 0, totalCrossRefs: 0, byCategory: {}, byEntity: {}, topSignals: {} } };
 }
 
 function saveDB(db) {
@@ -78,14 +52,13 @@ function saveDB(db) {
 
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// JUICINESS SCORER — How post-worthy is this intel?
+// JUICINESS SCORER
 // ═══════════════════════════════════════════════════════════════════════════════
 
 function scoreJuiciness(item) {
-  let score = 5; // Base score
+  let score = 5;
   const text = `${item.headline} ${item.summary}`;
 
-  // Apply boost patterns from config
   for (const boost of JUICINESS_BOOSTS) {
     if (boost.pattern.test(text)) {
       score += boost.boost;
@@ -94,25 +67,17 @@ function scoreJuiciness(item) {
     }
   }
 
-  // Sentiment modifier — negative news is juicier for commentary
   const sentiment = quickSentiment(text);
   if (sentiment === 'negative') score += 1;
-
-  // Multiple entities = more complex story = juicier
   if (item.entities?.length > 1) score += 1;
-
-  // Multiple signals = multi-angle story
   if (item.signals?.length > 2) score += 1;
-
-  // Cross-reference bonus (set later)
-  // ...
 
   return Math.min(10, Math.max(1, score));
 }
 
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// ANGLE GENERATOR — Suggest how Gillito would present this
+// ANGLE GENERATOR
 // ═══════════════════════════════════════════════════════════════════════════════
 
 function generateAngles(item) {
@@ -120,7 +85,6 @@ function generateAngles(item) {
   const tags = item.tags || [];
   const entity = item.entities?.[0] || 'alguien';
 
-  // Pick angle templates based on tags (most specific first)
   const tagPriority = ['corruption', 'scandal', 'broken-promise', 'blackout', 'luma',
     'immigration', 'trump-pr', 'status', 'emergency', 'protest'];
 
@@ -129,9 +93,9 @@ function generateAngles(item) {
     if (tags.includes(tag) && ANGLE_TEMPLATES[tag]) {
       const templates = ANGLE_TEMPLATES[tag];
       const template = templates[Math.floor(Math.random() * templates.length)];
-      angles.push(template.replace('{entity}', entity));
+      angles.push(template.replace(/\{entity\}/g, entity));
       matched = true;
-      break; // One primary angle
+      break;
     }
   }
 
@@ -140,15 +104,13 @@ function generateAngles(item) {
     angles.push(defaults[Math.floor(Math.random() * defaults.length)]);
   }
 
-  // Always add a generic backup angle
   angles.push(`🕵️ Intel sobre ${entity} — Gillito reporta desde el underground digital`);
-
   return angles;
 }
 
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// CROSS-REFERENCE ENGINE — Detect contradictions, flip-flops, patterns
+// CROSS-REFERENCE ENGINE
 // ═══════════════════════════════════════════════════════════════════════════════
 
 function crossReference(newIntel, existingIntel) {
@@ -157,20 +119,15 @@ function crossReference(newIntel, existingIntel) {
 
   for (const newItem of newIntel) {
     if (!newItem.entities?.length) continue;
-
     for (const old of existingIntel) {
       if (!old.entities?.length) continue;
 
-      // Must share at least one entity
       const shared = newItem.entities.filter(e =>
         old.entities.some(oe => oe.toLowerCase() === e.toLowerCase())
       );
       if (shared.length === 0) continue;
-
-      // Must be different items
       if (newItem.fingerprint === old.fingerprint) continue;
 
-      // ── Contradiction Detection ──
       const contradictions = [
         { newSig: /promise/, oldSig: /failure/, type: 'broken_promise' },
         { newSig: /scandal/, oldSig: /promise/, type: 'exposed_hypocrisy' },
@@ -192,7 +149,6 @@ function crossReference(newIntel, existingIntel) {
         }
       }
 
-      // ── Repetition Detection — same entity, same issue, days apart ──
       const sameCategory = newItem.subcategory === old.subcategory;
       const daysBetween = Math.abs(new Date(newItem.timestamp) - new Date(old.timestamp)) / (1000 * 60 * 60 * 24);
       if (sameCategory && daysBetween >= 2 && daysBetween <= 30) {
@@ -208,7 +164,6 @@ function crossReference(newIntel, existingIntel) {
     }
   }
 
-  // Dedupe cross-refs
   const seen = new Set();
   return refs.filter(r => {
     const key = `${r.type}:${r.entities.join(',')}:${r.newItem.headline?.slice(0, 30)}`;
@@ -220,7 +175,7 @@ function crossReference(newIntel, existingIntel) {
 
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// DATA MAINTENANCE — Dedupe, purge, trim
+// DATA MAINTENANCE
 // ═══════════════════════════════════════════════════════════════════════════════
 
 function deduplicateIntel(intel) {
@@ -237,15 +192,12 @@ function purgeOldIntel(intel) {
   const cutoff = Date.now() - (MAX_INTEL_AGE_HOURS * 60 * 60 * 1000);
   const before = intel.length;
   const fresh = intel.filter(i => new Date(i.timestamp).getTime() > cutoff);
-  if (before > fresh.length) {
-    console.log(`   🗑️ Purged ${before - fresh.length} stale items`);
-  }
+  if (before > fresh.length) console.log(`   🗑️ Purged ${before - fresh.length} stale items`);
   return fresh;
 }
 
 function trimIntel(intel) {
   if (intel.length <= MAX_INTEL_ITEMS) return intel;
-  // Sort by juiciness (desc), then recency (desc)
   intel.sort((a, b) => {
     if (b.juiciness !== a.juiciness) return b.juiciness - a.juiciness;
     return new Date(b.timestamp) - new Date(a.timestamp);
@@ -254,32 +206,21 @@ function trimIntel(intel) {
   return intel.slice(0, MAX_INTEL_ITEMS);
 }
 
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// STATS — Track what we're finding over time
-// ═══════════════════════════════════════════════════════════════════════════════
-
 function updateStats(db, newFindings) {
   db.stats.totalScans++;
   db.stats.totalFindings += newFindings.length;
   db.stats.totalCrossRefs = db.crossRefs.length;
-
-  // Category counts
   db.stats.byCategory = {};
   for (const item of db.intel) {
     const cat = item.category || 'unknown';
     db.stats.byCategory[cat] = (db.stats.byCategory[cat] || 0) + 1;
   }
-
-  // Entity frequency
   db.stats.byEntity = {};
   for (const item of db.intel) {
     for (const entity of (item.entities || [])) {
       db.stats.byEntity[entity] = (db.stats.byEntity[entity] || 0) + 1;
     }
   }
-
-  // Signal frequency
   db.stats.topSignals = {};
   for (const item of db.intel) {
     for (const sig of (item.signals || [])) {
@@ -290,9 +231,7 @@ function updateStats(db, newFindings) {
 
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// ╔═══════════════════════════════════════╗
-// ║     M A I N   O R C H E S T R A T O R ║
-// ╚═══════════════════════════════════════╝
+// MAIN ORCHESTRATOR
 // ═══════════════════════════════════════════════════════════════════════════════
 
 async function main() {
@@ -308,11 +247,9 @@ async function main() {
   console.log(`🕐 ${new Date().toLocaleString('es-PR', { timeZone: 'America/Puerto_Rico' })} (PR Time)`);
   console.log('');
 
-  // ── Load DB ──
   const db = loadDB();
   const allNew = [];
 
-  // ── Run all recon modules ──
   const modules = [
     { name: '🏛️ POLITICIANS', fn: reconPoliticians.scan },
     { name: '🔌 LUMA/ENERGY', fn: reconLuma.scan },
@@ -321,7 +258,7 @@ async function main() {
   ];
 
   for (const mod of modules) {
-    console.log(`\n═══ ${mod.name} ${'═'.repeat(50 - mod.name.length)}`);
+    console.log(`\n═══ ${mod.name} ${'═'.repeat(Math.max(0, 50 - mod.name.length))}`);
     try {
       const findings = await mod.fn();
       if (findings?.length > 0) {
@@ -332,7 +269,7 @@ async function main() {
       }
     } catch (err) {
       console.error(`   💀 MODULE CRASH: ${err.message}`);
-      console.error(`      ${err.stack?.split('\n')[1] || ''}`);
+      console.error(`      ${err.stack?.split('\n')[1]?.trim() || ''}`);
     }
   }
 
@@ -345,7 +282,7 @@ async function main() {
     return;
   }
 
-  // ── Score juiciness ──
+  // Score juiciness
   console.log('\n── Scoring Juiciness ──');
   for (const item of allNew) {
     item.juiciness = scoreJuiciness(item);
@@ -355,20 +292,17 @@ async function main() {
     item.usedCount = 0;
   }
 
-  // Filter floor
   const worthy = allNew.filter(i => i.juiciness >= JUICINESS_FLOOR);
   console.log(`   🎯 ${worthy.length}/${allNew.length} meet juiciness floor (≥${JUICINESS_FLOOR})`);
 
-  // ── Cross-reference ──
+  // Cross-reference
   console.log('\n── Cross-Referencing ──');
   const newCrossRefs = crossReference(worthy, db.intel);
   if (newCrossRefs.length > 0) {
     console.log(`   🔗 ${newCrossRefs.length} cross-references detected!`);
     for (const ref of newCrossRefs) {
-      console.log(`      🎯 [${ref.type}] ${ref.angle}`);
+      console.log(`      🎯 [${ref.type}] ${ref.angle?.slice(0, 80)}`);
     }
-
-    // Add cross-refs as high-priority intel items
     for (const ref of newCrossRefs) {
       worthy.push({
         category: 'cross-reference',
@@ -389,29 +323,22 @@ async function main() {
         usedCount: 0,
       });
     }
-
     db.crossRefs = [...newCrossRefs, ...(db.crossRefs || [])].slice(0, 100);
   } else {
     console.log('   ℹ️  No cross-references this scan');
   }
 
-  // ── Merge, dedupe, purge, trim ──
+  // Merge, dedupe, purge, trim
   console.log('\n── Database Maintenance ──');
   db.intel = [...worthy, ...db.intel];
   db.intel = deduplicateIntel(db.intel);
   db.intel = purgeOldIntel(db.intel);
   db.intel = trimIntel(db.intel);
 
-  // ── Update stats ──
   updateStats(db, worthy);
-
-  // ── Save ──
   saveDB(db);
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // REPORT
-  // ═══════════════════════════════════════════════════════════════════════════
-
+  // Report
   const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
 
   console.log('');
@@ -424,17 +351,12 @@ async function main() {
   console.log(`║  📦 Total in DB:       ${db.intel.length}`);
   console.log(`║  📊 Total scans ever:  ${db.stats.totalScans}`);
   console.log('╠══════════════════════════════════════════════════════════════╣');
-
-  // Category breakdown
   console.log('║  📊 BY CATEGORY:');
   for (const [cat, count] of Object.entries(db.stats.byCategory || {}).sort((a, b) => b[1] - a[1])) {
     console.log(`║     ${cat}: ${count}`);
   }
 
-  // Top entities
-  const topEntities = Object.entries(db.stats.byEntity || {})
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 8);
+  const topEntities = Object.entries(db.stats.byEntity || {}).sort((a, b) => b[1] - a[1]).slice(0, 8);
   if (topEntities.length > 0) {
     console.log('║  🎯 TOP ENTITIES:');
     for (const [entity, count] of topEntities) {
@@ -442,12 +364,7 @@ async function main() {
     }
   }
 
-  // Top 5 juiciest unused intel
-  const topJuicy = db.intel
-    .filter(i => !i.used)
-    .sort((a, b) => b.juiciness - a.juiciness)
-    .slice(0, 5);
-
+  const topJuicy = db.intel.filter(i => !i.used).sort((a, b) => b.juiciness - a.juiciness).slice(0, 5);
   if (topJuicy.length > 0) {
     console.log('╠══════════════════════════════════════════════════════════════╣');
     console.log('║  🔥 TOP 5 JUICIEST UNUSED INTEL:');
@@ -459,16 +376,10 @@ async function main() {
   }
 
   console.log('╚══════════════════════════════════════════════════════════════╝');
-  console.log('');
-  console.log('✅ Recon complete. Intel ready for Gillito\'s posting workflows.');
+  console.log('\n✅ Recon complete. Intel ready for Gillito\'s posting workflows.');
 }
 
-// ═══ RUN ═══
 main().catch(err => {
-  console.error('');
-  console.error('╔══════════════════════════════════════════════════════════════╗');
-  console.error('║  💀 RECON ENGINE FATAL ERROR                                ║');
-  console.error('╚══════════════════════════════════════════════════════════════╝');
-  console.error(err);
+  console.error('\n💀 RECON ENGINE FATAL ERROR:', err);
   process.exit(1);
 });
