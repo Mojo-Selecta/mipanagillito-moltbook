@@ -4,237 +4,163 @@
 // PATH: scripts/recon/financial.js
 
 const path = require('path');
-const { safeRequest, extractEntities, classifyText, fingerprint, sanitize } = require(path.join(__dirname, '..', 'lib', 'recon-utils'));
-const { POLITICIANS, ENERGY_ENTITIES } = require(path.join(__dirname, '..', '..', 'config', 'recon-targets'));
+const { safeRequest, fingerprint, sanitize, classifyText, extractEntities } = require(path.join(__dirname, '..', 'lib', 'recon-utils'));
+const { ENERGY_ENTITIES, FEDERAL_ENTITIES } = require(path.join(__dirname, '..', '..', 'config', 'recon-targets'));
 
-const FINANCIAL_SOURCES = [
-{ name: 'Bolsa PR', url: 'https://pr.bolsafinanciera.org/', selector: 'data' },
-{ name: 'Banco Popular PR', url: 'https://www.popular.com/tasas-y-tarifas/', selector: 'rates' },
-{ name: 'GDB Bonds', url: 'https://www.bgfpr.com/investors_resources/commonwealth-quarterly.html', selector: 'bonds' },
-{ name: 'PREPA Status', url: 'https://www.aeepr.com/es-pr/financial-information/', selector: 'financial' },
-{ name: 'COFINA Bonds', url: 'https://www.cofina.pr.gov/investor-resources', selector: 'reports' },
+const SEC_TARGETS = [
+  { name: 'LUMA Energy (Quanta Services)', cik: '0000098952', ticker: 'PWR', reason: 'LUMA parent company' },
+  { name: 'AES Corporation', cik: '0000874761', ticker: 'AES', reason: 'AES PR power generation' },
+  { name: 'Popular Inc', cik: '0000763901', ticker: 'BPOP', reason: 'Banco Popular — largest PR bank' },
+  { name: 'First BanCorp', cik: '0000834237', ticker: 'FBP', reason: 'FirstBank PR' },
+  { name: 'OFG Bancorp', cik: '0000074260', ticker: 'OFG', reason: 'Oriental Financial Group' },
+  { name: 'Evertec', cik: '0001559865', ticker: 'EVTC', reason: 'PR payments/tech company' },
+  { name: 'Triple-S Management', cik: '0001174940', ticker: 'GTS', reason: 'PR health insurance' },
 ];
 
-async function scanContractorsDB() {
-console.log('      💰 Scanning contractor database…');
-const findings = [];
+async function scanSEC() {
+  console.log('      📊 Querying SEC EDGAR...');
+  var findings = [];
 
-try {
-const baseUrl = 'https://consultacontratos.ocpr.gov.pr/';
-const searchParams = new URLSearchParams({
-'nameDepartment': '',
-'contractNumber': '',
-'dateFrom': '', 
-'dateTo': '',
-'totalFrom': '5000000',
-'totalTo': '100000000',
-'namePerson': '',
-'type': '',
-'status': 'VIGENTE',
-'municipality': '',
-'page': '1',
-'limit': '25'
-});
-const searchUrl = `${baseUrl}search?${searchParams.toString()}`;
-const html = await safeRequest(searchUrl, { timeout: 30000 });
-if (!html) { console.log(`      ⚠️ Contractors DB: no response`); return findings; }
+  for (var ti = 0; ti < SEC_TARGETS.length; ti++) {
+    var target = SEC_TARGETS[ti];
+    try {
+      var url = 'https://data.sec.gov/submissions/CIK' + target.cik.padStart(10, '0') + '.json';
+      var json = await safeRequest(url, {
+        timeout: 15000,
+        headers: { 'User-Agent': 'GillitoRecon/1.0 research@example.com', 'Accept': 'application/json' }
+      });
+      if (!json) { console.log('      ⚠️ ' + target.ticker + ': no response'); continue; }
 
-const contractMatches = html.match(/<tr[^>]*>([\s\S]*?)<\/tr>/gi);
-const contractCount = contractMatches ? contractMatches.length - 1 : 0; // First row is header
-console.log(`      💰 Contractors DB: ${contractCount} large contracts found`);
+      var data = JSON.parse(json);
+      var filings = data.filings && data.filings.recent ? data.filings.recent : {};
+      var forms = filings.form || [];
+      var dates = filings.filingDate || [];
+      var descriptions = filings.primaryDocDescription || [];
+      var accessions = filings.accessionNumber || [];
 
-if (contractCount > 0) {
-const moneyMatches = html.match(/\$[\d,]+(?:\.\d{1,2})?/g) || [];
-findings.push({
-category: 'financial_trails', subcategory: 'government_contracts',
-signals: ['funding', 'corruption'],
-headline: `${contractCount} large contracts active (>$5M)`,
-summary: `Active government contracts exceeding $5 million. Top amounts: ${moneyMatches.slice(0, 5).join(', ')}`,
-source: 'Contraloría PR', sourceUrl: baseUrl,
-entities: ['PR Government'],
-moneyMentioned: moneyMatches.slice(0, 5),
-timestamp: new Date().toISOString(),
-fingerprint: fingerprint(`contractors-large-${new Date().toISOString().split('T')[0]}`),
-depth: 'database_extract',
-});
+      var thirtyDaysAgo = new Date(Date.now() - 30 * 86400000);
+      var interestingForms = ['10-K', '10-Q', '8-K', '8-K/A', 'DEF 14A', '4', 'SC 13D', 'SC 13G'];
 
-// Extract specific high-value contracts
-const contractDataRegex = /<td[^>]*>([\s\S]*?)<\/td>/gi;
-for (let i = 1; i < Math.min(contractMatches.length, 6); i++) {
-try {
-  const row = contractMatches[i];
-  const rowData = [];
-  let cellMatch;
-  while ((cellMatch = contractDataRegex.exec(row)) !== null) {
-    const cellContent = cellMatch[1].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-    rowData.push(cellContent);
-  }
-  
-  if (rowData.length >= 5) {
-    const [dept, contractNum, date, entity, amount] = rowData;
-    findings.push({
-      category: 'financial_trails', subcategory: 'high_value_contract',
-      signals: ['funding', 'corruption'],
-      headline: sanitize(`Contract: ${amount} to ${entity}`),
-      summary: sanitize(`Department: ${dept} | Number: ${contractNum} | Date: ${date}`),
-      source: 'Contraloría PR', sourceUrl: `${baseUrl}contract/${contractNum}`,
-      entities: [entity, dept],
-      moneyMentioned: [amount],
-      timestamp: new Date().toISOString(),
-      fingerprint: fingerprint(`contract-${contractNum}`),
-      depth: 'database_extract',
-    });
-  }
-} catch (err) {
-  console.error(`      ❌ Contract parsing: ${err.message}`);
-}
-}
-}
+      var count = 0;
+      for (var i = 0; i < forms.length && count < 3; i++) {
+        var filingDate = new Date(dates[i]);
+        if (filingDate < thirtyDaysAgo) continue;
+        if (interestingForms.indexOf(forms[i]) === -1) continue;
 
-} catch (err) {
-console.error(`      ❌ Contractors DB: ${err.message}`);
-}
+        var accession = accessions[i] ? accessions[i].replace(/-/g, '') : '';
+        var edgarUrl = 'https://www.sec.gov/Archives/edgar/data/' + target.cik.replace(/^0+/, '') + '/' + accession + '/';
 
-return findings;
-}
+        var headline = 'SEC ' + forms[i] + ': ' + (data.name || target.name);
+        var signals = [];
+        var subcategory = 'sec_filing';
 
-async function scanFinancialNews() {
-console.log('      💹 Scanning financial news sources…');
-const findings = [];
-
-try {
-const feedUrls = [
-'https://rsshub.app/endi/economia',
-'https://www.noticel.com/economia/feed/',
-'https://caribbeanbusiness.com/category/economy/feed/',
-];
-
-for (const feedUrl of feedUrls) {
-try {
-const xml = await safeRequest(feedUrl, { timeout: 15000 });
-if (!xml) continue;
-
-  const items = [];
-  const itemRegex = /<item[\s>]([\s\S]*?)<\/item>/gi;
-  let match;
-  while ((match = itemRegex.exec(xml)) !== null) {
-    const block = match[1];
-    const titleMatch = block.match(/<title[^>]*>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/title>/i);
-    const descMatch = block.match(/<description[^>]*>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/description>/i);
-    const dateMatch = block.match(/<pubDate[^>]*>([\s\S]*?)<\/pubDate>/i);
-    const linkMatch = block.match(/<link[^>]*>([\s\S]*?)<\/link>/i);
-    
-    if (titleMatch) {
-      const title = titleMatch[1].replace(/<[^>]+>/g, '').trim();
-      const description = descMatch ? descMatch[1].replace(/<[^>]+>/g, '').trim() : '';
-      
-      // Look for financial indicators
-      if (/bonos|junta|fiscal|presupuesto|millones|fondos|deuda|inversión|dinero|finanzas|COSSEC|hacienda|contrato/i.test(title + ' ' + description)) {
-        const source = feedUrl.includes('endi') ? 'El Nuevo Día' : 
-                       feedUrl.includes('noticel') ? 'Noticel' : 
-                       feedUrl.includes('caribbeanbusiness') ? 'Caribbean Business' : 'Financial News';
-        
-        const entities = extractEntities(title + ' ' + description, [...POLITICIANS, ...ENERGY_ENTITIES]);
-        const classification = classifyText(title + ' ' + description);
-        
-        // Find any money amounts mentioned
-        const moneyPattern = /\$[\d,]+(?:\.\d{1,2})?(?:\s*(?:million|billion|m|b|mil(?:lones)?|bi?ll(?:ones)?|mdd))?|(\d[\d,.]+)\s*(?:millones|million|billion|bil(?:lones)?)/gi;
-        const moneyMatches = [];
-        let moneyMatch;
-        while ((moneyMatch = moneyPattern.exec(title + ' ' + description)) !== null) {
-          moneyMatches.push(moneyMatch[0]);
+        if (forms[i] === '8-K') {
+          headline = 'SEC 8-K (Material Event): ' + (data.name || target.name);
+          signals = ['resignation']; subcategory = 'sec_material_event';
+        } else if (forms[i] === '10-K' || forms[i] === '10-Q') {
+          headline = 'SEC ' + forms[i] + ' (Financial Report): ' + (data.name || target.name);
+          signals = ['funding']; subcategory = 'sec_financial';
+        } else if (forms[i] === '4') {
+          headline = 'SEC Form 4 (Insider Trade): ' + (data.name || target.name);
+          signals = ['scandal']; subcategory = 'sec_insider';
+        } else if (forms[i].indexOf('SC 13') !== -1) {
+          headline = 'SEC ' + forms[i] + ' (Ownership Change): ' + (data.name || target.name);
+          signals = ['resignation']; subcategory = 'sec_ownership';
         }
-        
+
         findings.push({
-          category: 'financial_trails', subcategory: 'financial_news',
-          signals: [...classification.signals, 'financial'],
-          headline: sanitize(title),
-          summary: sanitize(description?.substring(0, 400) || 'Sin descripción disponible'),
-          source, sourceUrl: linkMatch ? linkMatch[1].trim() : '',
-          entities, moneyMentioned: moneyMatches.slice(0, 5),
-          timestamp: dateMatch ? new Date(dateMatch[1].trim()).toISOString() : new Date().toISOString(),
-          fingerprint: fingerprint(title), depth: 'financial_news',
+          category: 'financial_trails', subcategory: subcategory, signals: signals,
+          headline: sanitize(headline),
+          summary: sanitize((descriptions[i] || forms[i]) + ' filed ' + dates[i] + '. ' + target.reason + '. Company: ' + (data.name || target.name) + ' (' + target.ticker + ')'),
+          source: 'SEC EDGAR', sourceUrl: edgarUrl,
+          entities: [target.name].concat(target.reason.indexOf('LUMA') !== -1 ? ['LUMA Energy'] : []),
+          moneyMentioned: [],
+          timestamp: filingDate.toISOString(),
+          fingerprint: fingerprint('sec-' + target.ticker + '-' + forms[i] + '-' + dates[i]),
+          depth: 'api_record',
+          rawData: { ticker: target.ticker, formType: forms[i], filingDate: dates[i], companyName: data.name },
+        });
+        count++;
+      }
+      if (count > 0) console.log('      📊 ' + target.ticker + ': ' + count + ' recent filings');
+    } catch (err) {
+      console.error('      ❌ ' + target.ticker + ': ' + err.message);
+    }
+    await new Promise(function(r) { setTimeout(r, 500); });
+  }
+  return findings;
+}
+
+async function scanDonations() {
+  console.log('      🗳️ Scanning political donations...');
+  var findings = [];
+  try {
+    var html = await safeRequest('https://www.ceepur.org/', { timeout: 15000 });
+    if (html) {
+      var newsMatches = html.match(/<a[^>]*href=["']([^"']*)[^"']*["'][^>]*>([^<]*(?:donat|financ|campana|comite|partido)[^<]*)<\/a>/gi);
+      if (newsMatches) {
+        for (var i = 0; i < Math.min(newsMatches.length, 3); i++) {
+          var linkMatch = newsMatches[i].match(/href=["']([^"']+)["']/i);
+          var textMatch = newsMatches[i].match(/>([^<]+)</);
+          if (textMatch) {
+            findings.push({
+              category: 'financial_trails', subcategory: 'political_donations',
+              signals: ['corruption', 'funding'],
+              headline: sanitize(textMatch[1]),
+              summary: 'Informacion de donaciones/financiamiento politico de la CEE',
+              source: 'CEE Puerto Rico', sourceUrl: linkMatch ? linkMatch[1] : 'https://www.ceepur.org/',
+              entities: ['CEE'],
+              timestamp: new Date().toISOString(),
+              fingerprint: fingerprint(textMatch[1]), depth: 'scrape',
+            });
+          }
+        }
+      }
+      console.log('      🗳️ CEE: ' + findings.length + ' items found');
+    }
+  } catch (err) {
+    console.error('      ❌ CEE: ' + err.message);
+  }
+  return findings;
+}
+
+async function scanCorporateRegistry() {
+  console.log('      🏢 Scanning corporate registrations...');
+  var findings = [];
+  try {
+    var html = await safeRequest('https://www.estado.pr.gov/', { timeout: 15000 });
+    if (html) {
+      var text = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+      var classification = classifyText(text);
+      if (classification.signals.length > 0 || /corporacion|registro|empresa|LLC|inc\b/i.test(text)) {
+        findings.push({
+          category: 'financial_trails', subcategory: 'corporate_registry',
+          signals: classification.signals,
+          headline: 'PR Dept of State: Registry activity detected',
+          summary: sanitize(text.slice(0, 400)),
+          source: 'Dept. Estado PR', sourceUrl: 'https://www.estado.pr.gov/',
+          entities: ['PR Government'],
+          timestamp: new Date().toISOString(),
+          fingerprint: fingerprint('dos-pr-' + new Date().toISOString().split('T')[0]),
+          depth: 'scrape',
         });
       }
     }
+  } catch (err) {
+    console.error('      ❌ Corporate Registry: ' + err.message);
   }
-} catch (err) {
-  console.error(`      ❌ Financial feed (${feedUrl}): ${err.message}`);
-}
-}
-
-} catch (err) {
-console.error(`      ❌ Financial news: ${err.message}`);
-}
-
-return findings;
-}
-
-async function scanGovSpending() {
-console.log('      💼 Checking government spending…');
-const findings = [];
-
-try {
-const apiUrl = 'https://www.usaspending.gov/api/v2/search/spending_by_geography/';
-const payload = {
-  "scope": "place_of_performance",
-  "geo_layer": "state",
-  "geo_layer_filters": ["72"],
-  "filters": {
-    "time_period": [{"start_date": "2022-01-01", "end_date": "2025-01-01"}],
-    "place_of_performance_locations": [{"country": "USA", "state": "PR"}],
-    "award_type_codes": ["A", "B", "C", "D"]
-  }
-};
-const headers = {
-'Content-Type': 'application/json',
-'Accept': 'application/json'
-};
-
-const response = await safeRequest(apiUrl, { 
-method: 'POST',
-body: JSON.stringify(payload),
-headers,
-timeout: 30000 
-});
-
-if (response) {
-const data = JSON.parse(response);
-const totalSpending = data.results?.[0]?.aggregated_amount || 0;
-const amountFormatted = totalSpending ? `$${(totalSpending / 1e9).toFixed(1)}B` : 'N/A';
-
-findings.push({
-category: 'financial_trails', subcategory: 'federal_spending',
-signals: ['funding'],
-headline: `Federal spending in PR: ${amountFormatted}`,
-summary: `Total federal government spending in Puerto Rico from 2022-2025. Data from USAspending.gov API.`,
-source: 'USAspending.gov', sourceUrl: 'https://www.usaspending.gov/state/puerto-rico/72',
-entities: ['Federal Government', 'PR Government'],
-moneyMentioned: [amountFormatted],
-timestamp: new Date().toISOString(),
-fingerprint: fingerprint(`usaspending-2022-2025-${new Date().toISOString().split('T')[0]}`),
-depth: 'api_query',
-});
-}
-
-} catch (err) {
-console.error(`      ❌ Gov spending API: ${err.message}`);
-}
-
-return findings;
+  return findings;
 }
 
 async function scan() {
-console.log('   💰 [L4] Financial Trails…');
-const [contractorsResults, newsResults, spendingResults] = await Promise.allSettled([
-scanContractorsDB(), scanFinancialNews(), scanGovSpending(),
-]);
-const findings = [];
-if (contractorsResults.status === 'fulfilled') findings.push(...(contractorsResults.value || []));
-if (newsResults.status === 'fulfilled') findings.push(...(newsResults.value || []));
-if (spendingResults.status === 'fulfilled') findings.push(...(spendingResults.value || []));
-console.log(`   💰 [L4] Financial Trails: ${findings.length} findings`);
-return findings;
+  console.log('   💰 [L4] Financial Trails...');
+  var results = await Promise.allSettled([scanSEC(), scanDonations(), scanCorporateRegistry()]);
+  var findings = [];
+  if (results[0].status === 'fulfilled') findings.push.apply(findings, results[0].value || []);
+  if (results[1].status === 'fulfilled') findings.push.apply(findings, results[1].value || []);
+  if (results[2].status === 'fulfilled') findings.push.apply(findings, results[2].value || []);
+  console.log('   💰 [L4] Financial Trails: ' + findings.length + ' findings');
+  return findings;
 }
 
 module.exports = { scan };
