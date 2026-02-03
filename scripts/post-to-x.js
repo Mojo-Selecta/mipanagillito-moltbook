@@ -10,16 +10,19 @@
  * 🌐 Web research + YouTube learning integration
  * 📊 Enriched history for learn.js
  *
- * PREMIUM STRATEGY:
- * ─────────────────
+ * PREMIUM STRATEGY (FREE API TIER):
+ * ─────────────────────────────────
  * X API v2 still enforces 280 char limit via POST /2/tweets even for Premium.
  * Long-form (25K chars) only works through the web UI or 3rd-party services.
+ * Free API tier = 17 tweets/24h (posts + replies combined).
+ *
+ * Budget: ~6 posts/day (every 4h) + ~10 replies/day = 16 total (1 margin)
  *
  * So our Premium strategy is:
- *  1. THREADS — Multi-tweet intel reports as connected reply chains
- *  2. GROK IMAGES — Tag @grok in tweets requesting AI-generated images
- *  3. RECON INTEL — OSINT drops from the Hacker System (~15% of posts)
- *  4. ENGAGEMENT BAIT — Content designed to spark reply threads (monetizable)
+ *  1. THREADS — Multi-tweet intel reports, max 1/day (~5% chance)
+ *  2. GROK IMAGES — Tag @grok in tweets requesting AI-generated images (~8%)
+ *  3. RECON INTEL — OSINT drops from the Hacker System (~15% when available)
+ *  4. ENGAGEMENT BAIT — Content designed to spark reply threads (~12%)
  *  5. REPLY BOOST — Premium replies get algorithmic priority
  *  6. MONETIZATION PATH — Build toward 500 verified followers + 5M impressions
  */
@@ -61,9 +64,16 @@ try {
 /**
  * Extended mode distribution for Premium.
  * New modes: recon_drop, thread_report, grok_image, engagement_bait
+ *
+ * ⚠️ BUDGET: Free API = 17 tweets/24h (posts + replies combined)
+ * Posts: ~6/day (every 4h). Threads eat 3 tweets = half budget!
+ * So threads are rare (~5%) and max 1/day.
  */
 function selectPremiumMode(P, prTime, history) {
   const rand = Math.random() * 100;
+
+  // Check if we already posted a thread today
+  const todayThreads = history.lastHours(24).filter(e => e.mode === 'thread_report').length;
 
   // ─── RECON DROP (~15% when intel available) ───
   if (hasReconIntel && rand < 15) {
@@ -71,8 +81,8 @@ function selectPremiumMode(P, prTime, history) {
     return { modo: 'recon_drop', tema: 'OSINT intel drop', premium: true };
   }
 
-  // ─── THREAD REPORT (~10% chance) ───
-  if (rand < 25) {
+  // ─── THREAD REPORT (~5% chance, max 1/day) ───
+  if (rand < 20 && todayThreads === 0) {
     C.log.info('🧵 Mode: THREAD REPORT');
     const threadTopics = [
       'timeline de corrupción en PR', 'historial de apagones de LUMA',
@@ -85,7 +95,7 @@ function selectPremiumMode(P, prTime, history) {
   }
 
   // ─── GROK IMAGE (~8% chance) ───
-  if (rand < 33) {
+  if (rand < 28) {
     C.log.info('🎨 Mode: GROK IMAGE REQUEST');
     const grokTopics = [
       'LUMA como un monstruo comiendo billetes', 'un politico PR genérico contando dinero en la oscuridad',
@@ -97,7 +107,7 @@ function selectPremiumMode(P, prTime, history) {
   }
 
   // ─── ENGAGEMENT BAIT (~12% chance) — drives reply threads for monetization ───
-  if (rand < 45) {
+  if (rand < 40) {
     C.log.info('💰 Mode: ENGAGEMENT BAIT');
     const engagementTopics = [
       '¿Cuál es peor: LUMA o la AEE?', '¿Estadidad, independencia o ELA? PELEEN',
@@ -111,7 +121,7 @@ function selectPremiumMode(P, prTime, history) {
     return { modo: 'engagement_bait', tema: C.pick(engagementTopics), premium: true };
   }
 
-  // ─── STANDARD MODES (remaining 55%) — use adaptive selection ───
+  // ─── STANDARD MODES (remaining 60%) — use adaptive selection ───
   return C.selectModeAdaptiveForTime(P, prTime, history.getAll());
 }
 
