@@ -11,7 +11,7 @@ concurrency:
 jobs:
   recon:
     runs-on: ubuntu-latest
-    timeout-minutes: 10        # Safety net — RSS scanning shouldn't take long
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -28,10 +28,3 @@ jobs:
       # ═══ RUN RECON ═══
       - name: 🕵️ Execute OSINT Recon
         run: node scripts/recon.js
-        env:
-          # No API keys needed! Recon only scrapes public RSS feeds.
-          # But we include Groq in case we add LLM-powered analysis later.
-          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-
-      # ═══ SAVE INTEL DATABASE ═══
-      # Cache is saved automatically via the restore step's key
