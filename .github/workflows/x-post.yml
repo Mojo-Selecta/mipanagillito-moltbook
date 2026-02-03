@@ -1,15 +1,23 @@
-name: 🐦 Gillito - Post to X v6.2
+name: 🐦💎 Gillito - Post to X v7.0 PREMIUM
 on:
   schedule:
     - cron: '0 */3 * * *'    # Cada 3 horas (~8 posts/día)
   workflow_dispatch:
+
+concurrency:
+  group: gillito-post-x
+  cancel-in-progress: false
+
 jobs:
   post:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: '22' }
+
+      # ═══ DATA PERSISTENCE ═══
       - name: 📥 Restore tweet history
         uses: actions/cache@v4
         with:
@@ -17,13 +25,13 @@ jobs:
           key: x-tweets-${{ github.run_id }}
           restore-keys: x-tweets-
 
-      # ═══ 🌐 NEW: Research + YouTube data persistence ═══
       - name: 🌐 Restore research data
         uses: actions/cache@v4
         with:
           path: .gillito-research.json
           key: gillito-research-${{ github.run_id }}
           restore-keys: gillito-research-
+
       - name: 🎬 Restore YouTube learnings
         uses: actions/cache@v4
         with:
@@ -31,7 +39,16 @@ jobs:
           key: yt-learnings-${{ github.run_id }}
           restore-keys: yt-learnings-
 
-      - name: 🐦 Post tweet
+      # ═══ 🕵️ RECON INTEL (from Hacker System) ═══
+      - name: 🕵️ Restore recon intel
+        uses: actions/cache@v4
+        with:
+          path: .gillito-recon-intel.json
+          key: recon-intel-${{ github.run_id }}
+          restore-keys: recon-intel-
+
+      # ═══ POST ═══
+      - name: 💎 Post tweet (Premium)
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
