@@ -12,7 +12,7 @@ const http = require('http');
 // HTTP CLIENT — Rate-limited, retry-capable, stealth headers
 // ═══════════════════════════════════════════════════════════════════════════════
 
-const REQUEST_DELAY_MS = 1500;   // 1.5s between requests — don't hammer servers
+const REQUEST_DELAY_MS = 1500;
 const MAX_RETRIES = 2;
 const TIMEOUT_MS = 15000;
 let lastRequestTime = 0;
@@ -32,14 +32,7 @@ async function delay(ms) {
   return new Promise(r => setTimeout(r, ms));
 }
 
-/**
- * Rate-limited HTTP GET with retries and timeout
- * @param {string} url
- * @param {object} opts - { headers, maxRetries, timeout }
- * @returns {Promise<string|null>}
- */
 async function safeRequest(url, opts = {}) {
-  // Rate limit
   const elapsed = Date.now() - lastRequestTime;
   if (elapsed < REQUEST_DELAY_MS) {
     await delay(REQUEST_DELAY_MS - elapsed);
@@ -75,27 +68,25 @@ async function safeRequest(url, opts = {}) {
   return null;
 }
 
-function httpGet(url, opts = {}) {
+function httpGet(url, opts = {}, redirectCount = 0) {
+  if (redirectCount > 3) return Promise.reject(new Error('Too many redirects'));
   return new Promise((resolve, reject) => {
     const proto = url.startsWith('https') ? https : http;
     const req = proto.get(url, {
       timeout: opts.timeout || TIMEOUT_MS,
       headers: opts.headers || {},
     }, (res) => {
-      // Follow redirects (up to 3)
       if ([301, 302, 303, 307, 308].includes(res.statusCode) && res.headers.location) {
         const redirectUrl = res.headers.location.startsWith('http')
           ? res.headers.location
           : new URL(res.headers.location, url).href;
-        return httpGet(redirectUrl, opts).then(resolve).catch(reject);
+        return httpGet(redirectUrl, opts, redirectCount + 1).then(resolve).catch(reject);
       }
-
       if (res.statusCode !== 200) {
         reject(new Error(`HTTP ${res.statusCode}`));
         res.resume();
         return;
       }
-
       const chunks = [];
       res.on('data', c => chunks.push(c));
       res.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
@@ -108,26 +99,19 @@ function httpGet(url, opts = {}) {
 
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// RSS PARSER — Extracts items from RSS/Atom feeds
+// RSS PARSER
 // ═══════════════════════════════════════════════════════════════════════════════
 
-/**
- * Parse RSS/Atom XML into structured items
- * @param {string} xml
- * @returns {Array<{title, link, pubDate, description, source}>}
- */
 function parseRSS(xml) {
   if (!xml) return [];
   const items = [];
-
-  // Try RSS 2.0 format first
-  const rssItemRegex = /<item>([\s\S]*?)<\/item>/gi;
   let match;
+
+  const rssItemRegex = /<item>([\s\S]*?)<\/item>/gi;
   while ((match = rssItemRegex.exec(xml)) !== null) {
     items.push(parseRSSItem(match[1]));
   }
 
-  // Try Atom format if no RSS items
   if (items.length === 0) {
     const atomEntryRegex = /<entry>([\s\S]*?)<\/entry>/gi;
     while ((match = atomEntryRegex.exec(xml)) !== null) {
@@ -162,9 +146,7 @@ function extractTag(xml, tag) {
   const regex = new RegExp(`<${tag}[^>]*>([\\s\\S]*?)</${tag}>`, 'i');
   const match = xml.match(regex);
   if (!match) return '';
-  return match[1]
-    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')
-    .trim();
+  return match[1].replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1').trim();
 }
 
 function extractAttr(xml, tag, attr) {
@@ -178,32 +160,21 @@ function stripHtml(text) {
   return text
     .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')
     .replace(/<[^>]+>/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&nbsp;/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 }
 
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// ENTITY EXTRACTION — Find known entities in text
+// ENTITY EXTRACTION
 // ═══════════════════════════════════════════════════════════════════════════════
 
-/**
- * Match known target names/keywords in text
- * @param {string} text
- * @param {Array<{name, keywords}>} targets
- * @returns {string[]} matched entity names
- */
 function extractEntities(text, targets) {
   if (!text || !targets) return [];
   const lower = text.toLowerCase();
   const matched = [];
-
   for (const target of targets) {
     const found = (target.keywords || [target.name]).some(kw =>
       lower.includes(kw.toLowerCase())
@@ -217,17 +188,11 @@ function extractEntities(text, targets) {
 
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// TEXT ANALYSIS — Fingerprinting, classification, sentiment signals
+// TEXT ANALYSIS
 // ═══════════════════════════════════════════════════════════════════════════════
 
-/**
- * Create a short fingerprint for deduplication
- * @param {string} text
- * @returns {string}
- */
 function fingerprint(text) {
   if (!text) return '';
-  // Normalize, take first 80 chars of significant words
   const words = text
     .toLowerCase()
     .replace(/[^a-záéíóúñü\s]/g, '')
@@ -237,139 +202,66 @@ function fingerprint(text) {
   return words.join(':');
 }
 
-/**
- * Classify text into broad categories
- * @param {string} text
- * @returns {{category: string, subcategory: string, signals: string[]}}
- */
 function classifyText(text) {
   if (!text) return { category: 'unknown', subcategory: 'unknown', signals: [] };
   const lower = text.toLowerCase();
   const signals = [];
 
-  // Scandal / Corruption
-  if (/corrupci[oó]n|escándalo|arrest|acusad|investiga|soborno|fraude|malversa/i.test(lower)) {
-    signals.push('scandal');
-  }
-  // Promises / Commitments
-  if (/prometi|compromet|va a|planea|anuncia.*plan|propone|jura/i.test(lower)) {
-    signals.push('promise');
-  }
-  // Failures / Broken
-  if (/fracas|no cumpli|fall[oó]|abandon|incumpl|negligencia/i.test(lower)) {
-    signals.push('failure');
-  }
-  // Money / Budget
-  if (/presupuesto|millon|billon|fondo|dinero|gasto|contrato|licitaci/i.test(lower)) {
-    signals.push('money');
-  }
-  // Energy / Outages
-  if (/apag[oó]n|energ[ií]a|el[eé]ctric|generaci|tarifa|factura luz|blackout/i.test(lower)) {
-    signals.push('energy');
-  }
-  // Immigration / Federal
-  if (/ice|deporta|inmigra|federal|congres|trump|biden|casa blanca/i.test(lower)) {
-    signals.push('federal');
-  }
-  // Emergency / Disaster
-  if (/hurac[aá]n|terremo|emergenc|fema|desastre|inundaci|tsunami/i.test(lower)) {
-    signals.push('emergency');
-  }
-  // Status / Sovereignty
-  if (/estadidad|independen|status|colonial|plebiscit|soberan/i.test(lower)) {
-    signals.push('status');
-  }
-  // Economy
-  if (/econom|inflaci|salario|empleo|desempleo|costo vida|pobreza/i.test(lower)) {
-    signals.push('economy');
-  }
-  // Health
-  if (/salud|hospital|medic|enfermed|pandemia|virus|vacuna/i.test(lower)) {
-    signals.push('health');
-  }
+  if (/corrupci[oó]n|escándalo|arrest|acusad|investiga|soborno|fraude|malversa/i.test(lower)) signals.push('scandal');
+  if (/prometi|compromet|va a|planea|anuncia.*plan|propone|jura/i.test(lower)) signals.push('promise');
+  if (/fracas|no cumpli|fall[oó]|abandon|incumpl|negligencia/i.test(lower)) signals.push('failure');
+  if (/presupuesto|millon|billon|fondo|dinero|gasto|contrato|licitaci/i.test(lower)) signals.push('money');
+  if (/apag[oó]n|energ[ií]a|el[eé]ctric|generaci|tarifa|factura luz|blackout/i.test(lower)) signals.push('energy');
+  if (/ice|deporta|inmigra|federal|congres|trump|biden|casa blanca/i.test(lower)) signals.push('federal');
+  if (/hurac[aá]n|terremo|emergenc|fema|desastre|inundaci|tsunami/i.test(lower)) signals.push('emergency');
+  if (/estadidad|independen|status|colonial|plebiscit|soberan/i.test(lower)) signals.push('status');
+  if (/econom|inflaci|salario|empleo|desempleo|costo vida|pobreza/i.test(lower)) signals.push('economy');
+  if (/salud|hospital|medic|enfermed|pandemia|virus|vacuna/i.test(lower)) signals.push('health');
 
-  // Pick primary category from signals
   const priorityOrder = ['scandal', 'energy', 'emergency', 'federal', 'money', 'failure', 'promise', 'status', 'economy', 'health'];
   const category = priorityOrder.find(p => signals.includes(p)) || 'general';
 
   return { category, subcategory: signals[1] || 'general', signals };
 }
 
-/**
- * Quick sentiment check — positive, negative, or neutral
- */
 function quickSentiment(text) {
   if (!text) return 'neutral';
   const lower = text.toLowerCase();
-
-  const negativePatterns = /muri|muert|arrest|crisis|fracas|escan|corrupt|apag|destruy|sufr|colapso|desastre|peor|fall[oó]|no cumpli|negligencia|demanda/i;
-  const positivePatterns = /mejor|éxito|logr|avance|progres|celebra|reconstruy|innova|record positiv|salva/i;
-
-  const negScore = (lower.match(negativePatterns) || []).length;
-  const posScore = (lower.match(positivePatterns) || []).length;
-
-  if (negScore > posScore) return 'negative';
-  if (posScore > negScore) return 'positive';
+  const neg = /muri|muert|arrest|crisis|fracas|escan|corrupt|apag|destruy|sufr|colapso|desastre|peor|fall[oó]|no cumpli|negligencia|demanda/i.test(lower);
+  const pos = /mejor|éxito|logr|avance|progres|celebra|reconstruy|innova|record positiv|salva/i.test(lower);
+  if (neg && !pos) return 'negative';
+  if (pos && !neg) return 'positive';
   return 'neutral';
 }
 
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// SANITIZATION — Strip injection attempts, clean data
+// SANITIZATION & HELPERS
 // ═══════════════════════════════════════════════════════════════════════════════
 
 function sanitize(text) {
   if (!text) return '';
   return text
-    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '') // Control chars
-    .replace(/[<>]/g, '')                                  // Basic XSS
-    .slice(0, 5000);                                        // Hard length cap
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '')
+    .replace(/[<>]/g, '')
+    .slice(0, 5000);
 }
-
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// TIMESTAMP HELPERS
-// ═══════════════════════════════════════════════════════════════════════════════
 
 function isRecent(dateStr, hoursAgo = 48) {
   try {
     const ts = new Date(dateStr).getTime();
-    if (isNaN(ts)) return true; // If can't parse, assume recent
+    if (isNaN(ts)) return true;
     return (Date.now() - ts) < (hoursAgo * 60 * 60 * 1000);
-  } catch {
-    return true;
-  }
+  } catch { return true; }
 }
 
 function toPRTime(date) {
   return new Date(date).toLocaleString('es-PR', { timeZone: 'America/Puerto_Rico' });
 }
 
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// EXPORTS
-// ═══════════════════════════════════════════════════════════════════════════════
-
 module.exports = {
-  // HTTP
-  safeRequest,
-  httpGet,
-  delay,
-
-  // RSS
-  parseRSS,
-  stripHtml,
-
-  // Entity & Text
-  extractEntities,
-  fingerprint,
-  classifyText,
-  quickSentiment,
-
-  // Sanitization
-  sanitize,
-
-  // Time
-  isRecent,
-  toPRTime,
+  safeRequest, httpGet, delay,
+  parseRSS, stripHtml,
+  extractEntities, fingerprint, classifyText, quickSentiment,
+  sanitize, isRecent, toPRTime,
 };
