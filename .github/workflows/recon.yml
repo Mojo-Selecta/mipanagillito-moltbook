@@ -3,33 +3,30 @@ on:
   schedule:
     - cron: '0 */6 * * *'    # Every 6 hours
   workflow_dispatch:
-
 concurrency:
   group: gillito-recon
   cancel-in-progress: false
-
 jobs:
   recon:
     runs-on: ubuntu-latest
-    timeout-minutes: 10      # Increased — deep scanning takes longer
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: '22' }
-
-      - name: 🕵️ Restore recon intel cache
-        uses: actions/cache@v4
-        with:
-          path: .gillito-recon-intel.json
-          key: recon-intel-${{ github.run_id }}
-          restore-keys: recon-intel-
-
-      - name: 👁️ Restore page snapshots (L3)
-        uses: actions/cache@v4
-        with:
-          path: .gillito-page-snapshots.json
-          key: page-snapshots-${{ github.run_id }}
-          restore-keys: page-snapshots-
-
+      # ═══ 🗄️ DB SYNC — DOWNLOAD ═══
+      - name: 📥 Sync DB from cloud
+        env:
+          GILLITO_DB_URL: https://gillito-db.vip-joeojeda.workers.dev
+          GILLITO_DB_KEY: ${{ secrets.GILLITO_DB_KEY }}
+        run: node scripts/db-sync.js download
+      # ═══ RECON ═══
       - name: 🕵️ Run Deep Recon v2
         run: node scripts/recon.js
+      # ═══ 🗄️ DB SYNC — UPLOAD ═══
+      - name: 📤 Sync DB to cloud
+        if: always()
+        env:
+          GILLITO_DB_URL: https://gillito-db.vip-joeojeda.workers.dev
+          GILLITO_DB_KEY: ${{ secrets.GILLITO_DB_KEY }}
+        run: node scripts/db-sync.js upload
