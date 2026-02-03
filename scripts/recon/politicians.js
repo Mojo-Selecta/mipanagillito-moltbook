@@ -15,9 +15,9 @@ async function scan() {
   for (const feed of RSS_FEEDS.politicians) {
     try {
       const xml = await safeRequest(feed.url);
-      if (!xml) { console.log(`      ⚠️ ${feed.name}: no response`); continue; }
+      if (!xml) { console.log('      ⚠️ ' + feed.name + ': no response'); continue; }
       const items = parseRSS(xml);
-      console.log(`      📡 ${feed.name}: ${items.length} items`);
+      console.log('      📡 ' + feed.name + ': ' + items.length + ' items');
 
       for (const item of items) {
         if (!item.title) continue;
@@ -26,7 +26,7 @@ async function scan() {
         if (seen.has(fp)) continue;
         seen.add(fp);
 
-        const text = sanitize(`${item.title} ${item.description}`);
+        const text = sanitize(item.title + ' ' + item.description);
         const entities = extractEntities(text, POLITICIANS);
         const classification = classifyText(text);
 
@@ -49,11 +49,11 @@ async function scan() {
         });
       }
     } catch (err) {
-      console.error(`      ❌ ${feed.name}: ${err.message}`);
+      console.error('      ❌ ' + feed.name + ': ' + err.message);
     }
   }
 
-  console.log(`   🏛️ Politicians: ${findings.length} findings`);
+  console.log('   🏛️ Politicians: ' + findings.length + ' findings');
   return findings;
 }
 
