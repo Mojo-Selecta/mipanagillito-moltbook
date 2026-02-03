@@ -1,7 +1,7 @@
 name: 🐦💎 Gillito - Post to X v7.0 PREMIUM
 on:
   schedule:
-    - cron: '0 */3 * * *'    # Cada 3 horas (~8 posts/día)
+    - cron: '0 */4 * * *'    # Cada 4 horas (~6 posts/día) — optimizado para 17/día free API tier
   workflow_dispatch:
 
 concurrency:
