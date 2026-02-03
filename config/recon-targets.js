@@ -1,10 +1,6 @@
 /**
- * 🎯 RECON TARGETS & RSS FEEDS
- * ═══════════════════════════════════════════
- * Central config for all recon modules.
+ * 🎯 RECON TARGETS — config/recon-targets.js
  */
-
-/* ─── Politicians ─── */
 
 const POLITICIANS = [
   { name: 'Jenniffer González', aliases: ['jenniffer', 'gonzalez colon', 'gobernadora'] },
@@ -13,15 +9,12 @@ const POLITICIANS = [
   { name: 'Juan Dalmau', aliases: ['dalmau'] },
   { name: 'Alexandra Lúgaro', aliases: ['lugaro'] },
   { name: 'Nydia Velázquez', aliases: ['velazquez'] },
-  { name: 'Resident Commissioner', aliases: ['comisionado residente'] },
   { name: 'Carmen Yulín', aliases: ['yulin', 'carmen yulin cruz'] },
   { name: 'Wanda Vázquez', aliases: ['wanda vazquez'] },
   { name: 'Ricardo Rosselló', aliases: ['rossello', 'ricky resign'] },
   { name: 'Legislatura PR', aliases: ['senado', 'cámara de representantes', 'legislatura'] },
   { name: 'FOMB', aliases: ['junta de control fiscal', 'fiscal oversight', 'junta fiscal'] },
 ];
-
-/* ─── Energy Entities ─── */
 
 const ENERGY_ENTITIES = [
   { name: 'LUMA Energy', aliases: ['luma', 'luma energy'] },
@@ -30,8 +23,6 @@ const ENERGY_ENTITIES = [
   { name: 'NEPR', aliases: ['negociado de energía', 'energy bureau'] },
   { name: 'FEMA', aliases: ['fema'] },
 ];
-
-/* ─── Federal Entities ─── */
 
 const FEDERAL_ENTITIES = [
   { name: 'ICE', aliases: ['immigration and customs', 'ice agents', 'agentes ice'] },
@@ -44,8 +35,6 @@ const FEDERAL_ENTITIES = [
   { name: 'Jones Act', aliases: ['jones act', 'ley jones', 'cabotage'] },
   { name: 'Congress', aliases: ['congreso', 'congress', 'capitol hill'] },
 ];
-
-/* ─── RSS Feeds ─── */
 
 const RSS_FEEDS = {
   politicians: [
@@ -76,25 +65,9 @@ const RSS_FEEDS = {
   ],
 };
 
-/* ─── Juiciness Score Boosts ─── */
-
 const JUICINESS_BOOSTS = {
-  scandal:     3,
-  corruption:  3,
-  outage:      2.5,
-  protest:     2,
-  deportation: 2,
-  price_hike:  1.5,
-  disaster:    2,
-  violence:    1.5,
-  funding:     1,
-  resignation: 2,
+  scandal: 3, corruption: 3, outage: 2.5, protest: 2, deportation: 2,
+  price_hike: 1.5, disaster: 2, violence: 1.5, funding: 1, resignation: 2,
 };
 
-module.exports = {
-  POLITICIANS,
-  ENERGY_ENTITIES,
-  FEDERAL_ENTITIES,
-  RSS_FEEDS,
-  JUICINESS_BOOSTS,
-};
+module.exports = { POLITICIANS, ENERGY_ENTITIES, FEDERAL_ENTITIES, RSS_FEEDS, JUICINESS_BOOSTS };
