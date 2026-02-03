@@ -46,7 +46,7 @@ const yt       = C.loadYouTubeLearnings();
 let hasReconIntel = false;
 let pickIntel, markUsed, getReconPrompt;
 try {
-  const intelPicker = require(path.join(process.cwd(), 'lib', 'intel-picker'));
+  const intelPicker = require(path.join(__dirname, 'lib', 'intel-picker'));
   pickIntel      = intelPicker.pickIntel;
   markUsed       = intelPicker.markUsed;
   getReconPrompt = intelPicker.getReconPrompt;
