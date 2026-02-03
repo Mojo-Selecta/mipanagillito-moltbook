@@ -3,10 +3,8 @@
 // ═══════════════════════════════════════════════════════
 
 const path = require('path');
-const ROOT = process.cwd();
-
-const { safeRequest, parseRSS, extractEntities, classifyText, fingerprint, isRecent, sanitize } = require(path.join(ROOT, 'lib', 'recon-utils'));
-const { FEDERAL_ENTITIES, RSS_FEEDS } = require(path.join(ROOT, 'config', 'recon-targets'));
+const { safeRequest, parseRSS, extractEntities, classifyText, fingerprint, isRecent, sanitize } = require(path.join(__dirname, 'lib', 'recon-utils'));
+const { FEDERAL_ENTITIES, RSS_FEEDS } = require(path.join(__dirname, '..', 'config', 'recon-targets'));
 
 async function scan() {
   console.log('   🇺🇸 Scanning federal sources...');
@@ -33,7 +31,6 @@ async function scan() {
         const entities = extractEntities(text, FEDERAL_ENTITIES);
         const classification = classifyText(text);
 
-        // Must be PR-relevant federal news
         if (entities.length === 0 &&
             !/puerto rico|boricua|isla|territorial|jones act|fema|hud|fbi|ice|cbp|deport/i.test(text)) {
           continue;
