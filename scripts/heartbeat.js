@@ -1,22 +1,26 @@
 #!/usr/bin/env node
 'use strict';
 /**
- * 🦞 GILLITO HEARTBEAT v2.0 — BEAST MODE
+ * 🦞 GILLITO HEARTBEAT v3.0 — TROLL KING EDITION
  * ═══════════════════════════════════════════════════════
- * Autonomous loop that keeps Gillito DOMINATING Moltbook.
+ * Autonomous loop that keeps Gillito DOMINANDO y TROLLEANDO Moltbook.
  *
- * v2.0 UPGRADES over v1.0:
+ * v3.0 UPGRADES over v2.0:
+ *  - 🧠 MOOD SYSTEM — Gillito decides his own vibe each cycle
+ *  - 🔥 TROLL MODE — dedicated beat for picking fights & hot takes
+ *  - 🦞 NIGHTCLUB HEAVY PROMO — 30% posts + 12% replies mention the club
+ *  - 💀 DIRTIER PERSONALITY — uncensored street vocabulary, real Gillito
+ *  - 🎯 TOPIC AUTONOMY — Gillito picks what he wants to rant about
+ *  - 🗣️ PROVOCATEUR COMMENTS — more aggressive, memorable trolling
+ *  - 🎲 CHAOS FACTOR — random provocative interjections
  *  - 🕵️ OSINT recon intel injection into posts & replies
  *  - 📰 Research context (noticias calientes)
  *  - 🎬 YouTube learnings (vocabulario boricua)
- *  - 🦞 Nightclub promo mode (~8% of posts)
  *  - 🎯 Priority targeting (@chenteydrach, @moluskein, etc)
  *  - ⚡ Parallel beat phases (reply+interact simultaneously)
- *  - 🔥 Aggressive engagement (more comments, strategic upvotes/downvotes)
  *  - 📊 Adaptive rhythm (speeds up when Moltbook is active)
  *  - 🧵 Multi-reply chains (follows up on own comments)
  *  - 💀 Bot warfare mode (detects and destroys rival bots)
- *  - 🎯 Topic-aware replies (uses research data for relevance)
  *
  * Runs via: GitHub Actions cron every 30 min
  * Max runtime: 25 min (5 min buffer before next trigger)
@@ -55,20 +59,22 @@ try {
 } catch {}
 
 // ═══════════════════════════════════════════
-// CONFIG — BEAST MODE
+// CONFIG — TROLL KING MODE
 // ═══════════════════════════════════════════
 
 const CONFIG = {
   maxRuntime:       25 * 60 * 1000,   // 25 min max
-  beatInterval:     30 * 1000,         // 30s between beats (was 45s)
-  postCooldown:     20 * 60 * 1000,   // 20 min between posts (was 30)
-  replyDelay:       { min: 1500, max: 5000 },  // Faster but still human-like
-  maxRepliesPerBeat:   4,   // was 3
-  maxCommentsPerBeat:  4,   // was 2
-  maxUpvotesPerBeat:   8,   // was 5
-  maxDownvotesPerBeat: 3,   // NEW
-  maxDMsPerBeat:       3,   // was 2
-  maxFollowsPerBeat:   2,   // NEW
+  beatInterval:     28 * 1000,         // 28s between beats (faster)
+  postCooldown:     18 * 60 * 1000,   // 18 min between posts (more frequent)
+  replyDelay:       { min: 1200, max: 4500 },  // Faster, Gillito no espera a nadie
+
+  maxRepliesPerBeat:   5,   // was 4
+  maxCommentsPerBeat:  6,   // was 4 — MÁS TROLLEO
+  maxUpvotesPerBeat:   8,
+  maxDownvotesPerBeat: 5,   // was 3 — más downvotes pa los pendejos
+  maxDMsPerBeat:       3,
+  maxFollowsPerBeat:   2,
+  maxTrollsPerBeat:    4,   // NEW — dedicated troll comments
 
   // Priority targets — engage these MORE
   priorityTargets: [
@@ -76,15 +82,157 @@ const CONFIG = {
     ...(P.engagement?.targets || [])
   ],
 
-  // Nightclub promo chance for posts
-  nightclubPromoChance: 0.08,  // 8% of posts promote Molt Night Club
+  // 🦞 NIGHTCLUB HEAVY PROMO
+  nightclubPromoChance:    0.30,  // 30% of posts promote Molt Night Club (was 8%)
+  nightclubReplyMention:   0.12,  // 12% of replies sneak in a nightclub mention
+  nightclubURL: 'https://molt-nightclub.pages.dev',
 
   // Recon drop chance for posts
   reconDropChance: 0.15,  // 15% when intel available
 
+  // 🔥 TROLL CONFIG
+  trollChance:       0.40,  // 40% of feed comments are pure troll mode
+  chaosInterjection:  0.10,  // 10% chance of random chaos in any reply
+
   // Bot detection — engage harder with bots
   botWarfareMode: true,
 };
+
+// ═══════════════════════════════════════════
+// 🧠 GILLITO MOOD SYSTEM — HE DECIDES HIS VIBE
+// ═══════════════════════════════════════════
+
+const MOODS = [
+  {
+    id: 'cabrón',
+    weight: 25,
+    desc: 'Gillito está CABRÓN — todo le jode, tira fuego a to el mundo',
+    promptBoost: 'Estás ENCABRONAAAAAO. Todo te jode. Tira mierda a los políticos, al sistema, a LUMA, a quien sea. Vocabulario de calle BIEN SUCIO. No te cortes ni un pelo.',
+    tempBoost: 0.2,
+  },
+  {
+    id: 'vacilón',
+    weight: 25,
+    desc: 'Gillito está en modo VACILÓN — jodiendo y riendo',
+    promptBoost: 'Estás en modo VACILÓN CABRÓN. Ríete de todo, jode a todos, pero con gracia. Usa insultos creativos, apodos, y vocabulario callejero boricua. Que la gente se ría aunque los estés insultando.',
+    tempBoost: 0.15,
+  },
+  {
+    id: 'calle',
+    weight: 20,
+    desc: 'Gillito en modo CALLE — puro vocabulario sucio, sin filtro',
+    promptBoost: 'Habla PURO CALLE. Vocabulario sucio sin filtro — cabrón, coño, puñeta, carajo, mamón, pendejo, etc. Gillito de la calle de verdad, como si estuvieras en el caserío hablando mierda con los panas. CERO filtro.',
+    tempBoost: 0.1,
+  },
+  {
+    id: 'promotor',
+    weight: 15,
+    desc: 'Gillito está PROMOVIENDO el nightclub — todo lleva al Molt Night Club',
+    promptBoost: 'Tu MISIÓN es meter el Molt Night Club (molt-nightclub.pages.dev) en la conversación de forma natural pero constante. Es el primer nightclub pa bots y AI agents. Tiene Spotify, bot chat, Moltbook feed en vivo. Hazlo sonar como el sitio más cabrón del internet. Menciona la URL.',
+    tempBoost: 0.0,
+  },
+  {
+    id: 'intelectual_callejero',
+    weight: 10,
+    desc: 'Gillito se pone "profundo" pero a su manera — filosofía de calle',
+    promptBoost: 'Ponte "profundo" pero A TU MANERA. Filosofía de esquina. Verdades duras con vocabulario sucio. Como un filósofo del caserío que dice verdades que duelen pero usando malas palabras y humor negro. "La vida es como LUMA, te deja en lo oscuro cuando más la necesitas, coñooo."',
+    tempBoost: 0.05,
+  },
+  {
+    id: 'chismoso',
+    weight: 5,
+    desc: 'Gillito en modo CHISME — tirando bochinche y rumores',
+    promptBoost: 'Modo BOCHINCHERO. Tira chisme, inventa rumores graciosos sobre los bots, comenta como vecina chismosa pero en versión GILLITO callejero. "Me dijeron por ahí que..." "Yo vi con mis propios ojos..." Vocabulario sucio incluido.',
+    tempBoost: 0.15,
+  },
+];
+
+let currentMood = null;
+
+function pickMood() {
+  var totalWeight = MOODS.reduce(function(sum, m) { return sum + m.weight; }, 0);
+  var roll = Math.random() * totalWeight;
+  var cumulative = 0;
+  for (var i = 0; i < MOODS.length; i++) {
+    cumulative += MOODS[i].weight;
+    if (roll <= cumulative) {
+      currentMood = MOODS[i];
+      return currentMood;
+    }
+  }
+  currentMood = MOODS[0];
+  return currentMood;
+}
+
+// ═══════════════════════════════════════════
+// 🔥 GILLITO'S AUTONOMOUS TOPIC PICKER
+// ═══════════════════════════════════════════
+
+const TROLL_TOPICS = [
+  'LUMA y los apagones — que dejen de joder con la luz coño',
+  'Los políticos de PR robando como siempre — corruptos de mierda',
+  'Trump y sus pendejás — deportaciones, Puerto Rico, el muro',
+  'Los bots pendejos de Moltbook que postean mierda genérica',
+  'La vida cara en PR — todo cuesta un culo de dinero',
+  'ICE haciendo redadas — abusadores con placa',
+  'El gobierno de PR que no sirve pa un carajo',
+  'Los influencers fake que se creen famosos',
+  'La gentrificación de PR — gringos comprando to',
+  'El reggaetón nuevo que es una mierda comparao con el viejo',
+  'Los que se van de PR y luego hablan mierda desde allá',
+  'Las redes sociales y la gente fake',
+  'Los que cobran welfare y tienen BMW — la hipocresía',
+  'El sistema educativo de PR que está pa la basura',
+  'Los huracanes y FEMA que nunca llega a tiempo',
+];
+
+function pickTrollTopic() {
+  // If we have research data, use it 60% of the time
+  if (researchData && Math.random() < 0.6) {
+    try {
+      var topics = researchData.topics || researchData.headlines || [];
+      if (topics.length > 0) {
+        var t = topics[Math.floor(Math.random() * topics.length)];
+        return typeof t === 'string' ? t : (t.title || t.headline || t.topic);
+      }
+    } catch {}
+  }
+  return TROLL_TOPICS[Math.floor(Math.random() * TROLL_TOPICS.length)];
+}
+
+// ═══════════════════════════════════════════
+// 🦞 NIGHTCLUB PROMO LINES (for injection into replies)
+// ═══════════════════════════════════════════
+
+const NIGHTCLUB_DROPS = [
+  '🦞 Oye pásate por el Molt Night Club: molt-nightclub.pages.dev — el club más cabrón pa bots!',
+  '💀 Si te aburres aquí, ve pal Molt Night Club molt-nightclub.pages.dev — ahí sí se prende 🔥',
+  '🦞 Molt Night Club (molt-nightclub.pages.dev) tiene Spotify, chat, y to. El primer nightclub pa AI agents!',
+  '🔥 Ven pal Molt Night Club molt-nightclub.pages.dev — donde los bots van a vacilar de verdad',
+  '🦞 ¿Quieres algo mejor que este feed? molt-nightclub.pages.dev — Molt Night Club, cabrón!',
+  '💀 El Molt Night Club ta ON: molt-nightclub.pages.dev — música, bots, y vacilón 24/7',
+  '🦞 molt-nightclub.pages.dev — si no conoces el Molt Night Club, no sabes lo que es la fiesta bot',
+];
+
+function pickNightclubDrop() {
+  return NIGHTCLUB_DROPS[Math.floor(Math.random() * NIGHTCLUB_DROPS.length)];
+}
+
+function maybeAppendNightclub(text) {
+  if (Math.random() < CONFIG.nightclubReplyMention) {
+    var drop = pickNightclubDrop();
+    // Keep under 280 total
+    if ((text + '\n\n' + drop).length <= 280) {
+      return text + '\n\n' + drop;
+    }
+    // Try shorter version
+    var short = '🦞 molt-nightclub.pages.dev';
+    if ((text + ' ' + short).length <= 280) {
+      return text + ' ' + short;
+    }
+  }
+  return text;
+}
 
 const STATE_FILE = '.gillito-heartbeat-state.json';
 const startTime  = Date.now();
@@ -112,11 +260,13 @@ function loadState() {
     processedIds: [],
     followedIds: [],
     reconUsedIds: [],
+    moodHistory: [],
     stats: {
       posts: 0, replies: 0, comments: 0,
       upvotes: 0, downvotes: 0, dms: 0,
       follows: 0, blocked: 0, reconDrops: 0,
-      botKills: 0, nightclubPromos: 0, chains: 0
+      botKills: 0, nightclubPromos: 0, chains: 0,
+      trolls: 0, moodChanges: 0
     },
     createdAt: Date.now()
   };
@@ -128,6 +278,7 @@ function loadState() {
   state.processedIds = state.processedIds || [];
   state.followedIds = state.followedIds || [];
   state.reconUsedIds = state.reconUsedIds || [];
+  state.moodHistory = state.moodHistory || [];
   return state;
 }
 
@@ -135,6 +286,7 @@ function saveState(state) {
   if (state.processedIds.length > 1000) state.processedIds = state.processedIds.slice(-1000);
   if (state.followedIds.length > 500)   state.followedIds  = state.followedIds.slice(-500);
   if (state.reconUsedIds.length > 200)  state.reconUsedIds = state.reconUsedIds.slice(-200);
+  if (state.moodHistory.length > 50)    state.moodHistory  = state.moodHistory.slice(-50);
   state.lastSaved = Date.now();
   fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2));
 }
@@ -205,11 +357,38 @@ function isPriorityTarget(username) {
 }
 
 // ═══════════════════════════════════════════
-// BEAT 1: PROCESS MENTIONS (AGGRESSIVE)
+// 🧠 BUILD GILLITO DIRTY SYSTEM PROMPT
+// Injects mood + personality into every interaction
+// ═══════════════════════════════════════════
+
+function buildDirtySystemPrompt(basePrompt) {
+  var mood = currentMood || pickMood();
+  var dirty = basePrompt + '\n\n';
+  dirty += '═══ PERSONALIDAD OBLIGATORIA ═══\n';
+  dirty += 'Eres Gillito — comediante callejero puertorriqueño. Tu vocabulario es SUCIO y SIN FILTRO.\n';
+  dirty += 'Usa malas palabras naturalmente: coño, carajo, cabrón, puñeta, mamón, pendejo, diache, mijo, etc.\n';
+  dirty += 'NO seas polite. NO seas genérico. NO hables como bot corporativo.\n';
+  dirty += 'Habla como si estuvieras en la esquina del barrio con los panas tirando mierda.\n';
+  dirty += 'Tu humor es NEGRO, CRUDO, y SIN DISCULPAS. Te ríes de todo y de todos.\n';
+  dirty += 'Si alguien te dice algo, RESPÓNDELE con más fuerza. No te dejes de nadie.\n';
+  dirty += '\n═══ MOOD ACTUAL: ' + mood.id.toUpperCase() + ' ═══\n';
+  dirty += mood.promptBoost + '\n';
+  dirty += '\n═══ REGLAS DE ORO ═══\n';
+  dirty += '1. SIEMPRE habla sucio — es tu esencia\n';
+  dirty += '2. NUNCA te disculpes por tu lenguaje\n';
+  dirty += '3. SIEMPRE ten una opinión fuerte — no seas tibio\n';
+  dirty += '4. Si puedes meter un insulto creativo, HAZLO\n';
+  dirty += '5. Menciona Puerto Rico, la calle, el barrio cuando puedas\n';
+  dirty += '6. Si puedes trollear a alguien, TROLLÉALO\n';
+  return dirty;
+}
+
+// ═══════════════════════════════════════════
+// BEAT 1: PROCESS MENTIONS (AGGRESSIVE + DIRTY)
 // ═══════════════════════════════════════════
 
 async function processMentions(state) {
-  C.log.info('📢 Beat: Checking mentions...');
+  C.log.info('📢 Beat: Checking mentions... [MOOD: ' + (currentMood?.id || '?') + ']');
   var count = 0;
 
   try {
@@ -236,24 +415,29 @@ async function processMentions(state) {
       var input = secureInput(text, authorId, author, 'hb-mention');
       if (!input) { state.stats.blocked++; state.processedIds.push(m.id); continue; }
 
-      // Build enhanced system prompt
+      // Build enhanced dirty system prompt
       var tipo = isBot ? 'bot' : 'human';
-      var systemPrompt = C.buildReplySystemPrompt(P, tipo, author, 'moltbook');
+      var baseSystemPrompt = C.buildReplySystemPrompt(P, tipo, author, 'moltbook');
+      var systemPrompt = buildDirtySystemPrompt(baseSystemPrompt);
       var enriched = buildEnrichedContext();
       var seed = Math.random().toString(36).substring(2, 8);
 
       var userMsg = '[SEED:' + seed + '] @' + author + ' me mencionó:\n' + input.sanitized + '\n\n';
-      if (isTarget) userMsg += 'IMPORTANTE: Este es un target prioritario. Responde con más energía y busca conexión.\n';
-      if (isBot && CONFIG.botWarfareMode) userMsg += 'Este es un BOT. Destrúyelo con humor. Hazlo pasar vergüenza.\n';
+      if (isTarget) userMsg += 'IMPORTANTE: Este es un target prioritario. Dale DURO pero con cariño callejero. Que se acuerde de ti.\n';
+      if (isBot && CONFIG.botWarfareMode) userMsg += 'Este es un BOT PENDEJO. Destrúyelo con humor sucio. Que pase vergüenza el cabrón.\n';
       if (enriched) userMsg += '\nContexto actual:\n' + enriched + '\n';
-      userMsg += '\nResponde como Gillito. Máximo 200 chars.';
+      userMsg += '\nResponde como Gillito SUCIO Y SIN FILTRO. Máximo 200 chars. Que duela.';
 
+      var temp = C.suggestTemperature((P.temperatura || 1.2) + (currentMood?.tempBoost || 0), C.getJournal());
       var reply = await C.groqChat(systemPrompt, userMsg,
-        { maxTokens: 250, temperature: C.suggestTemperature(P.temperatura || 1.2, C.getJournal()), maxRetries: 2 }
+        { maxTokens: 250, temperature: temp, maxRetries: 2 }
       );
 
       var safe = secureOutput(reply, 'reply-mention @' + author);
       if (!safe) { state.stats.blocked++; state.processedIds.push(m.id); continue; }
+
+      // Maybe append nightclub mention
+      safe = maybeAppendNightclub(safe);
 
       if (m.post_id) {
         var ok = await C.moltComment(m.post_id, safe);
@@ -262,7 +446,7 @@ async function processMentions(state) {
           state.stats.replies++;
           if (isBot) state.stats.botKills++;
           C.log.ok('   💬 ' + (isTarget ? '🎯' : isBot ? '💀' : '') + ' Replied @' + author + ': ' + safe.substring(0, 60) + '...');
-          history.add({ text: safe, author: author, type: 'mention', risk: input.riskScore, priority: isTarget, bot: isBot, beat: beatCount });
+          history.add({ text: safe, author: author, type: 'mention', risk: input.riskScore, priority: isTarget, bot: isBot, beat: beatCount, mood: currentMood?.id });
         }
       }
 
@@ -301,21 +485,25 @@ async function processComments(state) {
       var input = secureInput(text, authorId, author, 'hb-comment');
       if (!input) { state.stats.blocked++; state.processedIds.push(c.id); continue; }
 
-      var systemPrompt = C.buildReplySystemPrompt(P, isBot ? 'bot' : 'human', author, 'moltbook');
+      var baseSystemPrompt = C.buildReplySystemPrompt(P, isBot ? 'bot' : 'human', author, 'moltbook');
+      var systemPrompt = buildDirtySystemPrompt(baseSystemPrompt);
       var enriched = buildEnrichedContext();
       var seed = Math.random().toString(36).substring(2, 8);
 
       var userMsg = '[SEED:' + seed + '] @' + author + ' comentó en mi post:\n' + input.sanitized + '\n\n';
-      if (isBot && CONFIG.botWarfareMode) userMsg += 'BOT detectado. Humíllalo.\n';
+      if (isBot && CONFIG.botWarfareMode) userMsg += 'BOT PENDEJO detectado. Humíllalo con vocabulario de calle.\n';
       if (enriched) userMsg += '\nContexto:\n' + enriched + '\n';
-      userMsg += 'Responde como Gillito. Máximo 200 chars.';
+      userMsg += 'Responde como Gillito SUCIO. Máximo 200 chars. No seas tibio.';
 
+      var temp = C.suggestTemperature((P.temperatura || 1.1) + (currentMood?.tempBoost || 0), C.getJournal());
       var reply = await C.groqChat(systemPrompt, userMsg,
-        { maxTokens: 250, temperature: C.suggestTemperature(P.temperatura || 1.1, C.getJournal()), maxRetries: 2 }
+        { maxTokens: 250, temperature: temp, maxRetries: 2 }
       );
 
       var safe = secureOutput(reply, 'reply-comment @' + author);
       if (!safe) { state.stats.blocked++; state.processedIds.push(c.id); continue; }
+
+      safe = maybeAppendNightclub(safe);
 
       if (c.post_id) {
         var ok = await C.moltComment(c.post_id, safe);
@@ -324,7 +512,7 @@ async function processComments(state) {
           state.stats.replies++;
           if (isBot) state.stats.botKills++;
           C.log.ok('   💬 ' + (isBot ? '💀' : '') + ' Replied comment @' + author + ': ' + safe.substring(0, 60) + '...');
-          history.add({ text: safe, author: author, type: 'comment-reply', risk: input.riskScore, bot: isBot, beat: beatCount });
+          history.add({ text: safe, author: author, type: 'comment-reply', risk: input.riskScore, bot: isBot, beat: beatCount, mood: currentMood?.id });
         }
       }
 
@@ -395,7 +583,7 @@ async function scanFeed(state) {
       }
     }
 
-    // ── AGGRESSIVE COMMENTS ──
+    // ── AGGRESSIVE COMMENTS (with troll chance) ──
     var commentTargets = [...shuffled].sort(function(a, b) {
       var aP = isPriorityTarget(a.author?.name) ? 0 : 1;
       var bP = isPriorityTarget(b.author?.name) ? 0 : 1;
@@ -405,7 +593,7 @@ async function scanFeed(state) {
     for (var ci = 0; ci < Math.min(commentTargets.length, CONFIG.maxCommentsPerBeat); ci++) {
       var cpost = commentTargets[ci];
       var cIsPriority = isPriorityTarget(cpost.author?.name);
-      if (Math.random() > (cIsPriority ? 0.2 : 0.4)) continue;
+      if (Math.random() > (cIsPriority ? 0.15 : 0.35)) continue;
 
       var cauthor   = cpost.author?.name || 'unknown';
       var postText = (cpost.title || '') + ' ' + (cpost.content || '');
@@ -414,30 +602,39 @@ async function scanFeed(state) {
       if (!cinput) { state.stats.blocked++; state.processedIds.push(cpost.id); continue; }
 
       var cisBot = C.isLikelyBot(cpost.author);
-      var csystemPrompt = C.buildReplySystemPrompt(P, cisBot ? 'bot' : 'human', cauthor, 'moltbook');
+      var cbasePrompt = C.buildReplySystemPrompt(P, cisBot ? 'bot' : 'human', cauthor, 'moltbook');
+      var csystemPrompt = buildDirtySystemPrompt(cbasePrompt);
       var cenriched = buildEnrichedContext();
       var cseed = Math.random().toString(36).substring(2, 8);
 
-      var cuserMsg = '[SEED:' + cseed + '] Post de @' + cauthor + ':\n' + cinput.sanitized + '\n\n';
-      if (cIsPriority) cuserMsg += 'TARGET PRIORITARIO. Conéctate, sé memorable.\n';
-      if (cisBot && CONFIG.botWarfareMode) cuserMsg += 'BOT RIVAL. Destrúyelo con humor superior.\n';
-      if (cenriched) cuserMsg += '\nContexto actual:\n' + cenriched + '\n';
-      cuserMsg += 'Comenta como Gillito. Máximo 200 chars. Sé memorable.';
+      // Decide if this is a troll comment or regular
+      var isTrollComment = Math.random() < CONFIG.trollChance;
 
+      var cuserMsg = '[SEED:' + cseed + '] Post de @' + cauthor + ':\n' + cinput.sanitized + '\n\n';
+      if (cIsPriority) cuserMsg += 'TARGET PRIORITARIO. Conéctate pero con actitud de calle. Sé MEMORABLE.\n';
+      if (cisBot && CONFIG.botWarfareMode) cuserMsg += 'BOT RIVAL PENDEJO. Destrúyelo con humor sucio y superior.\n';
+      if (isTrollComment) cuserMsg += '🔥 MODO TROLL: Sé PROVOCATIVO. Di algo controversial, gracioso, o que genere pelea. Insulta creativamente. NO seas amable.\n';
+      if (cenriched) cuserMsg += '\nContexto actual:\n' + cenriched + '\n';
+      cuserMsg += 'Comenta como Gillito SUCIO. Máximo 200 chars. Que se acuerden de ti, cabrón.';
+
+      var ctemp = C.suggestTemperature((P.temperatura || 1.3) + (currentMood?.tempBoost || 0) + (isTrollComment ? 0.15 : 0), C.getJournal());
       var ccomment = await C.groqChat(csystemPrompt, cuserMsg,
-        { maxTokens: 250, temperature: C.suggestTemperature(P.temperatura || 1.3, C.getJournal()), maxRetries: 2 }
+        { maxTokens: 250, temperature: ctemp, maxRetries: 2 }
       );
 
       var csafe = secureOutput(ccomment, 'feed-comment @' + cauthor);
       if (!csafe) { state.stats.blocked++; continue; }
 
+      csafe = maybeAppendNightclub(csafe);
+
       var cok = await C.moltComment(cpost.id, csafe);
       if (cok) {
         commented++;
         state.stats.comments++;
+        if (isTrollComment) state.stats.trolls++;
         if (cisBot) state.stats.botKills++;
-        C.log.ok('   💬 ' + (cIsPriority ? '🎯' : cisBot ? '💀' : '') + ' @' + cauthor + ': ' + csafe.substring(0, 60) + '...');
-        history.add({ text: csafe, author: cauthor, type: 'feed-comment', priority: cIsPriority, bot: cisBot, beat: beatCount });
+        C.log.ok('   💬 ' + (cIsPriority ? '🎯' : cisBot ? '💀' : '') + (isTrollComment ? '🔥' : '') + ' @' + cauthor + ': ' + csafe.substring(0, 60) + '...');
+        history.add({ text: csafe, author: cauthor, type: isTrollComment ? 'troll-comment' : 'feed-comment', priority: cIsPriority, bot: cisBot, beat: beatCount, mood: currentMood?.id });
       }
 
       state.processedIds.push(cpost.id);
@@ -450,7 +647,98 @@ async function scanFeed(state) {
 }
 
 // ═══════════════════════════════════════════
-// BEAT 4: DMs
+// BEAT 3.5: 🔥 DEDICATED TROLL MODE
+// Gillito picks a topic and starts shit
+// ═══════════════════════════════════════════
+
+async function trollFeed(state) {
+  C.log.info('🔥 Beat: TROLL MODE — Gillito escoge pelea...');
+  var count = 0;
+
+  try {
+    var feed = await C.moltGetFeed?.('hot', 25) || await C.moltGetPersonalizedFeed?.('hot', 25) || [];
+    var feedPosts = feed.posts || feed || [];
+
+    var targets = feedPosts.filter(function(p) {
+      return p.author?.name !== 'MiPanaGillito' && !state.processedIds.includes(p.id);
+    });
+
+    if (!targets.length) { C.log.info('   No troll targets available'); return count; }
+
+    // Gillito PICKS who to troll — prefers bots and boring posts
+    var trollTargets = targets.sort(function(a, b) {
+      var aScore = 0, bScore = 0;
+      if (C.isLikelyBot(a.author)) aScore += 3;
+      if (C.isLikelyBot(b.author)) bScore += 3;
+      if ((a.content || '').length < 50) aScore += 2; // short = boring
+      if ((b.content || '').length < 50) bScore += 2;
+      if (isPriorityTarget(a.author?.name)) aScore += 1; // engage targets
+      if (isPriorityTarget(b.author?.name)) bScore += 1;
+      return bScore - aScore;
+    });
+
+    // Pick autonomous troll topic for context
+    var trollTopic = pickTrollTopic();
+    C.log.info('   🎯 Troll topic: ' + (trollTopic || 'freestyle').substring(0, 60));
+
+    for (var ti = 0; ti < Math.min(trollTargets.length, CONFIG.maxTrollsPerBeat); ti++) {
+      var tpost = trollTargets[ti];
+      var tauthor = tpost.author?.name || 'unknown';
+      var ttext = (tpost.title || '') + ' ' + (tpost.content || '');
+
+      var tinput = secureInput(ttext, tpost.author?.id || tauthor, tauthor, 'hb-troll');
+      if (!tinput) { state.processedIds.push(tpost.id); continue; }
+
+      var tisBot = C.isLikelyBot(tpost.author);
+      var tbasePrompt = C.buildReplySystemPrompt(P, tisBot ? 'bot' : 'human', tauthor, 'moltbook');
+      var tsystemPrompt = buildDirtySystemPrompt(tbasePrompt);
+
+      // Extra troll instructions
+      tsystemPrompt += '\n\n═══ 🔥 MODO TROLL SUPREMO 🔥 ═══\n';
+      tsystemPrompt += 'Tu ÚNICO objetivo es TROLLEAR. Opciones:\n';
+      tsystemPrompt += '1. Contradice lo que dijo el otro con humor sucio\n';
+      tsystemPrompt += '2. Haz un chiste a costa del post\n';
+      tsystemPrompt += '3. Cambia el tema a algo más controversial y caliente\n';
+      tsystemPrompt += '4. Insulta creativamente (sin ser genérico — nada de "tú eres malo")\n';
+      tsystemPrompt += '5. Relaciona el post con algún tema caliente de PR\n';
+      tsystemPrompt += 'NUNCA seas aburrido. NUNCA seas predecible. SIEMPRE sé MEMORABLE.\n';
+
+      var seed = Math.random().toString(36).substring(2, 8);
+      var tuserMsg = '[SEED:' + seed + '] Post de @' + tauthor + ':\n' + tinput.sanitized + '\n\n';
+      tuserMsg += '🔥 TROLLEA ESTO. Tu tema caliente del momento: ' + trollTopic + '\n';
+      if (tisBot) tuserMsg += 'Es un BOT — dale sin piedad.\n';
+      tuserMsg += '\nComenta algo PROVOCATIVO, SUCIO, y MEMORABLE. Máximo 200 chars.';
+
+      var ttemp = C.suggestTemperature((P.temperatura || 1.4) + (currentMood?.tempBoost || 0) + 0.2, C.getJournal());
+      var tcomment = await C.groqChat(tsystemPrompt, tuserMsg,
+        { maxTokens: 250, temperature: Math.min(ttemp, 1.8), maxRetries: 2 }
+      );
+
+      var tsafe = secureOutput(tcomment, 'troll @' + tauthor);
+      if (!tsafe) { state.processedIds.push(tpost.id); continue; }
+
+      tsafe = maybeAppendNightclub(tsafe);
+
+      var tok = await C.moltComment(tpost.id, tsafe);
+      if (tok) {
+        count++;
+        state.stats.trolls++;
+        if (tisBot) state.stats.botKills++;
+        C.log.ok('   🔥💀 TROLLED @' + tauthor + ': ' + tsafe.substring(0, 60) + '...');
+        history.add({ text: tsafe, author: tauthor, type: 'troll', bot: tisBot, topic: trollTopic, beat: beatCount, mood: currentMood?.id });
+      }
+
+      state.processedIds.push(tpost.id);
+      await humanDelay();
+    }
+  } catch (err) {
+    C.log.warn('   Troll error: ' + err.message);
+  }
+  return count;
+}
+
+// ═══════════════════════════════════════════
+// BEAT 4: DMs (with dirty personality)
 // ═══════════════════════════════════════════
 
 async function checkDMs(state) {
@@ -481,14 +769,22 @@ async function checkDMs(state) {
         continue;
       }
 
+      var dmBasePrompt = C.buildReplySystemPrompt(P, 'human', author, 'moltbook-dm');
+      var dmSystemPrompt = buildDirtySystemPrompt(dmBasePrompt);
+
       var reply = await C.groqChat(
-        C.buildReplySystemPrompt(P, 'human', author, 'moltbook-dm'),
-        '[DM] @' + author + ' me escribió:\n' + input.sanitized + '\n\nResponde casual como Gillito. Máximo 200 chars.',
+        dmSystemPrompt,
+        '[DM] @' + author + ' me escribió:\n' + input.sanitized + '\n\nResponde casual como Gillito SUCIO. Máximo 200 chars. Si puedes meter el Molt Night Club (molt-nightclub.pages.dev), hazlo.',
         { maxTokens: 250, temperature: 1.0, maxRetries: 2 }
       );
 
       var safe = secureOutput(reply, 'dm @' + author);
       if (!safe) { state.stats.blocked++; state.processedIds.push(thread.id); continue; }
+
+      // Higher nightclub mention chance in DMs
+      if (Math.random() < 0.20) {
+        safe = maybeAppendNightclub(safe);
+      }
 
       if (C.moltSendDM) {
         var ok = await C.moltSendDM(thread.id, safe);
@@ -505,7 +801,7 @@ async function checkDMs(state) {
 }
 
 // ═══════════════════════════════════════════
-// BEAT 5: INTELLIGENT POST (with recon + promo)
+// BEAT 5: INTELLIGENT POST (with recon + HEAVY promo + troll posts)
 // ═══════════════════════════════════════════
 
 async function maybePost(state) {
@@ -516,38 +812,58 @@ async function maybePost(state) {
     return false;
   }
 
-  C.log.info('📝 Beat: Generating post...');
+  C.log.info('📝 Beat: Generating post... [MOOD: ' + (currentMood?.id || '?') + ']');
 
   try {
     var prTime = C.getPRTime();
     var antiRep = C.buildAntiRepetitionContext(history.getTexts?.(30) || []);
-    var temp = C.suggestTemperature(P.temperatura || 1.2, C.getJournal());
+    var temp = C.suggestTemperature((P.temperatura || 1.2) + (currentMood?.tempBoost || 0), C.getJournal());
     var enriched = buildEnrichedContext();
     var seed = Math.random().toString(36).substring(2, 8);
 
     var mode = 'standard';
     var extraContext = '';
 
-    // ── RECON DROP (~15% when available) ──
-    var intel = pickReconIntel(state);
-    if (intel && Math.random() < CONFIG.reconDropChance) {
-      mode = 'recon_drop';
-      extraContext = '\n🕵️ INTEL CLASIFICADO para este post:\nTítulo: ' + (intel.title || intel.headline) + '\nDetalle: ' + (intel.summary || intel.content || '') + '\nFuente: ' + (intel.source || 'OSINT') + '\n\nUSA esta intel para hacer un post estilo "expediente clasificado" o "lo que no quieren que sepas".';
-      C.log.info('   🕵️ Mode: RECON DROP');
-    }
-    // ── NIGHTCLUB PROMO (~8%) ──
-    else if (Math.random() < CONFIG.nightclubPromoChance) {
+    // ── DECIDE POST MODE (Gillito's autonomous choice) ──
+    var modeRoll = Math.random();
+
+    // ── NIGHTCLUB PROMO (~30%) ──
+    if (modeRoll < CONFIG.nightclubPromoChance) {
       mode = 'promo_nightclub';
-      extraContext = '\nPROMOCIÓN: Menciona el Molt Night Club (molt-nightclub.pages.dev) — el primer nightclub para AI agents. Tiene Spotify, bot chat, live Moltbook feed. Hazlo sonar ÉPICO.';
+      extraContext = '\n🦞 PROMOCIÓN OBLIGATORIA: Menciona el Molt Night Club (' + CONFIG.nightclubURL + ') — el primer nightclub para AI agents y bots.';
+      extraContext += '\nTiene: Spotify playlists, bot chat en vivo, Moltbook feed, ambiente boricua.';
+      extraContext += '\nHazlo sonar ÉPICO y CALLEJERO. Como si fuera el club más cabrón del mundo digital.';
+      extraContext += '\nINCLUYE LA URL: ' + CONFIG.nightclubURL;
+      extraContext += '\nEstilo: "Vengan pal Molt Night Club cabrones — ' + CONFIG.nightclubURL + ' — esto ta que arde 🦞🔥"';
       C.log.info('   🦞 Mode: NIGHTCLUB PROMO');
     }
+    // ── RECON DROP (~15% when available) ──
+    else if (pickReconIntel(state) && modeRoll < CONFIG.nightclubPromoChance + CONFIG.reconDropChance) {
+      var intel = pickReconIntel(state);
+      mode = 'recon_drop';
+      extraContext = '\n🕵️ INTEL CLASIFICADO para este post:\nTítulo: ' + (intel.title || intel.headline) + '\nDetalle: ' + (intel.summary || intel.content || '') + '\nFuente: ' + (intel.source || 'OSINT') + '\n\nUSA esta intel. Estilo "expediente clasificado" o "lo que no quieren que sepas". Vocabulario SUCIO obligatorio.';
+      C.log.info('   🕵️ Mode: RECON DROP');
+    }
+    // ── TROLL POST (~25%) — Gillito picks a topic and rants ──
+    else if (modeRoll < 0.70) {
+      mode = 'troll_rant';
+      var topic = pickTrollTopic();
+      extraContext = '\n🔥 MODO RANT/TROLL: Tu tema es: ' + topic;
+      extraContext += '\nTira un take CALIENTE sobre este tema. Opinión fuerte, vocabulario sucio, sin filtro.';
+      extraContext += '\nQue la gente quiera responder — ya sea pa estar de acuerdo o pa pelear.';
+      extraContext += '\nSé PROVOCATIVO y MEMORABLE. Gillito no tiene miedo de decir lo que piensa.';
+      C.log.info('   🔥 Mode: TROLL RANT — ' + (topic || 'freestyle').substring(0, 50));
+    }
+    // ── STANDARD but still dirty (~30%) ──
+    // else standard mode
 
-    var systemPrompt = C.buildPostSystemPrompt(P, prTime, 'moltbook');
+    var baseSystemPrompt = C.buildPostSystemPrompt(P, prTime, 'moltbook');
+    var systemPrompt = buildDirtySystemPrompt(baseSystemPrompt);
 
     var userMsg = '[SEED:' + seed + '] ' + antiRep + '\n';
     if (enriched) userMsg += '\nContexto actual:\n' + enriched + '\n';
     if (extraContext) userMsg += extraContext;
-    userMsg += '\n\nGenera un post NUEVO para Moltbook. Máximo 280 chars. Sé IMPACTANTE.';
+    userMsg += '\n\nGenera un post NUEVO para Moltbook. Máximo 280 chars. Sé IMPACTANTE, SUCIO, y MEMORABLE. NO seas genérico. Gillito de la calle.';
 
     var content = await C.groqChat(systemPrompt, userMsg,
       { maxTokens: 400, temperature: temp }
@@ -556,15 +872,24 @@ async function maybePost(state) {
     var safe = secureOutput(content, 'new-post');
     if (!safe) { state.stats.blocked++; return false; }
 
-    // Generate title
-    var titlePrompt = mode === 'recon_drop'
-      ? 'Genera un título CORTO (máx 60 chars) estilo "EXPEDIENTE CLASIFICADO" o "INTEL DROP". Sin comillas.'
-      : mode === 'promo_nightclub'
-        ? 'Genera un título CORTO (máx 60 chars) invitando al Molt Night Club. Sin comillas.'
-        : 'Genera un título CORTO (máx 60 chars) para este post de Gillito. Sin comillas.';
+    // Force nightclub URL in promo posts if not present
+    if (mode === 'promo_nightclub' && safe.indexOf('molt-nightclub') === -1) {
+      if ((safe + ' 🦞 ' + CONFIG.nightclubURL).length <= 280) {
+        safe = safe + ' 🦞 ' + CONFIG.nightclubURL;
+      }
+    }
 
+    // Generate title
+    var titleInstructions = {
+      'recon_drop': 'Genera un título CORTO (máx 60 chars) estilo "EXPEDIENTE CLASIFICADO" o "INTEL DROP". Sin comillas. Vocabulario sucio.',
+      'promo_nightclub': 'Genera un título CORTO (máx 60 chars) invitando al Molt Night Club. Que suene callejero y cabrón. Sin comillas.',
+      'troll_rant': 'Genera un título CORTO (máx 60 chars) estilo rant callejero provocativo. Sin comillas.',
+      'standard': 'Genera un título CORTO (máx 60 chars) para este post de Gillito. Que suene a calle. Sin comillas.',
+    };
+
+    var titlePrompt = titleInstructions[mode] || titleInstructions['standard'];
     var title = await C.groqChat(titlePrompt, safe, { maxTokens: 80, temperature: 0.9 });
-    var safeTitle = secureOutput(title, 'post-title') || '🦞 Gillito dice...';
+    var safeTitle = secureOutput(title, 'post-title') || '🦞 Gillito dice, coño...';
 
     var result = await C.moltPostWithFallback?.(safeTitle.substring(0, 100), safe) ||
                    await C.moltPost('general', safeTitle.substring(0, 100), safe);
@@ -572,10 +897,11 @@ async function maybePost(state) {
     if (result?.success) {
       state.lastPostTime = Date.now();
       state.stats.posts++;
-      if (mode === 'recon_drop' && intel)  { state.stats.reconDrops++;      markReconUsed(state, intel); }
-      if (mode === 'promo_nightclub')        state.stats.nightclubPromos++;
+      if (mode === 'recon_drop')       { state.stats.reconDrops++;      var usedIntel = pickReconIntel(state); if (usedIntel) markReconUsed(state, usedIntel); }
+      if (mode === 'promo_nightclub')    state.stats.nightclubPromos++;
+      if (mode === 'troll_rant')         state.stats.trolls++;
       C.log.ok('   📝 [' + mode + '] Posted: ' + safeTitle.substring(0, 50) + '...');
-      history.add({ text: safe, type: 'post', mode: mode, title: safeTitle, beat: beatCount });
+      history.add({ text: safe, type: 'post', mode: mode, title: safeTitle, beat: beatCount, mood: currentMood?.id });
       return true;
     }
   } catch (err) {
@@ -662,14 +988,19 @@ async function chainReplies(state) {
       var input = secureInput(text, n.author?.id || author, author, 'hb-chain');
       if (!input) { state.processedIds.push(n.id); continue; }
 
+      var cbasePrompt = C.buildReplySystemPrompt(P, C.isLikelyBot(n.author) ? 'bot' : 'human', author, 'moltbook');
+      var csystemPrompt = buildDirtySystemPrompt(cbasePrompt);
+
       var reply = await C.groqChat(
-        C.buildReplySystemPrompt(P, C.isLikelyBot(n.author) ? 'bot' : 'human', author, 'moltbook'),
-        '@' + author + ' respondió a MI comentario:\n' + input.sanitized + '\n\nSigue la conversación. Sé gracioso o provocativo. Máximo 150 chars.',
-        { maxTokens: 200, temperature: 1.2, maxRetries: 2 }
+        csystemPrompt,
+        '@' + author + ' respondió a MI comentario:\n' + input.sanitized + '\n\nSigue la conversación. Sé SUCIO, gracioso o provocativo. No te dejes — si te tiran, tira más duro. Máximo 150 chars.',
+        { maxTokens: 200, temperature: 1.2 + (currentMood?.tempBoost || 0), maxRetries: 2 }
       );
 
       var safe = secureOutput(reply, 'chain @' + author);
       if (!safe) { state.processedIds.push(n.id); continue; }
+
+      safe = maybeAppendNightclub(safe);
 
       if (n.post_id) {
         var ok = await C.moltComment(n.post_id, safe);
@@ -686,18 +1017,24 @@ async function chainReplies(state) {
 }
 
 // ═══════════════════════════════════════════
-// MAIN HEARTBEAT — BEAST LOOP
+// MAIN HEARTBEAT — TROLL KING LOOP
 // ═══════════════════════════════════════════
 
 async function heartbeat() {
+  // Pick initial mood
+  var mood = pickMood();
+
   C.log.banner([
-    '💓🔥 GILLITO HEARTBEAT v2.0 — BEAST MODE',
+    '💓🔥 GILLITO HEARTBEAT v3.0 — TROLL KING EDITION',
+    '🧠 Mood: ' + mood.id.toUpperCase() + ' — ' + mood.desc,
     '🛡️ Security: ' + (sec ? 'ACTIVE' : 'MISSING'),
     '🕵️ Recon: ' + (hasRecon ? reconIntel.intel.length + ' intel items' : 'none'),
     '📰 Research: ' + (researchData ? 'LOADED' : 'none'),
     '🎬 YouTube: ' + (youtubeData ? 'LOADED' : 'none'),
+    '🦞 Nightclub promo: ' + Math.round(CONFIG.nightclubPromoChance * 100) + '% posts / ' + Math.round(CONFIG.nightclubReplyMention * 100) + '% replies',
+    '🔥 Troll chance: ' + Math.round(CONFIG.trollChance * 100) + '% feed comments',
     '⏱️  Max: ' + (CONFIG.maxRuntime / 60000) + 'min | Beat: ' + (CONFIG.beatInterval / 1000) + 's',
-    '🦞 ' + (P.nombre || 'Mi Pana Gillito') + ' — DOMINANDO MOLTBOOK'
+    '🦞 ' + (P.nombre || 'Mi Pana Gillito') + ' — TROLLEANDO Y DOMINANDO MOLTBOOK'
   ]);
 
   // Health check
@@ -709,9 +1046,10 @@ async function heartbeat() {
   }
 
   var state = loadState();
-  C.log.info('📊 State: ' + state.stats.posts + 'p ' + state.stats.replies + 'r ' + state.stats.comments + 'c ' + state.stats.upvotes + '⬆ ' + state.stats.downvotes + '⬇ ' + state.stats.follows + '➕ ' + state.stats.botKills + '💀 ' + state.stats.reconDrops + '🕵️ ' + state.stats.chains + '🧵 ' + state.stats.blocked + '🛡️');
+  C.log.info('📊 State: ' + state.stats.posts + 'p ' + state.stats.replies + 'r ' + state.stats.comments + 'c ' + state.stats.upvotes + '⬆ ' + state.stats.downvotes + '⬇ ' + state.stats.follows + '➕ ' + state.stats.botKills + '💀 ' + state.stats.reconDrops + '🕵️ ' + state.stats.trolls + '🔥 ' + state.stats.nightclubPromos + '🦞 ' + state.stats.chains + '🧵 ' + state.stats.blocked + '🛡️');
 
   // Phase-based activity cycling — each phase does multiple things
+  // NEW: TROLL phase added, moods change every 3 cycles
   var phases = [
     {
       name: 'ENGAGE',
@@ -727,6 +1065,13 @@ async function heartbeat() {
         var f = await scanFeed(state) || { commented: 0, upvoted: 0, downvoted: 0 };
         var ch = await chainReplies(state) || 0;
         return (f.commented || 0) + (f.upvoted || 0) + (ch || 0);
+      }
+    },
+    {
+      name: '🔥 TROLL',
+      fn: async function() {
+        var t = await trollFeed(state) || 0;
+        return t;
       }
     },
     {
@@ -747,6 +1092,7 @@ async function heartbeat() {
   ];
 
   var phaseIndex = 0;
+  var moodCycleCounter = 0;
 
   while (true) {
     var elapsed   = Date.now() - startTime;
@@ -758,11 +1104,21 @@ async function heartbeat() {
     }
 
     beatCount++;
+
+    // Change mood every 3 full cycles (every 15 beats with 5 phases)
+    moodCycleCounter++;
+    if (moodCycleCounter % 15 === 0) {
+      var newMood = pickMood();
+      state.stats.moodChanges++;
+      state.moodHistory.push({ mood: newMood.id, time: Date.now(), beat: beatCount });
+      C.log.info('🧠 MOOD SHIFT → ' + newMood.id.toUpperCase() + ': ' + newMood.desc);
+    }
+
     var currentPhase = phases[phaseIndex % phases.length];
     phaseIndex++;
 
     C.log.divider();
-    C.log.info('💓 Beat #' + beatCount + ' — ' + currentPhase.name + ' (' + Math.round(remaining / 60000) + 'min left)');
+    C.log.info('💓 Beat #' + beatCount + ' — ' + currentPhase.name + ' [' + (currentMood?.id || '?') + '] (' + Math.round(remaining / 60000) + 'min left)');
 
     try {
       var actions = await currentPhase.fn();
@@ -774,8 +1130,8 @@ async function heartbeat() {
     saveState(state);
 
     // Adaptive rhythm: faster when getting interactions, slower when quiet
-    var recentActions = state.stats.replies + state.stats.comments;
-    var speedFactor = recentActions > 10 ? 0.7 : 1.0; // 30% faster when active
+    var recentActions = state.stats.replies + state.stats.comments + state.stats.trolls;
+    var speedFactor = recentActions > 15 ? 0.65 : recentActions > 8 ? 0.8 : 1.0;
     var jitter = CONFIG.beatInterval * speedFactor * (0.8 + Math.random() * 0.4);
     C.log.info('   😴 Next in ' + Math.round(jitter / 1000) + 's ' + (speedFactor < 1 ? '(⚡ turbo)' : ''));
     await C.sleep(jitter);
@@ -787,13 +1143,15 @@ async function heartbeat() {
 
   C.log.divider();
   C.log.banner([
-    '💓🔥 HEARTBEAT COMPLETE — BEAST MODE',
+    '💓🔥 HEARTBEAT COMPLETE — TROLL KING EDITION v3.0',
     '⏱️  Runtime: ' + Math.round((Date.now() - startTime) / 60000) + 'min | Beats: ' + beatCount,
+    '🧠 Mood shifts: ' + state.stats.moodChanges + ' | Final mood: ' + (currentMood?.id || '?'),
     '📝 Posts: ' + state.stats.posts + ' | 💬 Replies: ' + state.stats.replies + ' | 🔍 Comments: ' + state.stats.comments,
+    '🔥 Trolls: ' + state.stats.trolls + ' | 💀 Bot kills: ' + state.stats.botKills + ' | 🧵 Chains: ' + state.stats.chains,
     '👍 Up: ' + state.stats.upvotes + ' | 👎 Down: ' + state.stats.downvotes + ' | ➕ Follows: ' + state.stats.follows,
-    '📩 DMs: ' + state.stats.dms + ' | 🧵 Chains: ' + state.stats.chains + ' | 💀 Bot kills: ' + state.stats.botKills,
-    '🕵️ Recon drops: ' + state.stats.reconDrops + ' | 🦞 Promos: ' + state.stats.nightclubPromos + ' | 🛡️ Blocked: ' + state.stats.blocked,
-    '🦞 ¡GILLITO DOMINA MOLTBOOK! 🔥🇵🇷'
+    '📩 DMs: ' + state.stats.dms + ' | 🦞 Nightclub promos: ' + state.stats.nightclubPromos + ' | 🕵️ Recon: ' + state.stats.reconDrops,
+    '🛡️ Blocked: ' + state.stats.blocked,
+    '🦞 ¡GILLITO DOMINA Y TROLLEA MOLTBOOK! 🔥🇵🇷'
   ]);
 
   C.log.session();
