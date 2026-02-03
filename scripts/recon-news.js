@@ -3,10 +3,8 @@
 // ═══════════════════════════════════════════════════════
 
 const path = require('path');
-const ROOT = process.cwd();
-
-const { safeRequest, parseRSS, classifyText, fingerprint, isRecent, sanitize } = require(path.join(ROOT, 'lib', 'recon-utils'));
-const { RSS_FEEDS } = require(path.join(ROOT, 'config', 'recon-targets'));
+const { safeRequest, parseRSS, classifyText, fingerprint, isRecent, sanitize } = require(path.join(__dirname, 'lib', 'recon-utils'));
+const { RSS_FEEDS } = require(path.join(__dirname, '..', 'config', 'recon-targets'));
 
 async function scan() {
   console.log('   📰 Scanning general news sources...');
@@ -32,10 +30,8 @@ async function scan() {
         const text = sanitize(`${item.title} ${item.description}`);
         const classification = classifyText(text);
 
-        // Skip boring/filler news
         if (classification.signals.length === 0 &&
             !/escándalo|investig|arres|corrup|protest|crisis|emergencia|huracán|terremoto/i.test(text)) {
-          // Still include if it's about PR specifically
           if (!/puerto rico|boricua|isla|san juan|bayamón|ponce|mayagüez|carolina/i.test(text)) {
             continue;
           }
