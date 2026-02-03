@@ -2,8 +2,11 @@
 // 🏛️ RECON MODULE: Politicians & Government
 // ═══════════════════════════════════════════════════════════════════════════════
 
-const { safeRequest, parseRSS, extractEntities, classifyText, fingerprint, isRecent, sanitize } = require('../lib/recon-utils');
-const { POLITICIANS, RSS_FEEDS } = require('../config/recon-targets');
+const path = require('path');
+const ROOT = process.cwd();
+
+const { safeRequest, parseRSS, extractEntities, classifyText, fingerprint, isRecent, sanitize } = require(path.join(ROOT, 'lib', 'recon-utils'));
+const { POLITICIANS, RSS_FEEDS } = require(path.join(ROOT, 'config', 'recon-targets'));
 
 async function scan() {
   console.log('   🏛️ Scanning political sources...');
@@ -30,7 +33,6 @@ async function scan() {
         const entities = extractEntities(text, POLITICIANS);
         const classification = classifyText(text);
 
-        // Only keep items that match a target OR are clearly political
         if (entities.length === 0 && !classification.signals.includes('scandal') &&
             !/politic|gobierno|legisl|senado|cámara|gobernador|alcalde/i.test(text)) {
           continue;
