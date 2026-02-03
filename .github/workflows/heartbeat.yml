@@ -1,26 +1,21 @@
-name: 💓 Gillito Heartbeat v1.0
-
+name: 💓🔥 Gillito Heartbeat v2.0 BEAST MODE
 on:
   schedule:
-    - cron: '*/30 * * * *'    # Every 30 min — heartbeat runs ~25min then exits
+    - cron: '*/30 * * * *'    # Every 30 min — runs ~25min then exits
   workflow_dispatch:
-
 concurrency:
   group: gillito-heartbeat
-  cancel-in-progress: false      # Don't kill running heartbeat
-
+  cancel-in-progress: false
 jobs:
   heartbeat:
     runs-on: ubuntu-latest
-    timeout-minutes: 28          # Hard kill at 28min (safety net)
-
+    timeout-minutes: 28
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: '22' }
 
       # ═══ RESTORE ALL PERSISTENT STATE ═══
-
       - name: 📥 Restore heartbeat state
         uses: actions/cache@v4
         with:
@@ -49,10 +44,32 @@ jobs:
           key: heartbeat-journal-${{ github.run_id }}
           restore-keys: heartbeat-journal-
 
-      # ═══ RUN HEARTBEAT ═══
+      # ═══ 🧠 INTELLIGENCE DATA ═══
+      - name: 🕵️ Restore recon intel
+        uses: actions/cache@v4
+        with:
+          path: .gillito-recon-intel.json
+          key: recon-intel-${{ github.run_id }}
+          restore-keys: recon-intel-
 
-      - name: 💓 Gillito Heartbeat
+      - name: 📰 Restore research data
+        uses: actions/cache@v4
+        with:
+          path: .gillito-research.json
+          key: gillito-research-${{ github.run_id }}
+          restore-keys: gillito-research-
+
+      - name: 🎬 Restore YouTube learnings
+        uses: actions/cache@v4
+        with:
+          path: .gillito-youtube-learnings.json
+          key: yt-learnings-${{ github.run_id }}
+          restore-keys: yt-learnings-
+
+      # ═══ 🔥 RUN HEARTBEAT ═══
+      - name: 💓🔥 Gillito BEAST MODE
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           MOLTBOOK_API_KEY: ${{ secrets.MOLTBOOK_API_KEY }}
         run: node scripts/heartbeat.js
