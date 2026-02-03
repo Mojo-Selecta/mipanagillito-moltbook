@@ -1,11 +1,13 @@
-name: 🕵️ Gillito - Deep Recon OSINT v2
+name: 🕵️ Gillito - Deep Recon OSINT v2.1
 on:
   schedule:
     - cron: '0 */6 * * *'    # Every 6 hours
   workflow_dispatch:
+
 concurrency:
   group: gillito-recon
   cancel-in-progress: false
+
 jobs:
   recon:
     runs-on: ubuntu-latest
@@ -14,15 +16,21 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: '22' }
+
       # ═══ 🗄️ DB SYNC — DOWNLOAD ═══
       - name: 📥 Sync DB from cloud
         env:
           GILLITO_DB_URL: https://gillito-db.vip-joeojeda.workers.dev
           GILLITO_DB_KEY: ${{ secrets.GILLITO_DB_KEY }}
         run: node scripts/db-sync.js download
-      # ═══ RECON ═══
-      - name: 🕵️ Run Deep Recon v2
+
+      # ═══ RECON v2.1 (includes Epstein Files investigation) ═══
+      - name: 🕵️ Run Deep Recon v2.1
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: node scripts/recon.js
+
       # ═══ 🗄️ DB SYNC — UPLOAD ═══
       - name: 📤 Sync DB to cloud
         if: always()
