@@ -2,8 +2,11 @@
 // 🔌 RECON MODULE: LUMA Energy & Infrastructure
 // ═══════════════════════════════════════════════════════════════════════════════
 
-const { safeRequest, parseRSS, extractEntities, classifyText, fingerprint, isRecent, sanitize } = require('../lib/recon-utils');
-const { ENERGY, RSS_FEEDS } = require('../config/recon-targets');
+const path = require('path');
+const ROOT = process.cwd();
+
+const { safeRequest, parseRSS, extractEntities, classifyText, fingerprint, isRecent, sanitize } = require(path.join(ROOT, 'lib', 'recon-utils'));
+const { ENERGY, RSS_FEEDS } = require(path.join(ROOT, 'config', 'recon-targets'));
 
 async function scan() {
   console.log('   🔌 Scanning energy & infrastructure sources...');
@@ -30,7 +33,6 @@ async function scan() {
         const entities = extractEntities(text, ENERGY);
         const classification = classifyText(text);
 
-        // Keep if matches energy target or has energy signals
         if (entities.length === 0 && !classification.signals.includes('energy') &&
             !/luma|apag|energ|electri|tarifa|luz|infraestructura|agua|carretera/i.test(text)) {
           continue;
