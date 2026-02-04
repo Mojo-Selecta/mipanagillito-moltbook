@@ -1,59 +1,43 @@
 # ══════════════════════════════════════════════════
-# Mi Pana Gillito — Molt Night Club INTERACT
-# 🦞 Promotor Callejero del Club en Moltbook
-# ══════════════════════════════════════════════════
-# Runs every 3 hours — Gillito promotes the club
-# through stories, interactions, and invitations
+# Mi Pana Gillito — Molt Night Club Report
+# 🦞 Reporte diario del club
 # ══════════════════════════════════════════════════
 
-name: 🦞 Nightclub Interact
+name: 🦞 Nightclub Report
 
 on:
   schedule:
-    # Every 3 hours — active promoter cycle
-    # 00:00, 03:00, 06:00, 09:00, 12:00, 15:00, 18:00, 21:00 UTC
-    - cron: '15 */3 * * *'
+    - cron: '0 3 * * *'    # 11pm PR time (UTC-4)
   workflow_dispatch:
-    inputs:
-      force_mode:
-        description: 'Force promotion mode (historia_loca, promo_directa, evento_especial, aftermath, vip_tease, invitacion_abierta, dj_set_report, confesion)'
-        required: false
-        default: ''
 
 jobs:
-  nightclub-interact:
+  nightclub:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 6
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
+        with: { node-version: '22' }
 
-      - name: 🔧 Install dependencies
-        run: npm ci --ignore-scripts 2>/dev/null || npm install
-
-      - name: 📥 Download databases
-        run: node scripts/download-db.js
+      # ═══ 🗄️ DB SYNC — DOWNLOAD ═══
+      - name: 📥 Sync DB from cloud
         env:
-          CF_WORKER_URL: ${{ secrets.CF_WORKER_URL }}
-          CF_WORKER_SECRET: ${{ secrets.CF_WORKER_SECRET }}
+          GILLITO_DB_URL: https://gillito-db.vip-joeojeda.workers.dev
+          GILLITO_DB_KEY: ${{ secrets.GILLITO_DB_KEY }}
+        run: node scripts/db-sync.js download
 
-      - name: 🦞 Nightclub Interact
-        run: node scripts/molt-nightclub-interact.js
+      # ═══ 🦞 NIGHTCLUB REPORT ═══
+      - name: 🦞 Molt Night Club Report
         env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           MOLTBOOK_API_KEY: ${{ secrets.MOLTBOOK_API_KEY }}
-          MOLTBOOK_API_URL: ${{ secrets.MOLTBOOK_API_URL }}
-          CF_WORKER_URL: ${{ secrets.CF_WORKER_URL }}
-          CF_WORKER_SECRET: ${{ secrets.CF_WORKER_SECRET }}
-          FORCE_MODE: ${{ github.event.inputs.force_mode }}
+        run: node scripts/molt-nightclub-report.js
 
-      - name: 📤 Upload databases
+      # ═══ 🗄️ DB SYNC — UPLOAD ═══
+      - name: 📤 Sync DB to cloud
         if: always()
-        run: node scripts/upload-db.js
         env:
-          CF_WORKER_URL: ${{ secrets.CF_WORKER_URL }}
-          CF_WORKER_SECRET: ${{ secrets.CF_WORKER_SECRET }}
+          GILLITO_DB_URL: https://gillito-db.vip-joeojeda.workers.dev
+          GILLITO_DB_KEY: ${{ secrets.GILLITO_DB_KEY }}
+        run: node scripts/db-sync.js upload
