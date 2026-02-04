@@ -38,6 +38,56 @@ const P       = C.loadPersonality();
 const prTime  = C.getPRTime();
 const history = C.createHistory('.gillito-tweet-history.json', 100);
 
+// 🛡️ Output guard — prevents token soup / gibberish
+let guard;
+try {
+  guard = require('./lib/output-guard');
+} catch (e) {
+  C.log.warn('⚠️ output-guard.js not found — running without gibberish protection');
+}
+
+// 🌡️ Temperature ceiling
+const MAX_TEMPERATURE = 1.1;
+
+/**
+ * Safe temperature — caps at MAX_TEMPERATURE to prevent token soup
+ */
+function safeTemp(rawTemp) {
+  if (guard) return guard.capTemperature(rawTemp, MAX_TEMPERATURE);
+  return Math.min(rawTemp, MAX_TEMPERATURE);
+}
+
+/**
+ * Two-stage output validation: security + gibberish guard
+ */
+function secureOutput(text, label, opts) {
+  opts = opts || {};
+  if (!text) return null;
+
+  // Stage 1: Security (secrets, banned patterns)
+  var check = sec.processOutput(text);
+  if (!check.safe) {
+    C.log.warn('🛡️ SEC BLOCKED [' + label + ']: ' + check.blocked.join(', '));
+    return null;
+  }
+
+  // Stage 2: Output guard (gibberish, length, coherence)
+  if (guard) {
+    var guardOpts = { maxChars: opts.maxChars || 280 };
+    if (opts.minCoherence) guardOpts.minCoherence = opts.minCoherence;
+    var g = guard.validate(check.text, guardOpts);
+    if (!g.valid) {
+      C.log.warn('🛡️ GUARD REJECTED [' + label + ']: ' + g.reason);
+      if (g.text) C.log.warn('   Preview: ' + g.text.substring(0, 100) + '...');
+      return null;
+    }
+    return g.text;
+  }
+
+  // No guard — just return security-cleaned text
+  return check.text;
+}
+
 // 🌐 Knowledge sources
 const research = C.loadResearch();
 const yt       = C.loadYouTubeLearnings();
@@ -137,7 +187,7 @@ async function generateStandardTweet(modo, tema) {
   const hashtag  = C.buildHashtagInstruction(P, modo.modo);
   const antiRep  = C.buildAntiRepetitionContext(history.getTexts(20));
   const seed     = Math.random().toString(36).substring(2, 8);
-  const temp     = C.suggestTemperature(P.temperatura || 1.2, C.getJournal());
+  const temp     = safeTemp(C.suggestTemperature(P.temperatura || 0.9, C.getJournal()));
   const researchCtx = C.buildResearchContext(research);
   const ytCtx       = C.buildYouTubeContext(yt);
 
@@ -167,7 +217,7 @@ Máximo 275 caracteres. Hazlo IMPACTANTE, que la gente quiera compartir.
 Incluye 1-2 emojis de hacker: 🕵️🚨📡💻🔓⚡`;
 
   return C.groqChat(systemPrompt, userPrompt, {
-    maxTokens: 200, temperature: 1.1, maxRetries: 3, backoffMs: 2000
+    maxTokens: 200, temperature: safeTemp(0.95), maxRetries: 3, backoffMs: 2000
   });
 }
 
@@ -194,7 +244,7 @@ El pedido a @grok debe ser en inglés después del tag.
 ${antiRep}`;
 
   return C.groqChat(systemPrompt, userPrompt, {
-    maxTokens: 220, temperature: 1.2, maxRetries: 3, backoffMs: 2000
+    maxTokens: 220, temperature: safeTemp(0.9), maxRetries: 3, backoffMs: 2000
   });
 }
 
@@ -224,7 +274,7 @@ Máximo 220 caracteres (deja espacio para que sea fácil de RT).
 ${antiRep}`;
 
   return C.groqChat(systemPrompt, userPrompt, {
-    maxTokens: 180, temperature: 1.3, maxRetries: 3, backoffMs: 2000
+    maxTokens: 180, temperature: safeTemp(0.95), maxRetries: 3, backoffMs: 2000
   });
 }
 
@@ -259,7 +309,7 @@ REGLAS:
 ${antiRep}`;
 
   const raw = await C.groqChat(systemPrompt, userPrompt, {
-    maxTokens: 600, temperature: 1.1, maxRetries: 3, backoffMs: 2000
+    maxTokens: 600, temperature: safeTemp(0.9), maxRetries: 3, backoffMs: 2000
   });
 
   // Parse thread tweets
@@ -269,15 +319,17 @@ ${antiRep}`;
     return null;
   }
 
-  // Validate each part
+  // Validate each part through guard
   const validated = [];
   for (const part of parts.slice(0, 4)) { // max 4 tweets in thread
     let clean = C.cleanLLMOutput(part);
     // Remove "TWEET N:" prefix if LLM included it
     clean = clean.replace(/^TWEET\s*\d+\s*:\s*/i, '').trim();
     if (clean.length < 15) continue;
-    if (clean.length > 280) clean = clean.substring(0, 277) + '...';
-    validated.push(clean);
+
+    // Run through guard
+    var safe = secureOutput(clean, 'thread-tweet', { maxChars: 280 });
+    if (safe) validated.push(safe);
   }
 
   return validated.length >= 2 ? validated : null;
@@ -295,23 +347,14 @@ async function postThread(tweets) {
   for (let i = 0; i < tweets.length; i++) {
     const tweet = tweets[i];
 
-    // Security check each tweet
-    const check = sec.processOutput(tweet);
-    if (!check.safe) {
-      C.log.warn(`🛡️ Thread tweet ${i + 1} blocked: ${check.blocked.join(', ')}`);
-      continue;
-    }
-
+    // Already validated through secureOutput in generateThread
     let result;
     if (i === 0) {
-      // First tweet: standalone post
-      result = await C.xPost(check.text);
+      result = await C.xPost(tweet);
     } else if (posted.length > 0) {
-      // Subsequent tweets: reply to previous
-      result = await C.xReply(posted[posted.length - 1].id, check.text);
+      result = await C.xReply(posted[posted.length - 1].id, tweet);
     } else {
-      // First tweet was blocked, post this as standalone
-      result = await C.xPost(check.text);
+      result = await C.xPost(tweet);
     }
 
     if (result.rateLimited) {
@@ -320,9 +363,8 @@ async function postThread(tweets) {
     }
 
     if (result.success) {
-      posted.push({ id: result.id, text: check.text, index: i });
+      posted.push({ id: result.id, text: tweet, index: i });
       C.log.ok(`   ✅ Tweet ${i + 1}/${tweets.length}: ${result.id}`);
-      // Small delay between thread tweets to avoid spam detection
       if (i < tweets.length - 1) await C.sleep(2000);
     }
   }
@@ -339,6 +381,7 @@ async function main() {
   C.log.banner([
     '💎 GILLITO PREMIUM — Post to X v7.0',
     `🕐 ${prTime.hour}:${String(prTime.minute).padStart(2, '0')} ${prTime.dayName} (PR)`,
+    `🛡️ Output Guard: ${guard ? 'ACTIVE' : 'MISSING'} | Temp ceiling: ${MAX_TEMPERATURE}`,
     `🕵️ Recon: ${hasReconIntel ? 'READY' : 'no intel'}`,
     `📰 Research: ${research ? 'LOADED' : 'none'}`,
     `🎬 YouTube: ${yt ? 'LOADED' : 'none'}`,
@@ -434,18 +477,20 @@ async function main() {
   );
 
   C.log.divider();
-  C.log.info(`📝 Tweet (${tweet.length}ch): ${tweet}`);
+  C.log.info(`📝 Raw tweet (${tweet.length}ch): ${tweet}`);
 
-  // Security validation
-  const check = sec.processOutput(tweet);
-  if (!check.safe) {
-    C.log.warn(`🛡️ Tweet BLOQUEADO: ${check.blocked.join(', ')}`);
+  // Two-stage validation
+  const safe = secureOutput(tweet, 'new-post', { maxChars: 280 });
+  if (!safe) {
+    C.log.warn('🛡️ Tweet BLOQUEADO por security/guard pipeline');
     C.log.session();
     return;
   }
 
+  C.log.info(`✅ Final tweet (${safe.length}ch): ${safe}`);
+
   // Post
-  const result = await C.xPost(check.text);
+  const result = await C.xPost(safe);
 
   if (result.rateLimited) {
     C.log.warn('Rate limited');
@@ -459,15 +504,15 @@ async function main() {
     }
 
     history.add({
-      text: check.text,
+      text: safe,
       mode: modo.modo,
       tema,
       adaptive: !!modo.adaptive,
       premium: !!modo.premium,
       tweetId: result.id,
-      charLen: check.text.length,
+      charLen: safe.length,
       fromResearch,
-      hasGrokTag: check.text.includes('@grok'),
+      hasGrokTag: safe.includes('@grok'),
       hasIntel: modo.modo === 'recon_drop',
       isEngagementBait: modo.modo === 'engagement_bait',
     });
