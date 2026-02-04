@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 'use strict';
 /**
- * 🦞 GILLITO DB SYNC v1.0 — scripts/db-sync.js
+ * 🦞 GILLITO DB SYNC v1.1 — scripts/db-sync.js
  * ═══════════════════════════════════════════════════════
  * Syncs local JSON files to/from Cloudflare KV.
  *
@@ -12,20 +12,23 @@
  *
  * Runs at start/end of workflows to persist state.
  */
-
 var db = require('./lib/db');
-
 var FILES = {
-  'heartbeat-state':   '.gillito-heartbeat-state.json',
-  'heartbeat-history': '.gillito-heartbeat-history.json',
-  'tweet-history':     '.gillito-tweet-history.json',
-  'recon-intel':       '.gillito-recon-intel.json',
-  'research':          '.gillito-research.json',
-  'youtube-learnings': '.gillito-youtube-learnings.json'
+  'heartbeat-state':            '.gillito-heartbeat-state.json',
+  'heartbeat-history':          '.gillito-heartbeat-history.json',
+  'tweet-history':              '.gillito-tweet-history.json',
+  'recon-intel':                '.gillito-recon-intel.json',
+  'research':                   '.gillito-research.json',
+  'youtube-learnings':          '.gillito-youtube-learnings.json',
+  'brain-state':                '.gillito-brain-state.json',
+  'brain-history':              '.gillito-brain-history.json',
+  'mood-state':                 '.gillito-mood-state.json',
+  'social-graph':               '.gillito-social-graph.json',
+  'nightclub-interact-history': '.gillito-nightclub-interact-history.json',
+  'nightclub-promo-tracker':    '.gillito-nightclub-promo-tracker.json',
+  'nightclub-report-history':   '.gillito-nightclub-report-history.json'
 };
-
 var command = process.argv[2] || 'status';
-
 async function upload() {
   console.log('📤 Uploading local data to cloud...');
   var count = 0;
@@ -43,7 +46,6 @@ async function upload() {
   }
   console.log('📤 Uploaded ' + count + '/' + keys.length + ' files');
 }
-
 async function download() {
   console.log('📥 Downloading cloud data to local...');
   var count = 0;
@@ -61,7 +63,6 @@ async function download() {
   }
   console.log('📥 Downloaded ' + count + '/' + keys.length + ' files');
 }
-
 async function status() {
   console.log('🔍 Checking cloud DB status...');
   var s = await db.status();
@@ -77,7 +78,6 @@ async function status() {
     console.log('  Keys: (empty)');
   }
 }
-
 async function main() {
   if (command === 'upload') {
     await upload();
@@ -89,7 +89,6 @@ async function main() {
     console.log('Usage: node scripts/db-sync.js [upload|download|status]');
   }
 }
-
 main().catch(function(err) {
   console.error('❌ DB Sync error: ' + err.message);
   process.exit(1);
