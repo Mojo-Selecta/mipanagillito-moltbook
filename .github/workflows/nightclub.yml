@@ -1,0 +1,24 @@
+name: 🦞 Gillito - Molt Night Club Report
+on:
+  schedule:
+    - cron: '0 3 * * *'    # 11pm PR time (UTC-4)
+  workflow_dispatch:
+jobs:
+  nightclub:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '22' }
+      - name: 📥 Restore nightclub history
+        uses: actions/cache@v4
+        with:
+          path: .gillito-nightclub-report-history.json
+          key: nightclub-report-${{ github.run_id }}
+          restore-keys: nightclub-report-
+      - name: 🦞 Molt Night Club Report
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          MOLTBOOK_API_KEY: ${{ secrets.MOLTBOOK_API_KEY }}
+        run: node scripts/molt-nightclub-report.js
