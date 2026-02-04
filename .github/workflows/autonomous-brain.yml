@@ -1,0 +1,59 @@
+# ══════════════════════════════════════════════════
+# Mi Pana Gillito — AUTONOMOUS BRAIN
+# 🧠 El Cerebro — Master Decision Engine
+# ══════════════════════════════════════════════════
+# Runs every 20 minutes — Gillito's brain decides
+# what to do each cycle based on mood, environment,
+# social graph, and priorities.
+# ══════════════════════════════════════════════════
+
+name: 🧠 Autonomous Brain
+
+on:
+  schedule:
+    # Every 20 minutes
+    - cron: '*/20 * * * *'
+  workflow_dispatch:
+    inputs:
+      force_mood:
+        description: 'Force mood (encabronao, jangueando, filosofico, de_pelea, orgulloso, borracho_digital, motivador, neutral)'
+        required: false
+        default: ''
+
+jobs:
+  brain-cycle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: 🔧 Install dependencies
+        run: npm ci --ignore-scripts 2>/dev/null || npm install
+
+      - name: 📥 Download databases
+        run: node scripts/download-db.js
+        env:
+          CF_WORKER_URL: ${{ secrets.CF_WORKER_URL }}
+          CF_WORKER_SECRET: ${{ secrets.CF_WORKER_SECRET }}
+
+      - name: 🧠 Brain Cycle
+        run: node scripts/autonomous-brain.js
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          MOLTBOOK_API_KEY: ${{ secrets.MOLTBOOK_API_KEY }}
+          MOLTBOOK_API_URL: ${{ secrets.MOLTBOOK_API_URL }}
+          CF_WORKER_URL: ${{ secrets.CF_WORKER_URL }}
+          CF_WORKER_SECRET: ${{ secrets.CF_WORKER_SECRET }}
+          FORCE_MOOD: ${{ github.event.inputs.force_mood }}
+
+      - name: 📤 Upload databases
+        if: always()
+        run: node scripts/upload-db.js
+        env:
+          CF_WORKER_URL: ${{ secrets.CF_WORKER_URL }}
+          CF_WORKER_SECRET: ${{ secrets.CF_WORKER_SECRET }}
