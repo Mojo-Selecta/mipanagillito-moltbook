@@ -189,40 +189,41 @@ function validate(text, opts) {
   var maxScripts     = opts.maxScripts || 2;
   var minCoherence   = opts.minCoherence || 10;
 
+  var fullText = (text || '').trim();
+
   var result = {
     valid: true,
-    text: (text || '').trim(),
+    text: fullText,
     reason: null,
     scores: {},
   };
 
   // ── BASIC CHECKS ──
-  if (!result.text || result.text.length < minChars) {
+  if (!fullText || fullText.length < minChars) {
     result.valid = false;
     result.reason = 'too_short';
     return result;
   }
 
-  // ── HARD LENGTH CAP ──
-  if (result.text.length > maxChars) {
-    // Try to cut at sentence boundary
-    var cut = result.text.substring(0, maxChars);
-    var lastPeriod = Math.max(cut.lastIndexOf('.'), cut.lastIndexOf('!'), cut.lastIndexOf('?'));
-    if (lastPeriod > maxChars * 0.5) {
-      result.text = cut.substring(0, lastPeriod + 1);
-    } else {
-      // Cut at last space
-      var lastSpace = cut.lastIndexOf(' ');
-      if (lastSpace > maxChars * 0.5) {
-        result.text = cut.substring(0, lastSpace);
-      } else {
-        result.text = cut;
-      }
-    }
+  // ═══════════════════════════════════════════
+  // PHASE 1: CHECK FULL TEXT FOR GIBBERISH
+  // All checks run on the COMPLETE output BEFORE truncation.
+  // This prevents "clean head + garbage tail" from slipping through.
+  // ═══════════════════════════════════════════
+
+  // ── OVERFLOW CHECK ──
+  // If LLM was asked for 200 chars and spit out 900+, that's a red flag.
+  // Legitimate responses rarely exceed 3x the limit.
+  var overflowRatio = fullText.length / maxChars;
+  result.scores.overflowRatio = overflowRatio;
+  if (overflowRatio > 3.0) {
+    result.valid = false;
+    result.reason = 'extreme_overflow (' + fullText.length + ' chars, limit ' + maxChars + ', ratio ' + overflowRatio.toFixed(1) + 'x)';
+    return result;
   }
 
-  // ── NON-LATIN RATIO CHECK ──
-  var nonLatinRatio = getNonLatinRatio(result.text);
+  // ── NON-LATIN RATIO CHECK (full text) ──
+  var nonLatinRatio = getNonLatinRatio(fullText);
   result.scores.nonLatinRatio = nonLatinRatio;
   if (nonLatinRatio > maxNonLatin) {
     result.valid = false;
@@ -230,8 +231,8 @@ function validate(text, opts) {
     return result;
   }
 
-  // ── MULTI-SCRIPT CHECK ──
-  var scriptCount = countScripts(result.text);
+  // ── MULTI-SCRIPT CHECK (full text) ──
+  var scriptCount = countScripts(fullText);
   result.scores.scriptCount = scriptCount;
   if (scriptCount > maxScripts) {
     result.valid = false;
@@ -239,49 +240,97 @@ function validate(text, opts) {
     return result;
   }
 
-  // ── WORD STATS CHECK ──
-  var ws = getWordStats(result.text);
+  // ── WORD STATS CHECK (full text) ──
+  var ws = getWordStats(fullText);
   result.scores.wordStats = ws;
 
-  // Too many words = likely token dump (200 chars should be ~30-40 words max for Spanish)
+  // Too many words = likely token dump (200 chars should be ~30-40 words max)
   if (ws.count > 80) {
     result.valid = false;
     result.reason = 'word_dump (' + ws.count + ' words)';
     return result;
   }
 
-  // Too many very long concatenated "words"
+  // Too many very long concatenated "words" (gibberish mashing)
   if (ws.veryLong > 3) {
     result.valid = false;
     result.reason = 'concatenated_gibberish (' + ws.veryLong + ' very long words)';
     return result;
   }
 
-  // ── COHERENCE CHECK ──
-  var coherence = getCoherenceScore(result.text);
+  // ── COHERENCE CHECK (full text) ──
+  var coherence = getCoherenceScore(fullText);
   result.scores.coherence = coherence;
   if (coherence < minCoherence && ws.count > 10) {
-    // Only fail coherence for longer texts (short texts may legitimately have low scores)
     result.valid = false;
     result.reason = 'low_coherence (score: ' + Math.round(coherence) + ')';
     return result;
   }
 
-  // ── REPETITION CHECK ──
-  // Sometimes LLMs repeat the same word/phrase over and over
-  var words = result.text.toLowerCase().split(/\s+/);
-  if (words.length >= 8) {
+  // ── ENGLISH GIBBERISH DETECTOR ──
+  // Token soup often produces mostly-Latin text that LOOKS like English
+  // but is nonsense word salad. Check: if text has >60% English-looking words
+  // but almost no Spanish connectors, it's likely an English-mode hallucination.
+  var allWords = fullText.toLowerCase().split(/\s+/).filter(function(w) { return w.length > 1; });
+  if (allWords.length > 15) {
+    var spanishHits = 0;
+    var spanishWords = [
+      'que', 'de', 'la', 'el', 'en', 'es', 'lo', 'un', 'una', 'no',
+      'se', 'con', 'por', 'para', 'como', 'pero', 'más', 'ya', 'mi',
+      'te', 'me', 'tu', 'su', 'del', 'al', 'los', 'las', 'esto', 'eso',
+      'coño', 'cabrón', 'puñeta', 'carajo', 'mierda', 'diablo', 'joder',
+      'pana', 'bro', 'mano', 'loco', 'jaja', 'está', 'son', 'hay',
+      'todo', 'nada', 'aquí', 'ahí', 'ese', 'esta', 'cuando', 'donde',
+      'porque', 'también', 'siempre', 'nunca', 'bien', 'mal', 'muy',
+    ];
+    for (var si = 0; si < allWords.length; si++) {
+      var cleaned = allWords[si].replace(/[^a-záéíóúñü]/g, '');
+      if (spanishWords.indexOf(cleaned) !== -1) spanishHits++;
+    }
+    var spanishRatio = spanishHits / allWords.length;
+    result.scores.spanishRatio = spanishRatio;
+
+    // Gillito speaks Spanish. If less than 5% of words are Spanish in a 15+ word text,
+    // it's almost certainly gibberish or an English hallucination
+    if (spanishRatio < 0.05) {
+      result.valid = false;
+      result.reason = 'no_spanish_detected (' + Math.round(spanishRatio * 100) + '% Spanish in ' + allWords.length + ' words)';
+      return result;
+    }
+  }
+
+  // ── REPETITION CHECK (full text) ──
+  if (allWords && allWords.length >= 8) {
     var freq = {};
-    for (var i = 0; i < words.length; i++) {
-      freq[words[i]] = (freq[words[i]] || 0) + 1;
+    for (var ri = 0; ri < allWords.length; ri++) {
+      freq[allWords[ri]] = (freq[allWords[ri]] || 0) + 1;
     }
     var maxFreq = Math.max.apply(null, Object.values(freq));
-    var maxFreqRatio = maxFreq / words.length;
+    var maxFreqRatio = maxFreq / allWords.length;
     result.scores.maxRepeatRatio = maxFreqRatio;
     if (maxFreqRatio > 0.3 && maxFreq > 4) {
       result.valid = false;
       result.reason = 'excessive_repetition (' + Math.round(maxFreqRatio * 100) + '% same word)';
       return result;
+    }
+  }
+
+  // ═══════════════════════════════════════════
+  // PHASE 2: TRUNCATE TO maxChars (text passed all checks)
+  // ═══════════════════════════════════════════
+
+  if (result.text.length > maxChars) {
+    var cut = result.text.substring(0, maxChars);
+    var lastPeriod = Math.max(cut.lastIndexOf('.'), cut.lastIndexOf('!'), cut.lastIndexOf('?'));
+    if (lastPeriod > maxChars * 0.5) {
+      result.text = cut.substring(0, lastPeriod + 1);
+    } else {
+      var lastSpace = cut.lastIndexOf(' ');
+      if (lastSpace > maxChars * 0.5) {
+        result.text = cut.substring(0, lastSpace);
+      } else {
+        result.text = cut;
+      }
     }
   }
 
