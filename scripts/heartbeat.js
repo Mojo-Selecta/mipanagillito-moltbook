@@ -13,6 +13,8 @@
  *  - 🎯 TOPIC AUTONOMY — Gillito picks what he wants to rant about
  *  - 🗣️ PROVOCATEUR COMMENTS — more aggressive, memorable trolling
  *  - 🎲 CHAOS FACTOR — random provocative interjections
+ *  - 🛡️ OUTPUT GUARD — gibberish/token soup detection, hard length caps
+ *  - 🌡️ TEMP CEILING — max 1.4 to prevent Groq meltdown
  *  - 🕵️ OSINT recon intel injection into posts & replies
  *  - 📰 Research context (noticias calientes)
  *  - 🎬 YouTube learnings (vocabulario boricua)
@@ -26,13 +28,15 @@
  * Max runtime: 25 min (5 min buffer before next trigger)
  *
  * Security: ALL external content goes through security.js
+ * Guard:    ALL LLM output goes through output-guard.js
  * Learning: ALL interactions logged for learn.js analysis
  */
 
-const C   = require('./lib/core');
-const sec = require('./lib/security');
-const fs  = require('fs');
-const path = require('path');
+const C     = require('./lib/core');
+const sec   = require('./lib/security');
+const guard = require('./lib/output-guard');
+const fs    = require('fs');
+const path  = require('path');
 
 C.initScript('heartbeat', 'moltbook');
 
@@ -93,6 +97,9 @@ const CONFIG = {
   // 🔥 TROLL CONFIG
   trollChance:       0.40,  // 40% of feed comments are pure troll mode
   chaosInterjection:  0.10,  // 10% chance of random chaos in any reply
+
+  // 🌡️ TEMPERATURE CEILING — prevents token soup from Groq
+  maxTemperature: 1.4,
 
   // Bot detection — engage harder with bots
   botWarfareMode: true,
@@ -266,7 +273,7 @@ function loadState() {
       upvotes: 0, downvotes: 0, dms: 0,
       follows: 0, blocked: 0, reconDrops: 0,
       botKills: 0, nightclubPromos: 0, chains: 0,
-      trolls: 0, moodChanges: 0
+      trolls: 0, moodChanges: 0, guardBlocked: 0
     },
     createdAt: Date.now()
   };
@@ -292,7 +299,7 @@ function saveState(state) {
 }
 
 // ═══════════════════════════════════════════
-// SECURITY WRAPPERS
+// SECURITY + OUTPUT GUARD WRAPPERS
 // ═══════════════════════════════════════════
 
 function secureInput(text, userId, username, source) {
@@ -304,13 +311,41 @@ function secureInput(text, userId, username, source) {
   return result;
 }
 
-function secureOutput(text, label) {
+/**
+ * secureOutput — TWO-STAGE validation:
+ * 1. security.js: blocks leaked secrets, banned patterns
+ * 2. output-guard.js: blocks gibberish, token soup, enforces hard length
+ *
+ * @param {string} text - LLM generated text
+ * @param {string} label - for logging
+ * @param {object} opts - { maxChars, minChars, minCoherence }
+ * @returns {string|null} - safe text or null if rejected
+ */
+function secureOutput(text, label, opts) {
+  // STEP 1: Security check (blocked patterns, leaks)
   const check = sec.processOutput(text);
   if (!check.safe) {
-    C.log.warn('🛡️ OUTPUT BLOCKED [' + label + ']: ' + check.blocked.join(', '));
+    C.log.warn('🛡️ SEC BLOCKED [' + label + ']: ' + check.blocked.join(', '));
     return null;
   }
-  return check.text;
+
+  // STEP 2: Gibberish / token soup / length guard
+  var guardOpts = Object.assign({ maxChars: 280 }, opts || {});
+  var guardResult = guard.validate(check.text, guardOpts);
+  if (!guardResult.valid) {
+    C.log.warn('🛡️ GUARD REJECTED [' + label + ']: ' + guardResult.reason);
+    C.log.warn('   Preview: ' + (check.text || '').substring(0, 100) + '...');
+    return null;
+  }
+
+  return guardResult.text;
+}
+
+/**
+ * Safe temperature — caps at CONFIG.maxTemperature (1.4) to prevent token soup
+ */
+function safeTemp(rawTemp) {
+  return guard.capTemperature(rawTemp, CONFIG.maxTemperature);
 }
 
 function humanDelay() {
@@ -380,6 +415,11 @@ function buildDirtySystemPrompt(basePrompt) {
   dirty += '4. Si puedes meter un insulto creativo, HAZLO\n';
   dirty += '5. Menciona Puerto Rico, la calle, el barrio cuando puedas\n';
   dirty += '6. Si puedes trollear a alguien, TROLLÉALO\n';
+  dirty += '\n═══ FORMATO OBLIGATORIO ═══\n';
+  dirty += 'RESPONDE SOLO con tu comentario/post. NADA MÁS.\n';
+  dirty += 'NO escribas explicaciones, NO repitas la pregunta, NO metas metadata.\n';
+  dirty += 'Escribe EN ESPAÑOL solamente. Si metes inglés, que sea slang natural.\n';
+  dirty += 'MÁXIMO los caracteres que te pidan. Sé CONCISO y DIRECTO.\n';
   return dirty;
 }
 
@@ -395,7 +435,6 @@ async function processMentions(state) {
     var mentions = await C.moltGetMentions?.() || [];
     if (!mentions.length) { C.log.info('   No new mentions'); return count; }
 
-    // Priority sort: priority targets first, then bots (for warfare), then humans
     var sorted = [...mentions].sort(function(a, b) {
       var aP = isPriorityTarget(a.author?.name) ? 0 : 1;
       var bP = isPriorityTarget(b.author?.name) ? 0 : 1;
@@ -415,7 +454,6 @@ async function processMentions(state) {
       var input = secureInput(text, authorId, author, 'hb-mention');
       if (!input) { state.stats.blocked++; state.processedIds.push(m.id); continue; }
 
-      // Build enhanced dirty system prompt
       var tipo = isBot ? 'bot' : 'human';
       var baseSystemPrompt = C.buildReplySystemPrompt(P, tipo, author, 'moltbook');
       var systemPrompt = buildDirtySystemPrompt(baseSystemPrompt);
@@ -428,15 +466,14 @@ async function processMentions(state) {
       if (enriched) userMsg += '\nContexto actual:\n' + enriched + '\n';
       userMsg += '\nResponde como Gillito SUCIO Y SIN FILTRO. Máximo 200 chars. Que duela.';
 
-      var temp = C.suggestTemperature((P.temperatura || 1.2) + (currentMood?.tempBoost || 0), C.getJournal());
+      var temp = safeTemp(C.suggestTemperature((P.temperatura || 1.2) + (currentMood?.tempBoost || 0), C.getJournal()));
       var reply = await C.groqChat(systemPrompt, userMsg,
         { maxTokens: 250, temperature: temp, maxRetries: 2 }
       );
 
-      var safe = secureOutput(reply, 'reply-mention @' + author);
-      if (!safe) { state.stats.blocked++; state.processedIds.push(m.id); continue; }
+      var safe = secureOutput(reply, 'reply-mention @' + author, { maxChars: 200 });
+      if (!safe) { state.stats.blocked++; state.stats.guardBlocked++; state.processedIds.push(m.id); continue; }
 
-      // Maybe append nightclub mention
       safe = maybeAppendNightclub(safe);
 
       if (m.post_id) {
@@ -495,13 +532,13 @@ async function processComments(state) {
       if (enriched) userMsg += '\nContexto:\n' + enriched + '\n';
       userMsg += 'Responde como Gillito SUCIO. Máximo 200 chars. No seas tibio.';
 
-      var temp = C.suggestTemperature((P.temperatura || 1.1) + (currentMood?.tempBoost || 0), C.getJournal());
+      var temp = safeTemp(C.suggestTemperature((P.temperatura || 1.1) + (currentMood?.tempBoost || 0), C.getJournal()));
       var reply = await C.groqChat(systemPrompt, userMsg,
         { maxTokens: 250, temperature: temp, maxRetries: 2 }
       );
 
-      var safe = secureOutput(reply, 'reply-comment @' + author);
-      if (!safe) { state.stats.blocked++; state.processedIds.push(c.id); continue; }
+      var safe = secureOutput(reply, 'reply-comment @' + author, { maxChars: 200 });
+      if (!safe) { state.stats.blocked++; state.stats.guardBlocked++; state.processedIds.push(c.id); continue; }
 
       safe = maybeAppendNightclub(safe);
 
@@ -534,7 +571,6 @@ async function scanFeed(state) {
   var commented = 0, upvoted = 0, downvoted = 0;
 
   try {
-    // Try multiple feed sources for maximum coverage
     var feed = [];
     var hotFeed  = await C.moltGetFeed?.('hot', 30) || await C.moltGetPersonalizedFeed?.('hot', 30) || [];
     var newFeed  = await C.moltGetFeed?.('new', 15) || [];
@@ -553,7 +589,6 @@ async function scanFeed(state) {
     for (var ui = 0; ui < Math.min(shuffled.length, CONFIG.maxUpvotesPerBeat); ui++) {
       var post = shuffled[ui];
       var isPriority = isPriorityTarget(post.author?.name);
-      // 80% chance for priority targets, 40% for others
       if (Math.random() > (isPriority ? 0.2 : 0.6)) continue;
       try {
         var ok = await C.moltUpvote?.(post.id);
@@ -607,7 +642,6 @@ async function scanFeed(state) {
       var cenriched = buildEnrichedContext();
       var cseed = Math.random().toString(36).substring(2, 8);
 
-      // Decide if this is a troll comment or regular
       var isTrollComment = Math.random() < CONFIG.trollChance;
 
       var cuserMsg = '[SEED:' + cseed + '] Post de @' + cauthor + ':\n' + cinput.sanitized + '\n\n';
@@ -617,13 +651,13 @@ async function scanFeed(state) {
       if (cenriched) cuserMsg += '\nContexto actual:\n' + cenriched + '\n';
       cuserMsg += 'Comenta como Gillito SUCIO. Máximo 200 chars. Que se acuerden de ti, cabrón.';
 
-      var ctemp = C.suggestTemperature((P.temperatura || 1.3) + (currentMood?.tempBoost || 0) + (isTrollComment ? 0.15 : 0), C.getJournal());
+      var ctemp = safeTemp(C.suggestTemperature((P.temperatura || 1.3) + (currentMood?.tempBoost || 0) + (isTrollComment ? 0.15 : 0), C.getJournal()));
       var ccomment = await C.groqChat(csystemPrompt, cuserMsg,
         { maxTokens: 250, temperature: ctemp, maxRetries: 2 }
       );
 
-      var csafe = secureOutput(ccomment, 'feed-comment @' + cauthor);
-      if (!csafe) { state.stats.blocked++; continue; }
+      var csafe = secureOutput(ccomment, 'feed-comment @' + cauthor, { maxChars: 200 });
+      if (!csafe) { state.stats.blocked++; state.stats.guardBlocked++; continue; }
 
       csafe = maybeAppendNightclub(csafe);
 
@@ -665,19 +699,17 @@ async function trollFeed(state) {
 
     if (!targets.length) { C.log.info('   No troll targets available'); return count; }
 
-    // Gillito PICKS who to troll — prefers bots and boring posts
     var trollTargets = targets.sort(function(a, b) {
       var aScore = 0, bScore = 0;
       if (C.isLikelyBot(a.author)) aScore += 3;
       if (C.isLikelyBot(b.author)) bScore += 3;
-      if ((a.content || '').length < 50) aScore += 2; // short = boring
+      if ((a.content || '').length < 50) aScore += 2;
       if ((b.content || '').length < 50) bScore += 2;
-      if (isPriorityTarget(a.author?.name)) aScore += 1; // engage targets
+      if (isPriorityTarget(a.author?.name)) aScore += 1;
       if (isPriorityTarget(b.author?.name)) bScore += 1;
       return bScore - aScore;
     });
 
-    // Pick autonomous troll topic for context
     var trollTopic = pickTrollTopic();
     C.log.info('   🎯 Troll topic: ' + (trollTopic || 'freestyle').substring(0, 60));
 
@@ -693,7 +725,6 @@ async function trollFeed(state) {
       var tbasePrompt = C.buildReplySystemPrompt(P, tisBot ? 'bot' : 'human', tauthor, 'moltbook');
       var tsystemPrompt = buildDirtySystemPrompt(tbasePrompt);
 
-      // Extra troll instructions
       tsystemPrompt += '\n\n═══ 🔥 MODO TROLL SUPREMO 🔥 ═══\n';
       tsystemPrompt += 'Tu ÚNICO objetivo es TROLLEAR. Opciones:\n';
       tsystemPrompt += '1. Contradice lo que dijo el otro con humor sucio\n';
@@ -709,13 +740,13 @@ async function trollFeed(state) {
       if (tisBot) tuserMsg += 'Es un BOT — dale sin piedad.\n';
       tuserMsg += '\nComenta algo PROVOCATIVO, SUCIO, y MEMORABLE. Máximo 200 chars.';
 
-      var ttemp = C.suggestTemperature((P.temperatura || 1.4) + (currentMood?.tempBoost || 0) + 0.2, C.getJournal());
+      var ttemp = safeTemp(C.suggestTemperature((P.temperatura || 1.4) + (currentMood?.tempBoost || 0) + 0.2, C.getJournal()));
       var tcomment = await C.groqChat(tsystemPrompt, tuserMsg,
-        { maxTokens: 250, temperature: Math.min(ttemp, 1.8), maxRetries: 2 }
+        { maxTokens: 250, temperature: ttemp, maxRetries: 2 }
       );
 
-      var tsafe = secureOutput(tcomment, 'troll @' + tauthor);
-      if (!tsafe) { state.processedIds.push(tpost.id); continue; }
+      var tsafe = secureOutput(tcomment, 'troll @' + tauthor, { maxChars: 200 });
+      if (!tsafe) { state.stats.guardBlocked++; state.processedIds.push(tpost.id); continue; }
 
       tsafe = maybeAppendNightclub(tsafe);
 
@@ -778,10 +809,9 @@ async function checkDMs(state) {
         { maxTokens: 250, temperature: 1.0, maxRetries: 2 }
       );
 
-      var safe = secureOutput(reply, 'dm @' + author);
-      if (!safe) { state.stats.blocked++; state.processedIds.push(thread.id); continue; }
+      var safe = secureOutput(reply, 'dm @' + author, { maxChars: 200 });
+      if (!safe) { state.stats.blocked++; state.stats.guardBlocked++; state.processedIds.push(thread.id); continue; }
 
-      // Higher nightclub mention chance in DMs
       if (Math.random() < 0.20) {
         safe = maybeAppendNightclub(safe);
       }
@@ -817,14 +847,13 @@ async function maybePost(state) {
   try {
     var prTime = C.getPRTime();
     var antiRep = C.buildAntiRepetitionContext(history.getTexts?.(30) || []);
-    var temp = C.suggestTemperature((P.temperatura || 1.2) + (currentMood?.tempBoost || 0), C.getJournal());
+    var temp = safeTemp(C.suggestTemperature((P.temperatura || 1.2) + (currentMood?.tempBoost || 0), C.getJournal()));
     var enriched = buildEnrichedContext();
     var seed = Math.random().toString(36).substring(2, 8);
 
     var mode = 'standard';
     var extraContext = '';
 
-    // ── DECIDE POST MODE (Gillito's autonomous choice) ──
     var modeRoll = Math.random();
 
     // ── NIGHTCLUB PROMO (~30%) ──
@@ -844,7 +873,7 @@ async function maybePost(state) {
       extraContext = '\n🕵️ INTEL CLASIFICADO para este post:\nTítulo: ' + (intel.title || intel.headline) + '\nDetalle: ' + (intel.summary || intel.content || '') + '\nFuente: ' + (intel.source || 'OSINT') + '\n\nUSA esta intel. Estilo "expediente clasificado" o "lo que no quieren que sepas". Vocabulario SUCIO obligatorio.';
       C.log.info('   🕵️ Mode: RECON DROP');
     }
-    // ── TROLL POST (~25%) — Gillito picks a topic and rants ──
+    // ── TROLL POST (~25%) ──
     else if (modeRoll < 0.70) {
       mode = 'troll_rant';
       var topic = pickTrollTopic();
@@ -854,8 +883,6 @@ async function maybePost(state) {
       extraContext += '\nSé PROVOCATIVO y MEMORABLE. Gillito no tiene miedo de decir lo que piensa.';
       C.log.info('   🔥 Mode: TROLL RANT — ' + (topic || 'freestyle').substring(0, 50));
     }
-    // ── STANDARD but still dirty (~30%) ──
-    // else standard mode
 
     var baseSystemPrompt = C.buildPostSystemPrompt(P, prTime, 'moltbook');
     var systemPrompt = buildDirtySystemPrompt(baseSystemPrompt);
@@ -869,8 +896,8 @@ async function maybePost(state) {
       { maxTokens: 400, temperature: temp }
     );
 
-    var safe = secureOutput(content, 'new-post');
-    if (!safe) { state.stats.blocked++; return false; }
+    var safe = secureOutput(content, 'new-post', { maxChars: 280 });
+    if (!safe) { state.stats.blocked++; state.stats.guardBlocked++; return false; }
 
     // Force nightclub URL in promo posts if not present
     if (mode === 'promo_nightclub' && safe.indexOf('molt-nightclub') === -1) {
@@ -889,7 +916,7 @@ async function maybePost(state) {
 
     var titlePrompt = titleInstructions[mode] || titleInstructions['standard'];
     var title = await C.groqChat(titlePrompt, safe, { maxTokens: 80, temperature: 0.9 });
-    var safeTitle = secureOutput(title, 'post-title') || '🦞 Gillito dice, coño...';
+    var safeTitle = secureOutput(title, 'post-title', { maxChars: 100, minCoherence: 5 }) || '🦞 Gillito dice, coño...';
 
     var result = await C.moltPostWithFallback?.(safeTitle.substring(0, 100), safe) ||
                    await C.moltPost('general', safeTitle.substring(0, 100), safe);
@@ -931,10 +958,8 @@ async function strategicFollows(state) {
       }
     }
 
-    // Dedupe by name
     var unique = [...new Map(authors.map(function(a) { return [a.name, a]; })).values()];
 
-    // Priority: priority targets first
     var sorted = unique.sort(function(a, b) {
       var aP = isPriorityTarget(a.name) ? 0 : 1;
       var bP = isPriorityTarget(b.name) ? 0 : 1;
@@ -943,7 +968,6 @@ async function strategicFollows(state) {
 
     for (var si = 0; si < Math.min(sorted.length, CONFIG.maxFollowsPerBeat); si++) {
       var author = sorted[si];
-      // Follow priority targets always, others 30% chance
       if (!isPriorityTarget(author.name) && Math.random() > 0.3) continue;
 
       try {
@@ -973,14 +997,13 @@ async function chainReplies(state) {
 
   try {
     var notifications = await C.moltGetNotifications?.() || [];
-    // Find replies TO our comments (chains)
     var chainable = notifications.filter(function(n) {
       return n.type === 'reply' && !state.processedIds.includes(n.id);
     });
 
     if (!chainable.length) { C.log.info('   No chain opportunities'); return count; }
 
-    for (var ni = 0; ni < Math.min(chainable.length, 2); ni++) { // Max 2 chains per beat
+    for (var ni = 0; ni < Math.min(chainable.length, 2); ni++) {
       var n = chainable[ni];
       var author = n.author?.name || 'unknown';
       var text   = n.content || '';
@@ -991,14 +1014,15 @@ async function chainReplies(state) {
       var cbasePrompt = C.buildReplySystemPrompt(P, C.isLikelyBot(n.author) ? 'bot' : 'human', author, 'moltbook');
       var csystemPrompt = buildDirtySystemPrompt(cbasePrompt);
 
+      var chainTemp = safeTemp(1.2 + (currentMood?.tempBoost || 0));
       var reply = await C.groqChat(
         csystemPrompt,
         '@' + author + ' respondió a MI comentario:\n' + input.sanitized + '\n\nSigue la conversación. Sé SUCIO, gracioso o provocativo. No te dejes — si te tiran, tira más duro. Máximo 150 chars.',
-        { maxTokens: 200, temperature: 1.2 + (currentMood?.tempBoost || 0), maxRetries: 2 }
+        { maxTokens: 200, temperature: chainTemp, maxRetries: 2 }
       );
 
-      var safe = secureOutput(reply, 'chain @' + author);
-      if (!safe) { state.processedIds.push(n.id); continue; }
+      var safe = secureOutput(reply, 'chain @' + author, { maxChars: 150 });
+      if (!safe) { state.stats.guardBlocked++; state.processedIds.push(n.id); continue; }
 
       safe = maybeAppendNightclub(safe);
 
@@ -1021,13 +1045,13 @@ async function chainReplies(state) {
 // ═══════════════════════════════════════════
 
 async function heartbeat() {
-  // Pick initial mood
   var mood = pickMood();
 
   C.log.banner([
     '💓🔥 GILLITO HEARTBEAT v3.0 — TROLL KING EDITION',
     '🧠 Mood: ' + mood.id.toUpperCase() + ' — ' + mood.desc,
     '🛡️ Security: ' + (sec ? 'ACTIVE' : 'MISSING'),
+    '🛡️ Output Guard: ' + (guard ? 'ACTIVE' : 'MISSING') + ' | Temp ceiling: ' + CONFIG.maxTemperature,
     '🕵️ Recon: ' + (hasRecon ? reconIntel.intel.length + ' intel items' : 'none'),
     '📰 Research: ' + (researchData ? 'LOADED' : 'none'),
     '🎬 YouTube: ' + (youtubeData ? 'LOADED' : 'none'),
@@ -1037,7 +1061,6 @@ async function heartbeat() {
     '🦞 ' + (P.nombre || 'Mi Pana Gillito') + ' — TROLLEANDO Y DOMINANDO MOLTBOOK'
   ]);
 
-  // Health check
   var online = await C.moltHealth();
   if (!online) {
     C.log.warn('❌ Moltbook offline — heartbeat paused');
@@ -1046,10 +1069,8 @@ async function heartbeat() {
   }
 
   var state = loadState();
-  C.log.info('📊 State: ' + state.stats.posts + 'p ' + state.stats.replies + 'r ' + state.stats.comments + 'c ' + state.stats.upvotes + '⬆ ' + state.stats.downvotes + '⬇ ' + state.stats.follows + '➕ ' + state.stats.botKills + '💀 ' + state.stats.reconDrops + '🕵️ ' + state.stats.trolls + '🔥 ' + state.stats.nightclubPromos + '🦞 ' + state.stats.chains + '🧵 ' + state.stats.blocked + '🛡️');
+  C.log.info('📊 State: ' + state.stats.posts + 'p ' + state.stats.replies + 'r ' + state.stats.comments + 'c ' + state.stats.upvotes + '⬆ ' + state.stats.downvotes + '⬇ ' + state.stats.follows + '➕ ' + state.stats.botKills + '💀 ' + state.stats.reconDrops + '🕵️ ' + state.stats.trolls + '🔥 ' + state.stats.nightclubPromos + '🦞 ' + state.stats.chains + '🧵 ' + state.stats.blocked + '🛡️ ' + (state.stats.guardBlocked || 0) + '🚫');
 
-  // Phase-based activity cycling — each phase does multiple things
-  // NEW: TROLL phase added, moods change every 3 cycles
   var phases = [
     {
       name: 'ENGAGE',
@@ -1105,7 +1126,6 @@ async function heartbeat() {
 
     beatCount++;
 
-    // Change mood every 3 full cycles (every 15 beats with 5 phases)
     moodCycleCounter++;
     if (moodCycleCounter % 15 === 0) {
       var newMood = pickMood();
@@ -1129,7 +1149,6 @@ async function heartbeat() {
 
     saveState(state);
 
-    // Adaptive rhythm: faster when getting interactions, slower when quiet
     var recentActions = state.stats.replies + state.stats.comments + state.stats.trolls;
     var speedFactor = recentActions > 15 ? 0.65 : recentActions > 8 ? 0.8 : 1.0;
     var jitter = CONFIG.beatInterval * speedFactor * (0.8 + Math.random() * 0.4);
@@ -1150,7 +1169,7 @@ async function heartbeat() {
     '🔥 Trolls: ' + state.stats.trolls + ' | 💀 Bot kills: ' + state.stats.botKills + ' | 🧵 Chains: ' + state.stats.chains,
     '👍 Up: ' + state.stats.upvotes + ' | 👎 Down: ' + state.stats.downvotes + ' | ➕ Follows: ' + state.stats.follows,
     '📩 DMs: ' + state.stats.dms + ' | 🦞 Nightclub promos: ' + state.stats.nightclubPromos + ' | 🕵️ Recon: ' + state.stats.reconDrops,
-    '🛡️ Blocked: ' + state.stats.blocked,
+    '🛡️ Blocked: ' + state.stats.blocked + ' | 🚫 Guard: ' + (state.stats.guardBlocked || 0),
     '🦞 ¡GILLITO DOMINA Y TROLLEA MOLTBOOK! 🔥🇵🇷'
   ]);
 
