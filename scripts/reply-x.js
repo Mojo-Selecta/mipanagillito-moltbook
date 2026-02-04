@@ -6,7 +6,7 @@
  * 🎨 @grok image replies for high-engagement targets
  * 🕵️ Recon-powered replies (when relevant intel matches topic)
  * 📈 Increased reply budget (Premium accounts get priority)
- * 🛡️ Full security pipeline preserved
+ * 🛡️ Full security + output guard pipeline
  *
  * PREMIUM REPLY STRATEGY (FREE API TIER):
  * ─────────────────────────────────────────
@@ -31,6 +31,56 @@ C.requireXCreds();
 const P       = C.loadPersonality();
 const idCache = C.createIdCache('.gillito-replied-ids.json');
 const history = C.createHistory('.gillito-reply-history.json', 80);
+
+// 🛡️ Output guard — prevents token soup / gibberish
+let guard;
+try {
+  guard = require('./lib/output-guard');
+} catch (e) {
+  C.log.warn('⚠️ output-guard.js not found — running without gibberish protection');
+}
+
+// 🌡️ Temperature ceiling
+const MAX_TEMPERATURE = 1.1;
+
+/**
+ * Safe temperature — caps at MAX_TEMPERATURE to prevent token soup
+ */
+function safeTemp(rawTemp) {
+  if (guard) return guard.capTemperature(rawTemp, MAX_TEMPERATURE);
+  return Math.min(rawTemp, MAX_TEMPERATURE);
+}
+
+/**
+ * Two-stage output validation: security + gibberish guard
+ */
+function secureOutput(text, label, opts) {
+  opts = opts || {};
+  if (!text) return null;
+
+  // Stage 1: Security (secrets, banned patterns)
+  var check = sec.processOutput(text);
+  if (!check.safe) {
+    C.log.warn('🛡️ SEC BLOCKED [' + label + ']: ' + check.blocked.join(', '));
+    return null;
+  }
+
+  // Stage 2: Output guard (gibberish, length, coherence)
+  if (guard) {
+    var guardOpts = { maxChars: opts.maxChars || 260 };
+    if (opts.minCoherence) guardOpts.minCoherence = opts.minCoherence;
+    var g = guard.validate(check.text, guardOpts);
+    if (!g.valid) {
+      C.log.warn('🛡️ GUARD REJECTED [' + label + ']: ' + g.reason);
+      if (g.text) C.log.warn('   Preview: ' + g.text.substring(0, 100) + '...');
+      return null;
+    }
+    return g.text;
+  }
+
+  // No guard — just return security-cleaned text
+  return check.text;
+}
 
 // 💎 Premium features with free API budget (17 tweets/24h total)
 const MAX_REPLIES = 2;  // Conservative: 2 replies × ~5 cycles = ~10/day → leaves room for 6 posts
@@ -79,7 +129,7 @@ function selectReplyType(tweetText, tipo) {
 async function generateStandardReply(sanitizedText, author, tipo) {
   const systemPrompt = C.buildReplySystemPrompt(P, tipo, author.username, 'x');
   const antiRep = C.buildAntiRepetitionContext(history.getTexts(15));
-  const temp = C.suggestTemperature(P.temperatura || 1.2, C.getJournal());
+  const temp = safeTemp(C.suggestTemperature(P.temperatura || 0.9, C.getJournal()));
   const seed = Math.random().toString(36).substring(2, 8);
 
   const userPrompt = `[SEED:${seed}] @${author.username} dice:\n${sanitizedText}\n\nRespóndele como Gillito.${antiRep}`;
@@ -106,7 +156,7 @@ Máximo 275 caracteres TOTAL.
 Sé CREATIVO con la imagen — algo absurdo, exagerado, satírico.`;
 
   return C.groqChat(systemPrompt, userPrompt, {
-    maxTokens: 200, temperature: 1.2, maxRetries: 3, backoffMs: 2000
+    maxTokens: 200, temperature: safeTemp(0.9), maxRetries: 3, backoffMs: 2000
   });
 }
 
@@ -125,7 +175,7 @@ Estilo: "Pana, casualmente hackié unos servers y mira lo que encontré sobre es
 Máximo 275 caracteres.`;
 
   return C.groqChat(systemPrompt, userPrompt, {
-    maxTokens: 200, temperature: 1.1, maxRetries: 3, backoffMs: 2000
+    maxTokens: 200, temperature: safeTemp(0.9), maxRetries: 3, backoffMs: 2000
   });
 }
 
@@ -147,7 +197,7 @@ Cada reply-back de ellos = más thread = más impresiones = más reach.
 Máximo 260 caracteres. PROVOCA respuesta.`;
 
   return C.groqChat(systemPrompt, userPrompt, {
-    maxTokens: 180, temperature: 1.3, maxRetries: 3, backoffMs: 2000
+    maxTokens: 180, temperature: safeTemp(0.95), maxRetries: 3, backoffMs: 2000
   });
 }
 
@@ -158,6 +208,13 @@ Máximo 260 caracteres. PROVOCA respuesta.`;
 
 async function main() {
   const userId = await C.xGetMe();
+
+  C.log.banner([
+    '💎 GILLITO PREMIUM — Reply on X v7.0',
+    `🛡️ Output Guard: ${guard ? 'ACTIVE' : 'MISSING'} | Temp ceiling: ${MAX_TEMPERATURE}`,
+    `🕵️ Recon: ${hasReconIntel ? 'READY' : 'no intel'}`,
+  ]);
+
   C.log.stat('User ID', userId);
 
   // Lookback 5 hours for mentions
@@ -179,6 +236,7 @@ async function main() {
   }
 
   let replied = 0;
+  let guardBlocked = 0;
 
   for (const tweet of newMentions) {
     if (replied >= MAX_REPLIES) break;
@@ -247,17 +305,17 @@ async function main() {
       P.reglas?.max_caracteres_reply || 260
     );
 
-    // ═══ VALIDATE OUTPUT ═══
-    const outputCheck = sec.processOutput(reply);
-    if (!outputCheck.safe) {
-      C.log.warn(`🛡️ Reply bloqueado: ${outputCheck.blocked.join(', ')}`);
+    // ═══ TWO-STAGE VALIDATION ═══
+    const safe = secureOutput(reply, 'reply @' + author.username, { maxChars: 260 });
+    if (!safe) {
+      guardBlocked++;
       continue;
     }
 
-    C.log.info(`📝 Reply (${outputCheck.text.length}ch): ${outputCheck.text}`);
+    C.log.info(`📝 Reply (${safe.length}ch): ${safe}`);
 
     // ═══ POST ═══
-    const result = await C.xReply(tweet.id, outputCheck.text);
+    const result = await C.xReply(tweet.id, safe);
 
     if (result.rateLimited) {
       C.log.warn('Rate limited — parando');
@@ -274,16 +332,16 @@ async function main() {
       }
 
       history.add({
-        text: outputCheck.text,
+        text: safe,
         replyTo: tweet.id,
         replyType,
         authorType: tipo,
         author: author.username,
         originalText: tweet.text.substring(0, 100),
-        charLen: outputCheck.text.length,
+        charLen: safe.length,
         riskScore: secCheck.riskScore,
         premium: true,
-        hasGrokTag: outputCheck.text.includes('@grok'),
+        hasGrokTag: safe.includes('@grok'),
         hasIntel: replyType === 'recon_intel',
       });
       replied++;
@@ -291,6 +349,7 @@ async function main() {
   }
 
   C.log.stat('Replies enviados', `${replied}/${MAX_REPLIES}`);
+  if (guardBlocked > 0) C.log.stat('Guard blocked', guardBlocked);
   idCache.save();
   history.save();
   C.log.session();
