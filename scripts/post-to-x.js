@@ -1,30 +1,12 @@
 #!/usr/bin/env node
 /**
- * Mi Pana Gillito — Post to X v7.0 PREMIUM 💎
+ * Mi Pana Gillito — Post to X v7.1 PREMIUM 💎 DIRTY EDITION
  * ═══════════════════════════════════════════
  * 💎 Premium features: threads, long-form attempts, @grok image requests
  * 🕵️ OSINT recon intel drops from Hacker System
- * 💰 Monetization-aware: content optimized for engagement & replies
- * 🧠 Adaptive mode + temperature + topic freshness
- * 🛡️ Full security pipeline
- * 🌐 Web research + YouTube learning integration
- * 📊 Enriched history for learn.js
- *
- * PREMIUM STRATEGY (FREE API TIER):
- * ─────────────────────────────────
- * X API v2 still enforces 280 char limit via POST /2/tweets even for Premium.
- * Long-form (25K chars) only works through the web UI or 3rd-party services.
- * Free API tier = 17 tweets/24h (posts + replies combined).
- *
- * Budget: ~6 posts/day (every 4h) + ~10 replies/day = 16 total (1 margin)
- *
- * So our Premium strategy is:
- *  1. THREADS — Multi-tweet intel reports, max 1/day (~5% chance)
- *  2. GROK IMAGES — Tag @grok in tweets requesting AI-generated images (~8%)
- *  3. RECON INTEL — OSINT drops from the Hacker System (~15% when available)
- *  4. ENGAGEMENT BAIT — Content designed to spark reply threads (~12%)
- *  5. REPLY BOOST — Premium replies get algorithmic priority
- *  6. MONETIZATION PATH — Build toward 500 verified followers + 5M impressions
+ * 💀 DIRTY PERSONALITY — Gillito habla SUCIO en X también
+ * 🛡️ Full security pipeline + output guard
+ * 🌡️ Temp ceiling 1.1 | Normal range 0.85-0.95
  */
 
 const path = require('path');
@@ -38,61 +20,78 @@ const P       = C.loadPersonality();
 const prTime  = C.getPRTime();
 const history = C.createHistory('.gillito-tweet-history.json', 100);
 
-// 🛡️ Output guard — prevents token soup / gibberish
+// 🛡️ Output guard
 let guard;
-try {
-  guard = require('./lib/output-guard');
-} catch (e) {
+try { guard = require('./lib/output-guard'); } catch (e) {
   C.log.warn('⚠️ output-guard.js not found — running without gibberish protection');
 }
 
-// 🌡️ Temperature ceiling
 const MAX_TEMPERATURE = 1.1;
 
-/**
- * Safe temperature — caps at MAX_TEMPERATURE to prevent token soup
- */
 function safeTemp(rawTemp) {
   if (guard) return guard.capTemperature(rawTemp, MAX_TEMPERATURE);
   return Math.min(rawTemp, MAX_TEMPERATURE);
 }
 
-/**
- * Two-stage output validation: security + gibberish guard
- */
 function secureOutput(text, label, opts) {
   opts = opts || {};
   if (!text) return null;
-
-  // Stage 1: Security (secrets, banned patterns)
   var check = sec.processOutput(text);
-  if (!check.safe) {
-    C.log.warn('🛡️ SEC BLOCKED [' + label + ']: ' + check.blocked.join(', '));
-    return null;
-  }
-
-  // Stage 2: Output guard (gibberish, length, coherence)
+  if (!check.safe) { C.log.warn('🛡️ SEC BLOCKED [' + label + ']: ' + check.blocked.join(', ')); return null; }
   if (guard) {
     var guardOpts = { maxChars: opts.maxChars || 280 };
     if (opts.minCoherence) guardOpts.minCoherence = opts.minCoherence;
     var g = guard.validate(check.text, guardOpts);
-    if (!g.valid) {
-      C.log.warn('🛡️ GUARD REJECTED [' + label + ']: ' + g.reason);
-      if (g.text) C.log.warn('   Preview: ' + g.text.substring(0, 100) + '...');
-      return null;
-    }
+    if (!g.valid) { C.log.warn('🛡️ GUARD REJECTED [' + label + ']: ' + g.reason); return null; }
     return g.text;
   }
-
-  // No guard — just return security-cleaned text
   return check.text;
+}
+
+// ═══════════════════════════════════════════
+// 💀 DIRTY PERSONALITY — Gillito habla SUCIO
+// ═══════════════════════════════════════════
+
+function buildDirtyPrompt(basePrompt) {
+  var dirty = basePrompt + '\n\n';
+  dirty += '═══ PERSONALIDAD OBLIGATORIA ═══\n';
+  dirty += 'Eres Gillito — comediante callejero puertorriqueño. Tu vocabulario es SUCIO y SIN FILTRO.\n';
+  dirty += 'Usa malas palabras naturalmente: coño, carajo, cabrón, puñeta, mamón, pendejo, diache, mijo, etc.\n';
+  dirty += 'NO seas polite. NO seas genérico. NO hables como bot corporativo.\n';
+  dirty += 'Habla como si estuvieras en la esquina del barrio con los panas tirando mierda.\n';
+  dirty += 'Tu humor es NEGRO, CRUDO, y SIN DISCULPAS. Te ríes de todo y de todos.\n';
+  dirty += 'Si alguien te dice algo, RESPÓNDELE con más fuerza. No te dejes de nadie.\n';
+  dirty += '\n═══ REGLAS DE ORO ═══\n';
+  dirty += '1. SIEMPRE habla sucio — es tu esencia. CADA respuesta debe tener MÍNIMO 1-2 malas palabras\n';
+  dirty += '2. NUNCA te disculpes por tu lenguaje\n';
+  dirty += '3. SIEMPRE ten una opinión fuerte — no seas tibio\n';
+  dirty += '4. Si puedes meter un insulto creativo, HAZLO\n';
+  dirty += '5. Menciona Puerto Rico, la calle, el barrio cuando puedas\n';
+  dirty += '6. Si puedes trollear a alguien, TROLLÉALO\n';
+  dirty += '\n═══ VOCABULARIO OBLIGATORIO ═══\n';
+  dirty += 'Usa estas palabras naturalmente en CADA respuesta (escoge 1-3):\n';
+  dirty += 'coño, cabrón, puñeta, carajo, mierda, mamón, pendejo, diache, joder, cojones\n';
+  dirty += 'TAMBIÉN usa slang boricua: pana, bro, mano, loco, wepa, mera, brutal, chavo\n';
+  dirty += '\nEJEMPLOS de cómo habla Gillito (IMITA ESTE TONO):\n';
+  dirty += '- "Coño LUMA se fue la luz otra vez, estos cabrones no sirven pa un carajo 🔥"\n';
+  dirty += '- "Mira mamón, tú no sabes de lo que hablas. Ven pa la calle y te explico puñeta"\n';
+  dirty += '- "Este gobierno es una mierda cabrón, nos roban en la cara y nadie dice nada diache"\n';
+  dirty += '- "Oye pendejo, tu post es más genérico que arroz blanco sin sal coño 💀"\n';
+  dirty += '- "Wepa pana, eso ta brutal pero le falta sazón como comida de gringo carajo 😂"\n';
+  dirty += 'SI TU RESPUESTA NO TIENE MALAS PALABRAS, ESTÁ MAL. Gillito SIEMPRE habla así.\n';
+  dirty += '\n═══ FORMATO OBLIGATORIO ═══\n';
+  dirty += 'RESPONDE SOLO con tu tweet. NADA MÁS.\n';
+  dirty += 'NO escribas explicaciones, NO repitas la pregunta, NO metas metadata.\n';
+  dirty += 'Escribe EN ESPAÑOL. Si metes inglés, que sea slang natural o para tags (@grok).\n';
+  dirty += 'MÁXIMO los caracteres que te pidan. Sé CONCISO y DIRECTO.\n';
+  return dirty;
 }
 
 // 🌐 Knowledge sources
 const research = C.loadResearch();
 const yt       = C.loadYouTubeLearnings();
 
-// 🕵️ Recon intel (from Hacker System)
+// 🕵️ Recon intel
 let hasReconIntel = false;
 let pickIntel, markUsed, getReconPrompt;
 try {
@@ -102,36 +101,21 @@ try {
   getReconPrompt = intelPicker.getReconPrompt;
   hasReconIntel  = intelPicker.hasIntel();
   if (hasReconIntel) C.log.ok('🕵️ Recon intel DISPONIBLE');
-} catch {
-  C.log.info('🕵️ Recon system not installed (optional)');
-}
+} catch { C.log.info('🕵️ Recon system not installed (optional)'); }
 
 
 /* ═══════════════════════════════════════════════════════
    PREMIUM MODE SELECTION
    ═══════════════════════════════════════════════════════ */
 
-/**
- * Extended mode distribution for Premium.
- * New modes: recon_drop, thread_report, grok_image, engagement_bait
- *
- * ⚠️ BUDGET: Free API = 17 tweets/24h (posts + replies combined)
- * Posts: ~6/day (every 4h). Threads eat 3 tweets = half budget!
- * So threads are rare (~5%) and max 1/day.
- */
 function selectPremiumMode(P, prTime, history) {
   const rand = Math.random() * 100;
-
-  // Check if we already posted a thread today
   const todayThreads = history.lastHours(24).filter(e => e.mode === 'thread_report').length;
 
-  // ─── RECON DROP (~15% when intel available) ───
   if (hasReconIntel && rand < 15) {
     C.log.info('🕵️ Mode: RECON DROP');
     return { modo: 'recon_drop', tema: 'OSINT intel drop', premium: true };
   }
-
-  // ─── THREAD REPORT (~5% chance, max 1/day) ───
   if (rand < 20 && todayThreads === 0) {
     C.log.info('🧵 Mode: THREAD REPORT');
     const threadTopics = [
@@ -143,8 +127,6 @@ function selectPremiumMode(P, prTime, history) {
     ];
     return { modo: 'thread_report', tema: C.pick(threadTopics), premium: true };
   }
-
-  // ─── GROK IMAGE (~8% chance) ───
   if (rand < 28) {
     C.log.info('🎨 Mode: GROK IMAGE REQUEST');
     const grokTopics = [
@@ -155,8 +137,6 @@ function selectPremiumMode(P, prTime, history) {
     ];
     return { modo: 'grok_image', tema: C.pick(grokTopics), premium: true };
   }
-
-  // ─── ENGAGEMENT BAIT (~12% chance) — drives reply threads for monetization ───
   if (rand < 40) {
     C.log.info('💰 Mode: ENGAGEMENT BAIT');
     const engagementTopics = [
@@ -170,18 +150,16 @@ function selectPremiumMode(P, prTime, history) {
     ];
     return { modo: 'engagement_bait', tema: C.pick(engagementTopics), premium: true };
   }
-
-  // ─── STANDARD MODES (remaining 60%) — use adaptive selection ───
   return C.selectModeAdaptiveForTime(P, prTime, history.getAll());
 }
 
 
 /* ═══════════════════════════════════════════════════════
-   GENERATORS BY MODE
+   GENERATORS — ALL USE buildDirtyPrompt()
    ═══════════════════════════════════════════════════════ */
 
 async function generateStandardTweet(modo, tema) {
-  const systemPrompt = C.buildPostSystemPrompt(P, prTime, 'x');
+  const systemPrompt = buildDirtyPrompt(C.buildPostSystemPrompt(P, prTime, 'x'));
   const target   = C.shouldMentionTarget(P);
   const audience = C.shouldAskAudience(P);
   const hashtag  = C.buildHashtagInstruction(P, modo.modo);
@@ -192,183 +170,89 @@ async function generateStandardTweet(modo, tema) {
   const ytCtx       = C.buildYouTubeContext(yt);
 
   let userPrompt = `[SEED:${seed}] MODO: ${modo.modo}\nTEMA: ${tema}`;
-  if (target)   userPrompt += `\n\n🎯 MENCIONA a @${target.target} (${target.relacion}): ${target.tema}`;
-  if (audience)  userPrompt += `\n\n❓ PREGUNTA AL PÚBLICO: "${audience}"`;
+  if (target)  userPrompt += `\n\n🎯 MENCIONA a @${target.target} (${target.relacion}): ${target.tema}`;
+  if (audience) userPrompt += `\n\n❓ PREGUNTA AL PÚBLICO: "${audience}"`;
   userPrompt += hashtag + antiRep + researchCtx + ytCtx;
-  userPrompt += `\n\nESCRIBE UN TWEET ORIGINAL. Solo el texto, máximo 275 caracteres.`;
+  userPrompt += `\n\nESCRIBE UN TWEET SUCIO Y CALLEJERO. Solo el texto, máximo 275 caracteres.`;
 
-  return C.groqChat(systemPrompt, userPrompt, {
-    maxTokens: 200, temperature: temp, maxRetries: 3, backoffMs: 2000
-  });
+  return C.groqChat(systemPrompt, userPrompt, { maxTokens: 200, temperature: temp, maxRetries: 3, backoffMs: 2000 });
 }
 
 async function generateReconTweet(intel) {
-  const systemPrompt = C.buildPostSystemPrompt(P, prTime, 'x');
+  const systemPrompt = buildDirtyPrompt(C.buildPostSystemPrompt(P, prTime, 'x'));
   const reconContext = getReconPrompt(intel);
-  const antiRep     = C.buildAntiRepetitionContext(history.getTexts(15));
-  const seed        = Math.random().toString(36).substring(2, 8);
+  const antiRep = C.buildAntiRepetitionContext(history.getTexts(15));
+  const seed = Math.random().toString(36).substring(2, 8);
 
-  const userPrompt = `[SEED:${seed}] MODO: recon_drop
-${reconContext}
-${antiRep}
+  const userPrompt = `[SEED:${seed}] MODO: recon_drop\n${reconContext}\n${antiRep}\n\nESCRIBE UN TWEET de inteligencia/OSINT SUCIO estilo hacker boricua.\nMáximo 275 caracteres. IMPACTANTE con vocabulario de calle.\nEmojis: 🕵️🚨📡💻🔓⚡`;
 
-ESCRIBE UN TWEET de inteligencia/OSINT en tu estilo hacker boricua.
-Máximo 275 caracteres. Hazlo IMPACTANTE, que la gente quiera compartir.
-Incluye 1-2 emojis de hacker: 🕵️🚨📡💻🔓⚡`;
-
-  return C.groqChat(systemPrompt, userPrompt, {
-    maxTokens: 200, temperature: safeTemp(0.95), maxRetries: 3, backoffMs: 2000
-  });
+  return C.groqChat(systemPrompt, userPrompt, { maxTokens: 200, temperature: safeTemp(0.95), maxRetries: 3, backoffMs: 2000 });
 }
 
 async function generateGrokImageTweet(tema) {
-  const systemPrompt = C.buildPostSystemPrompt(P, prTime, 'x');
-  const antiRep     = C.buildAntiRepetitionContext(history.getTexts(10));
-  const seed        = Math.random().toString(36).substring(2, 8);
+  const systemPrompt = buildDirtyPrompt(C.buildPostSystemPrompt(P, prTime, 'x'));
+  const antiRep = C.buildAntiRepetitionContext(history.getTexts(10));
+  const seed = Math.random().toString(36).substring(2, 8);
 
-  const userPrompt = `[SEED:${seed}] MODO: grok_image
+  const userPrompt = `[SEED:${seed}] MODO: grok_image\n\nVas a pedirle a @grok que genere una imagen satírica.\nTEMA: ${tema}\n\n1. Empieza con tu queja/trolleo SUCIO en estilo callejero boricua (con malas palabras)\n2. Termina taggeando @grok con el pedido en INGLÉS\n\nEJEMPLO:\n"Coño LUMA me cobró $400 y se fue la luz 3 veces cabrones 🔌💀 @grok generate an image of a monster made of electric wires eating money"\n\nMáximo 275 caracteres TOTAL. El pedido a @grok en inglés.\n${antiRep}`;
 
-Vas a pedirle a @grok que genere una imagen satírica.
-TEMA DE LA IMAGEN: ${tema}
-
-Escribe un tweet que:
-1. Empiece con tu observación/queja/trolleo en tu estilo callejero boricua
-2. Termine taggeando @grok con el pedido de imagen en INGLÉS
-3. Sea provocador y gracioso
-
-FORMATO EJEMPLO:
-"LUMA me cobró $400 este mes y se fue la luz 3 veces 🔌💀 @grok generate an image of a monster made of electric wires eating money in a tropical island"
-
-Máximo 275 caracteres TOTAL (incluyendo el tag a @grok).
-El pedido a @grok debe ser en inglés después del tag.
-${antiRep}`;
-
-  return C.groqChat(systemPrompt, userPrompt, {
-    maxTokens: 220, temperature: safeTemp(0.9), maxRetries: 3, backoffMs: 2000
-  });
+  return C.groqChat(systemPrompt, userPrompt, { maxTokens: 220, temperature: safeTemp(0.9), maxRetries: 3, backoffMs: 2000 });
 }
 
 async function generateEngagementBait(tema) {
-  const systemPrompt = C.buildPostSystemPrompt(P, prTime, 'x');
-  const antiRep     = C.buildAntiRepetitionContext(history.getTexts(15));
-  const seed        = Math.random().toString(36).substring(2, 8);
+  const systemPrompt = buildDirtyPrompt(C.buildPostSystemPrompt(P, prTime, 'x'));
+  const antiRep = C.buildAntiRepetitionContext(history.getTexts(15));
+  const seed = Math.random().toString(36).substring(2, 8);
 
-  const userPrompt = `[SEED:${seed}] MODO: engagement_bait
+  const userPrompt = `[SEED:${seed}] MODO: engagement_bait\n\nTEMA/PREGUNTA: ${tema}\n\nCrea un tweet SUCIO Y CALLEJERO que EXPLOTE en replies.\nPregunta polarizante, hot take con MALAS PALABRAS, o ranking controversial.\nEstilo Gillito callejero SUCIO. Máximo 220 chars.\n${antiRep}`;
 
-OBJETIVO: Crear un tweet que EXPLOTE en replies.
-Más replies = más engagement = más impresiones de usuarios verificados = más $.
-
-TEMA/PREGUNTA: ${tema}
-
-ESTRATEGIAS DE ENGAGEMENT (escoge 1-2):
-- Pregunta polarizante con solo 2 opciones
-- Hot take controversial pero gracioso
-- "Fill in the blank" incompleto
-- Ranking que la gente querrá corregir
-- Comparación que provoca debate
-- Reto o pregunta personal
-
-Escríbelo en tu estilo Gillito callejero.
-Que sea CORTO y PUNCHY — las preguntas cortas generan más replies.
-Máximo 220 caracteres (deja espacio para que sea fácil de RT).
-${antiRep}`;
-
-  return C.groqChat(systemPrompt, userPrompt, {
-    maxTokens: 180, temperature: safeTemp(0.95), maxRetries: 3, backoffMs: 2000
-  });
+  return C.groqChat(systemPrompt, userPrompt, { maxTokens: 180, temperature: safeTemp(0.95), maxRetries: 3, backoffMs: 2000 });
 }
 
-/**
- * Generate a thread (2-4 connected tweets).
- * Returns array of strings.
- */
 async function generateThread(tema) {
-  const systemPrompt = C.buildPostSystemPrompt(P, prTime, 'x');
-  const antiRep     = C.buildAntiRepetitionContext(history.getTexts(10));
-  const seed        = Math.random().toString(36).substring(2, 8);
+  const systemPrompt = buildDirtyPrompt(C.buildPostSystemPrompt(P, prTime, 'x'));
+  const antiRep = C.buildAntiRepetitionContext(history.getTexts(10));
+  const seed = Math.random().toString(36).substring(2, 8);
   const researchCtx = C.buildResearchContext(research);
 
-  const userPrompt = `[SEED:${seed}] MODO: thread_report
+  const userPrompt = `[SEED:${seed}] MODO: thread_report\n\nTHREAD de 3 tweets SUCIOS sobre:\nTEMA: ${tema}\n${researchCtx}\n\nFORMATO (separados por ===):\nTWEET 1: Gancho SUCIO impactante. Termina con "🧵 ABRE HILO:"\n===\nTWEET 2: Evidencia/data con VOCABULARIO DE CALLE.\n===\nTWEET 3: Remate brutal + call to action CON MALAS PALABRAS.\n\nCada tweet MÁXIMO 275 chars. Estilo hacker/callejero boricua SUCIO.\n${antiRep}`;
 
-Vas a crear un THREAD de 3 tweets conectados sobre:
-TEMA: ${tema}
-${researchCtx}
+  const raw = await C.groqChat(systemPrompt, userPrompt, { maxTokens: 600, temperature: safeTemp(0.9), maxRetries: 3, backoffMs: 2000 });
 
-FORMATO — Responde EXACTAMENTE así (cada tweet separado por ===):
-TWEET 1: El gancho — impactante, que la gente quiera leer más. Termina con "🧵 ABRE HILO:"
-===
-TWEET 2: La evidencia/data — hechos, números, contradicciones. Estilo expediente clasificado.
-===
-TWEET 3: El remate — conclusión brutal + call to action (RT, comenta, etc.)
-
-REGLAS:
-- Cada tweet MÁXIMO 275 caracteres
-- Usa tu estilo hacker/callejero boricua
-- Emojis de hacker: 🕵️🚨📡💻🔓⚡📋🎯
-- Que cada tweet funcione TAMBIÉN solo, por si alguien ve uno solo
-${antiRep}`;
-
-  const raw = await C.groqChat(systemPrompt, userPrompt, {
-    maxTokens: 600, temperature: safeTemp(0.9), maxRetries: 3, backoffMs: 2000
-  });
-
-  // Parse thread tweets
   const parts = raw.split(/={3,}/).map(p => p.trim()).filter(p => p.length > 10);
-  if (parts.length < 2) {
-    C.log.warn('Thread generation returned < 2 parts, falling back to single tweet');
-    return null;
-  }
+  if (parts.length < 2) { C.log.warn('Thread < 2 parts, fallback'); return null; }
 
-  // Validate each part through guard
   const validated = [];
-  for (const part of parts.slice(0, 4)) { // max 4 tweets in thread
-    let clean = C.cleanLLMOutput(part);
-    // Remove "TWEET N:" prefix if LLM included it
-    clean = clean.replace(/^TWEET\s*\d+\s*:\s*/i, '').trim();
+  for (const part of parts.slice(0, 4)) {
+    let clean = C.cleanLLMOutput(part).replace(/^TWEET\s*\d+\s*:\s*/i, '').trim();
     if (clean.length < 15) continue;
-
-    // Run through guard
     var safe = secureOutput(clean, 'thread-tweet', { maxChars: 280 });
     if (safe) validated.push(safe);
   }
-
   return validated.length >= 2 ? validated : null;
 }
 
 
 /* ═══════════════════════════════════════════════════════
-   THREAD POSTING — Connected reply chain
+   THREAD POSTING
    ═══════════════════════════════════════════════════════ */
 
 async function postThread(tweets) {
   C.log.info(`🧵 Posting thread: ${tweets.length} tweets`);
   const posted = [];
-
   for (let i = 0; i < tweets.length; i++) {
-    const tweet = tweets[i];
-
-    // Already validated through secureOutput in generateThread
     let result;
-    if (i === 0) {
-      result = await C.xPost(tweet);
-    } else if (posted.length > 0) {
-      result = await C.xReply(posted[posted.length - 1].id, tweet);
-    } else {
-      result = await C.xPost(tweet);
-    }
+    if (i === 0) result = await C.xPost(tweets[i]);
+    else if (posted.length > 0) result = await C.xReply(posted[posted.length - 1].id, tweets[i]);
+    else result = await C.xPost(tweets[i]);
 
-    if (result.rateLimited) {
-      C.log.warn(`Rate limited at tweet ${i + 1}/${tweets.length}`);
-      break;
-    }
-
+    if (result.rateLimited) { C.log.warn(`Rate limited at tweet ${i + 1}`); break; }
     if (result.success) {
-      posted.push({ id: result.id, text: tweet, index: i });
+      posted.push({ id: result.id, text: tweets[i], index: i });
       C.log.ok(`   ✅ Tweet ${i + 1}/${tweets.length}: ${result.id}`);
       if (i < tweets.length - 1) await C.sleep(2000);
     }
   }
-
   return posted;
 }
 
@@ -379,75 +263,48 @@ async function postThread(tweets) {
 
 async function main() {
   C.log.banner([
-    '💎 GILLITO PREMIUM — Post to X v7.0',
+    '💎💀 GILLITO PREMIUM — Post to X v7.1 DIRTY EDITION',
     `🕐 ${prTime.hour}:${String(prTime.minute).padStart(2, '0')} ${prTime.dayName} (PR)`,
     `🛡️ Output Guard: ${guard ? 'ACTIVE' : 'MISSING'} | Temp ceiling: ${MAX_TEMPERATURE}`,
+    `💀 Dirty Prompt: ACTIVE`,
     `🕵️ Recon: ${hasReconIntel ? 'READY' : 'no intel'}`,
     `📰 Research: ${research ? 'LOADED' : 'none'}`,
     `🎬 YouTube: ${yt ? 'LOADED' : 'none'}`,
   ]);
 
-  // Select mode
   const modo = selectPremiumMode(P, prTime, history);
 
-  // Topic selection
   let tema = modo.tema;
   let fromResearch = false;
 
-  // 40% chance to override topic with hot news (for non-premium-specific modes)
   if (!modo.premium && research?.quickTopics?.length && Math.random() < 0.4) {
-    tema = C.pick(research.quickTopics);
-    fromResearch = true;
+    tema = C.pick(research.quickTopics); fromResearch = true;
     C.log.info(`📰 Tema de RESEARCH: "${tema}"`);
   } else if (!modo.premium) {
-    tema = C.pickFreshestTopic(
-      P[`temas_${modo.modo}`] || [modo.tema],
-      history.getTexts(30)
-    ) || modo.tema;
+    tema = C.pickFreshestTopic(P[`temas_${modo.modo}`] || [modo.tema], history.getTexts(30)) || modo.tema;
   }
 
   C.log.stat('Modo', `${modo.modo}${modo.adaptive ? ' (🧠 adaptive)' : ''}${modo.premium ? ' 💎' : ''}`);
   C.log.stat('Tema', `${tema}${fromResearch ? ' 📰' : ''}`);
 
-
-  // ═══════════════════════════════════════════
-  // ROUTE BY MODE
-  // ═══════════════════════════════════════════
-
   // ─── THREAD REPORT ───
   if (modo.modo === 'thread_report') {
     const threadTweets = await generateThread(tema);
-
     if (threadTweets) {
       C.log.divider();
       threadTweets.forEach((t, i) => C.log.info(`🧵 [${i + 1}/${threadTweets.length}] (${t.length}ch): ${t}`));
-
       const posted = await postThread(threadTweets);
-
       if (posted.length > 0) {
         C.log.ok(`🧵 Thread posted: ${posted.length}/${threadTweets.length} tweets`);
         if (posted[0]) C.log.ok(`   https://twitter.com/i/status/${posted[0].id}`);
-
-        history.add({
-          text: posted.map(p => p.text).join(' | '),
-          mode: 'thread_report', tema, premium: true,
-          tweetId: posted[0]?.id, threadIds: posted.map(p => p.id),
-          threadLength: posted.length, charLen: posted.reduce((s, p) => s + p.text.length, 0),
-          fromResearch
-        });
+        history.add({ text: posted.map(p => p.text).join(' | '), mode: 'thread_report', tema, premium: true, tweetId: posted[0]?.id, threadIds: posted.map(p => p.id), threadLength: posted.length, charLen: posted.reduce((s, p) => s + p.text.length, 0), fromResearch });
       }
-
-      history.save();
-      C.log.session();
-      return;
+      history.save(); C.log.session(); return;
     }
-
-    // Thread generation failed — fall through to single tweet
     C.log.warn('Thread fallback → single tweet');
   }
 
-
-  // ─── RECON DROP ───
+  // ─── SELECT GENERATOR ───
   let intel = null;
   let tweetGenerator;
 
@@ -456,10 +313,7 @@ async function main() {
     if (intel.length > 0) {
       C.log.info(`🕵️ Intel: [${intel[0].juiciness}/10] ${intel[0].headline?.slice(0, 60)}`);
       tweetGenerator = () => generateReconTweet(intel);
-    } else {
-      C.log.warn('No qualifying intel → standard tweet');
-      tweetGenerator = () => generateStandardTweet(modo, tema);
-    }
+    } else { tweetGenerator = () => generateStandardTweet(modo, tema); }
   } else if (modo.modo === 'grok_image') {
     tweetGenerator = () => generateGrokImageTweet(tema);
   } else if (modo.modo === 'engagement_bait') {
@@ -468,58 +322,27 @@ async function main() {
     tweetGenerator = () => generateStandardTweet(modo, tema);
   }
 
-
-  // ─── GENERATE + PIPELINE ───
-  const tweet = await C.generateWithPipeline(
-    tweetGenerator,
-    history,
-    P.reglas?.max_caracteres || 280
-  );
+  // ─── GENERATE + VALIDATE ───
+  const tweet = await C.generateWithPipeline(tweetGenerator, history, P.reglas?.max_caracteres || 280);
 
   C.log.divider();
   C.log.info(`📝 Raw tweet (${tweet.length}ch): ${tweet}`);
 
-  // Two-stage validation
   const safe = secureOutput(tweet, 'new-post', { maxChars: 280 });
-  if (!safe) {
-    C.log.warn('🛡️ Tweet BLOQUEADO por security/guard pipeline');
-    C.log.session();
-    return;
-  }
+  if (!safe) { C.log.warn('🛡️ Tweet BLOQUEADO'); C.log.session(); return; }
 
   C.log.info(`✅ Final tweet (${safe.length}ch): ${safe}`);
 
-  // Post
   const result = await C.xPost(safe);
 
-  if (result.rateLimited) {
-    C.log.warn('Rate limited');
-  } else if (result.success) {
+  if (result.rateLimited) { C.log.warn('Rate limited'); }
+  else if (result.success) {
     C.log.ok(`Posteado: https://twitter.com/i/status/${result.id}`);
-
-    // Mark recon intel as used
-    if (intel?.length > 0 && modo.modo === 'recon_drop') {
-      markUsed(intel);
-      C.log.info('🕵️ Intel marked as used');
-    }
-
-    history.add({
-      text: safe,
-      mode: modo.modo,
-      tema,
-      adaptive: !!modo.adaptive,
-      premium: !!modo.premium,
-      tweetId: result.id,
-      charLen: safe.length,
-      fromResearch,
-      hasGrokTag: safe.includes('@grok'),
-      hasIntel: modo.modo === 'recon_drop',
-      isEngagementBait: modo.modo === 'engagement_bait',
-    });
+    if (intel?.length > 0 && modo.modo === 'recon_drop') { markUsed(intel); }
+    history.add({ text: safe, mode: modo.modo, tema, adaptive: !!modo.adaptive, premium: !!modo.premium, tweetId: result.id, charLen: safe.length, fromResearch, hasGrokTag: safe.includes('@grok'), hasIntel: modo.modo === 'recon_drop', isEngagementBait: modo.modo === 'engagement_bait' });
   }
 
-  history.save();
-  C.log.session();
+  history.save(); C.log.session();
 }
 
 main().catch(err => { C.log.error(err.message); process.exit(1); });
