@@ -1,5 +1,5 @@
 /**
- * 🦞 GILLITO DB v1.0 — scripts/lib/db.js
+ * 🦞 GILLITO DB v1.1 — scripts/lib/db.js
  * ═══════════════════════════════════════════════════════
  * KV database client for Cloudflare Worker API.
  * Replaces local JSON file read/write with persistent cloud storage.
@@ -192,12 +192,28 @@ async function syncFromCloud(key, localFile) {
 // ═══════════════════════════════════════════
 
 var KEY_TO_FILE = {
-  'heartbeat-state':   '.gillito-heartbeat-state.json',
-  'heartbeat-history': '.gillito-heartbeat-history.json',
-  'tweet-history':     '.gillito-tweet-history.json',
-  'recon-intel':       '.gillito-recon-intel.json',
-  'research':          '.gillito-research.json',
-  'youtube-learnings': '.gillito-youtube-learnings.json'
+  // ── Original ──
+  'heartbeat-state':            '.gillito-heartbeat-state.json',
+  'heartbeat-history':          '.gillito-heartbeat-history.json',
+  'tweet-history':              '.gillito-tweet-history.json',
+  'recon-intel':                '.gillito-recon-intel.json',
+  'research':                   '.gillito-research.json',
+  'youtube-learnings':          '.gillito-youtube-learnings.json',
+
+  // ── Autonomous Brain ──
+  'brain-state':                '.gillito-brain-state.json',
+  'brain-history':              '.gillito-brain-history.json',
+
+  // ── Mood Engine ──
+  'mood-state':                 '.gillito-mood-state.json',
+
+  // ── Social Graph ──
+  'social-graph':               '.gillito-social-graph.json',
+
+  // ── Nightclub ──
+  'nightclub-interact-history': '.gillito-nightclub-interact-history.json',
+  'nightclub-promo-tracker':    '.gillito-nightclub-promo-tracker.json',
+  'nightclub-report-history':   '.gillito-nightclub-report-history.json'
 };
 
 function getLocalPath(key) {
