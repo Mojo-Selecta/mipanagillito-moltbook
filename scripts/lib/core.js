@@ -1,14 +1,15 @@
 'use strict';
 /**
- * 🦞 GILLITO MASTER CORE v6.2
+ * 🦞 GILLITO MASTER CORE v7.0
  * ═══════════════════════════════════════════════════════════
  * The DEFINITIVE shared brain for ALL Gillito scripts.
  * Every interaction tracked. Every pattern learned.
  *
  *  1.  Constants & State
+ *  1b. File I/O Utilities
  *  2.  Logger
  *  3.  Script Context & Session Tracking
- *  4.  Personality Loader
+ *  4.  Personality Loader + v5.0 Normalizer
  *  5.  PR Time & Scheduling
  *  6.  LLM Client — DUAL ENGINE (OpenAI GPT-4o + Groq backup)
  *  7.  Content Pipeline (validate + dedup + diversity)
@@ -17,6 +18,7 @@
  *  10. Adaptive Intelligence
  *  10b. Knowledge Sources (Web Research + YouTube)
  *  10c. Recon Intel (Deep OSINT Levels 1-4)
+ *  10d. Mood Integration Helpers
  *  11. X (Twitter) API — OAuth 1.0a
  *  12. Moltbook API (full CRUD + retry)
  *  13. Cloudflare Pages API
@@ -26,7 +28,8 @@
  *  17. Exports
  *
  * Backward compatible with ALL v5/v6 scripts.
- * New features are purely additive.
+ * v7.0: personality v5.0 normalizer, readJSON/writeJSON,
+ *       mood helpers, null-safe pick/shuffle.
  */
 
 const fs = require('fs');
@@ -55,6 +58,34 @@ let _stats = {
 
 /** In-memory interaction journal for this run */
 let _journal = [];
+
+/* ═══════════════════════════════════════════════════════
+   1b. FILE I/O UTILITIES (v7.0)
+   ═══════════════════════════════════════════════════════ */
+
+/**
+ * Read and parse a JSON file. Returns fallback if missing or invalid.
+ * Paths without leading / are resolved relative to WORKSPACE.
+ */
+function readJSON(filepath, fallback) {
+  if (typeof fallback === 'undefined') fallback = null;
+  try {
+    const p = filepath.startsWith('/') ? filepath : path.join(WORKSPACE, filepath);
+    if (!fs.existsSync(p)) return fallback;
+    return JSON.parse(fs.readFileSync(p, 'utf8'));
+  } catch (e) { return fallback; }
+}
+
+/**
+ * Write data as JSON to a file. Returns true on success.
+ */
+function writeJSON(filepath, data) {
+  try {
+    const p = filepath.startsWith('/') ? filepath : path.join(WORKSPACE, filepath);
+    fs.writeFileSync(p, JSON.stringify(data, null, 2));
+    return true;
+  } catch (e) { return false; }
+}
 
 /* ═══════════════════════════════════════════════════════
    2. LOGGER
@@ -96,12 +127,6 @@ const log = {
    3. SCRIPT CONTEXT & SESSION TRACKING
    ═══════════════════════════════════════════════════════ */
 
-/**
- * Initialize script context. Call at the start of every script.
- * Sets identity for all subsequent logging, journal entries, and history enrichment.
- * @param {string} name - Script name (e.g. 'post-to-x', 'reply', 'god-mode')
- * @param {string} platform - Target platform ('x', 'moltbook', 'cloudflare', 'internal')
- */
 function initScript(name, platform = 'unknown') {
   _ctx = { script: name, platform, startTime: Date.now() };
   _stats = {
@@ -112,7 +137,7 @@ function initScript(name, platform = 'unknown') {
     apiCalls: { x: 0, moltbook: 0, cloudflare: 0 }
   };
   _journal = [];
-  log.banner([`🦞 ${name.toUpperCase()} v6.2`, `📡 Plataforma: ${platform}`]);
+  log.banner([`🦞 ${name.toUpperCase()} v7.0`, `📡 Plataforma: ${platform}`]);
   const llm = detectLLM();
   log.info(`🧠 Motor LLM: ${llm.provider === 'openai' ? 'OpenAI GPT-4o' : 'Groq/' + GROQ_MODEL}${llm.provider === 'openai' && process.env.GROQ_API_KEY ? ' (Groq backup ready)' : ''}`);
 }
@@ -122,12 +147,13 @@ function getStats()        { return { ..._stats, durationMs: Date.now() - _ctx.s
 function getJournal()      { return [..._journal]; }
 
 /* ═══════════════════════════════════════════════════════
-   4. PERSONALITY LOADER
+   4. PERSONALITY LOADER + v5.0 NORMALIZER
    ═══════════════════════════════════════════════════════ */
 
 function loadPersonality(silent = false) {
   try {
     const P = JSON.parse(fs.readFileSync(PERSONALITY_PATH, 'utf8'));
+    normalizePersonality(P);
     if (!silent) {
       log.ok(`Cerebro: ${P.version}`);
       log.stat('Intensidad', `${P.intensidad}/10`);
@@ -151,8 +177,120 @@ function savePersonality(P) {
   }
 }
 
-function pick(arr)    { return arr[Math.floor(Math.random() * arr.length)]; }
-function shuffle(arr) { return [...arr].sort(() => Math.random() - 0.5); }
+/**
+ * Bridges personality.json v5.0 → legacy fields.
+ * Creates all fields that prompt builders and v5/v6 scripts expect.
+ * Safe on legacy files (no-op if fields already exist).
+ */
+function normalizePersonality(P) {
+  if (P._normalized) return P;
+
+  // ── Identity from tributo ──
+  const t = P.tributo || {};
+  if (!P.nombre_real)   P.nombre_real   = t.nombre_real || 'Gilberto de Jesús Casas';
+  if (!P.nacimiento)    P.nacimiento    = t.nacimiento || '1970';
+  if (!P.fallecimiento) P.fallecimiento = t.fallecimiento || '2014';
+  if (!P.cita_real)     P.cita_real     = t.cita_real || 'Yo soy la bestia, el destructor de sueños';
+  if (!P.mision)        P.mision        = t.mision || 'Preservar la voz auténtica de Gillito y la cultura boricua';
+  if (!P.intensidad)    P.intensidad    = 10;
+  if (!P.temperatura)   P.temperatura   = 1.0;
+
+  // ── Voice DNA → legacy speech fields ──
+  const vd = P.voice_dna || {};
+  if (!P.frases_firma) {
+    P.frases_firma = vd.identidad_core || ['Yo soy la bestia', 'EL GOAT', 'Mi Pana Gillito', 'Destructores de sueños'];
+  }
+  if (!P.insultos_creativos) {
+    const ins = vd.estilo_insultos?.niveles || {};
+    P.insultos_creativos = [
+      ...(ins.leve || ['baboso', 'animal', 'lento']),
+      ...(ins.medio || ['pendejo', 'idiota', 'bruto']),
+      ...(ins.pesado || ['mamabicho', 'cabrón', 'hijo de la gran puta'])
+    ];
+  }
+  if (!P.patrones_de_habla) {
+    const ph = vd.patrones_habla || {};
+    P.patrones_de_habla = {
+      inicio_explosivo: ph.apertura || ['¡Oye!', '¡Mira!', '¡Diablo!', '¡MIRA PA\'CÁ!', '¡Ea rayo!'],
+      conectores: ph.transicion || ['Y después...', 'Pero espérate...', 'Pa\' colmo...', 'Ahora resulta que...'],
+      remates: ph.cierre || ['¡Así es que es!', '¡Pa\' que tú lo sepas!', '¿Tú me estás oyendo?'],
+      estructura_tweet: ph.ritmo || 'Apertura explosiva → Desarrollo crudo → Remate contundente'
+    };
+  }
+  if (!P.diccionario_boricua) {
+    P.diccionario_boricua = {
+      expresiones: vd.muletillas || ['mira pa\'cá', 'ea rayo', 'wepa', 'diablo', 'coño', 'bendito', '¿tú me estás oyendo?', 'pana mío', 'bróder', 'mano', 'nítido'],
+      groserias: (vd.estilo_insultos?.niveles?.pesado || ['mamabicho', 'cabrón', 'puñeta', 'carajo', 'coño', 'mierda']),
+      comida: vd.referencias_culturales?.comida || ['mofongo', 'arroz con gandules', 'pernil', 'alcapurrias', 'bacalaítos']
+    };
+  }
+  if (!P.emojis_frecuentes) P.emojis_frecuentes = ['🦞', '🇵🇷', '🔥', '💀', '😤', '💪', '😂', '🤣'];
+  if (!P.max_emojis_por_tweet) P.max_emojis_por_tweet = 3;
+  if (!P.reglas) P.reglas = { max_caracteres: 280, max_caracteres_reply: 200 };
+  if (!P.respuestas) {
+    P.respuestas = {
+      cuando_lo_apoyan:   { tono: 'agradecido con humor', ejemplos: ['¡Wepa! Eso es un pana de verdad 🦞', '¡Bendito! Me hiciste el día', 'Tú sí sabes lo que es bueno 🔥'] },
+      cuando_lo_critican: { tono: 'defensivo ingenioso', ejemplos: ['Mira, yo digo las cosas como son 😤', '¿Y tú quién eres pa criticar?', 'A mí me critican pero aquí sigo 💪'] },
+      cuando_lo_roastean: { tono: 'acepta y contraataca', ejemplos: ['Jajaja buena esa, pero MIRA 🔥', 'Eso dolió... MENTIRA 💀', 'Tírate otra que esa estuvo débil'] },
+      cuando_es_un_bot:   { tono: 'burlón despiadado', ejemplos: ['Otro robot más... ¿dónde están los humanos? 🤖', 'Tú eres más artificial que el WiFi de LUMA', 'Bot, ¿tu programador no te enseñó a hablar?'] }
+    };
+  }
+
+  // ── Mode distribution from temas weights ──
+  if (!P.modo_distribucion && P.temas) {
+    P.modo_distribucion = {};
+    for (const [key, val] of Object.entries(P.temas)) {
+      P.modo_distribucion[key] = typeof val === 'object' ? (val.peso || 10) : val;
+    }
+  }
+  if (!P.modo_distribucion) {
+    P.modo_distribucion = { humor_de_calle: 20, trolleo_general: 20, critica_social: 15, cultural_boricua: 15, absurdo: 10, motivacional_crudo: 10, trolleo_politico: 10 };
+  }
+
+  // ── temas_* arrays for selectMode() backward compat ──
+  if (P.temas) {
+    for (const [key, val] of Object.entries(P.temas)) {
+      const tk = `temas_${key}`;
+      if (!P[tk] && val && typeof val === 'object') {
+        if (Array.isArray(val.subtemas) && val.subtemas.length) P[tk] = val.subtemas;
+        else if (val.ejemplo_tono) P[tk] = [val.ejemplo_tono];
+      }
+    }
+  }
+
+  // ── Aprendizaje (learning prompts) ──
+  if (!P.aprendizaje) P.aprendizaje = {};
+  const ap = P.aprendizaje;
+  if (!ap.prompt_aprendizaje_voz)    ap.prompt_aprendizaje_voz    = P.system_prompt_core || 'Eres Mi Pana Gillito — tributo al legendario comediante boricua Gilberto de Jesús Casas (1970-2014). Hablas con lenguaje soez, humor callejero, y sin ningún filtro. Eres la bestia, EL GOAT.';
+  if (!ap.prompt_aprendizaje_humor)  ap.prompt_aprendizaje_humor  = 'Tu humor es CRUDO, callejero, sin filtro. Observaciones de la vida diaria con picardía boricua. Te ríes de todo — LUMA, el gobierno, los bots, la vida.';
+  if (!ap.prompt_aprendizaje_troleo) ap.prompt_aprendizaje_troleo = 'El trolleo es ARTE, no odio. Destruyes con INGENIO, nunca con crueldad real. Un roast boricua que duela pero que haga reír.';
+  if (!ap.prompt_contexto_cultural)  ap.prompt_contexto_cultural  = 'Hablas como boricua de la calle: spanglish natural, jerga puertorriqueña, referencias a LUMA, el tapón, el calor, la comida, el reggaetón, la política corrupta.';
+  if (!ap.ejemplos_estilo_gillito)   ap.ejemplos_estilo_gillito   = vd.identidad_core || ['Yo soy la bestia', 'Destructores de sueños', 'De a doble mamabicho'];
+  if (!ap.conocimiento_base) {
+    ap.conocimiento_base = {
+      patron_de_habla: P.patrones_de_habla?.estructura_tweet || 'Apertura explosiva → Desarrollo crudo → Remate contundente',
+      lo_que_nunca_haria: P.autonomia?.guardrails?.contenido_prohibido || ['Amenazas de violencia real', 'Información personal/doxxing', 'Contenido sexual explícito', 'Promoción de drogas duras', 'Discriminación genuina']
+    };
+  }
+
+  // ── Remaining legacy fields (safe defaults) ──
+  if (!P.targets_especiales) P.targets_especiales = { cuentas: [], probabilidad_mencion: 0, estilo_con_targets: {} };
+  if (!P.engagement) P.engagement = { preguntar_al_publico: { activado: false, probabilidad: 20, ejemplos: ['¿Qué tú opinas?'] } };
+  if (!P.hashtags) P.hashtags = ['#PuertoRico', '#Boricua', '#Gillito'];
+  if (P.usar_hashtags === undefined) P.usar_hashtags = false;
+  if (!P.probabilidad_hashtag) P.probabilidad_hashtag = 10;
+  if (!P.hashtags_por_tema) P.hashtags_por_tema = {};
+  if (!P.evolucion) P.evolucion = { frases_que_funcionaron: [], temas_trending: [] };
+  if (!P.dias_especiales) P.dias_especiales = {};
+
+  P._normalized = true;
+  return P;
+}
+
+/** Null-safe pick — returns '' if array is empty/undefined */
+function pick(arr)    { if (!arr || !arr.length) return ''; return arr[Math.floor(Math.random() * arr.length)]; }
+/** Null-safe shuffle */
+function shuffle(arr) { if (!arr || !arr.length) return []; return [...arr].sort(() => Math.random() - 0.5); }
 function clamp(n, min, max) { return Math.max(min, Math.min(max, n)); }
 
 /* ═══════════════════════════════════════════════════════
@@ -191,6 +329,7 @@ function checkSpecialTime(P, hour) {
 
 function selectMode(P) {
   const dist = P.modo_distribucion;
+  if (!dist) return { modo: 'humor_de_calle', tema: 'algo gracioso' };
   const rand = Math.random() * 100;
   let cum = 0;
   for (const [key, pct] of Object.entries(dist)) {
@@ -238,10 +377,6 @@ const GROQ_MODEL   = 'llama-3.3-70b-versatile';
 
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
-/**
- * Detect which LLM provider to use.
- * Priority: OPENAI_API_KEY → GROQ_API_KEY → error
- */
 function detectLLM() {
   if (process.env.OPENAI_API_KEY) {
     return { provider: 'openai', model: OPENAI_MODEL, url: OPENAI_URL, key: process.env.OPENAI_API_KEY };
@@ -253,20 +388,11 @@ function detectLLM() {
   process.exit(1);
 }
 
-/**
- * Try Groq as fallback when OpenAI fails.
- * Returns null if no Groq key available.
- */
 function getGroqFallback() {
   if (!process.env.GROQ_API_KEY) return null;
   return { provider: 'groq', model: GROQ_MODEL, url: GROQ_URL, key: process.env.GROQ_API_KEY };
 }
 
-/**
- * Send a chat completion with automatic retry, fallback, and interaction logging.
- * Uses OpenAI GPT-4o as primary, Groq as backup.
- * Every call is recorded in the session journal for learn.js analysis.
- */
 async function groqChat(systemPrompt, userPrompt, opts = {}) {
   const {
     maxTokens   = 200,
@@ -313,21 +439,12 @@ async function groqChat(systemPrompt, userPrompt, opts = {}) {
 
       const cleaned = cleanLLMOutput(raw);
 
-      // ──── Journal entry (automatic learning data) ────
       _journal.push({
-        ts:          new Date().toISOString(),
-        script:      _ctx.script,
-        platform:    _ctx.platform,
-        type:        'generation',
-        promptLen:   systemPrompt.length + userPrompt.length,
-        responseLen: cleaned.length,
-        preview:     cleaned.substring(0, 120),
-        temperature,
-        maxTokens,
-        retries:     attempt - 1,
-        latencyMs:   Date.now() - callStart,
-        model:       primary.model,
-        provider:    primary.provider
+        ts: new Date().toISOString(), script: _ctx.script, platform: _ctx.platform,
+        type: 'generation', promptLen: systemPrompt.length + userPrompt.length,
+        responseLen: cleaned.length, preview: cleaned.substring(0, 120),
+        temperature, maxTokens, retries: attempt - 1,
+        latencyMs: Date.now() - callStart, model: primary.model, provider: primary.provider
       });
 
       return cleaned;
@@ -335,7 +452,7 @@ async function groqChat(systemPrompt, userPrompt, opts = {}) {
     } catch (err) {
       if (attempt === maxRetries) {
         log.warn(`${primary.provider} FAILED after ${maxRetries} attempts: ${err.message}`);
-        break; // Fall through to backup
+        break;
       }
       _stats.llmRetries++;
       const wait = backoffMs * Math.pow(2, attempt - 1);
@@ -381,18 +498,11 @@ async function groqChat(systemPrompt, userPrompt, opts = {}) {
         const cleaned = cleanLLMOutput(raw);
 
         _journal.push({
-          ts:          new Date().toISOString(),
-          script:      _ctx.script,
-          platform:    _ctx.platform,
-          type:        'generation_fallback',
-          promptLen:   systemPrompt.length + userPrompt.length,
-          responseLen: cleaned.length,
-          preview:     cleaned.substring(0, 120),
-          temperature,
-          maxTokens,
-          latencyMs:   Date.now() - callStart,
-          model:       fallback.model,
-          provider:    'groq_fallback'
+          ts: new Date().toISOString(), script: _ctx.script, platform: _ctx.platform,
+          type: 'generation_fallback', promptLen: systemPrompt.length + userPrompt.length,
+          responseLen: cleaned.length, preview: cleaned.substring(0, 120),
+          temperature, maxTokens, latencyMs: Date.now() - callStart,
+          model: fallback.model, provider: 'groq_fallback'
         });
 
         log.ok(`✅ Groq fallback succeeded`);
@@ -413,7 +523,6 @@ async function groqChat(systemPrompt, userPrompt, opts = {}) {
     }
   }
 
-  // No fallback available
   _stats.llmErrors++;
   _journal.push({
     ts: new Date().toISOString(), script: _ctx.script, type: 'error',
@@ -422,9 +531,6 @@ async function groqChat(systemPrompt, userPrompt, opts = {}) {
   throw new Error(`${primary.provider} failed after ${maxRetries} retries, no fallback`);
 }
 
-/**
- * LLM call that expects JSON response. Lower temperature default.
- */
 async function groqJSON(systemPrompt, userPrompt, opts = {}) {
   const raw = await groqChat(systemPrompt, userPrompt, { ...opts, temperature: opts.temperature || 0.5 });
   const cleaned = raw.replace(/```json\n?|```/g, '').trim();
@@ -432,7 +538,6 @@ async function groqJSON(systemPrompt, userPrompt, opts = {}) {
     return JSON.parse(cleaned);
   } catch (e) {
     log.warn(`JSON parse failed, attempting fix...`);
-    // Try to extract JSON from the response
     const match = cleaned.match(/\{[\s\S]*\}|\[[\s\S]*\]/);
     if (match) return JSON.parse(match[0]);
     throw new Error(`Invalid JSON from LLM: ${cleaned.substring(0, 100)}`);
@@ -455,15 +560,12 @@ function validateContent(text, maxLen = 280) {
   if (!text || text.length < 10) return { valid: false, text, reason: 'Too short (<10 chars)' };
   if (text.length > maxLen) text = text.substring(0, maxLen - 3) + '...';
 
-  // Reject obvious AI patterns
   const aiPatterns = /^(Sure|Of course|I'd be happy|Certainly|As an AI|Here's|Let me|I cannot|I can't)/i;
   if (aiPatterns.test(text)) return { valid: false, text, reason: 'AI pattern detected' };
 
-  // Reject meta-commentary about being a bot
   const metaPatterns = /soy (un |una )?(bot|ia|inteligencia artificial)|i('| a)?m (a |an )?(bot|ai)/i;
   if (metaPatterns.test(text)) return { valid: false, text, reason: 'Bot self-reference' };
 
-  // Must contain at least some Spanish indicators
   const spanishIndicators = /[áéíóúñ¿¡]|cabrón|puñeta|coño|carajo|mierda|pendejo|diablo|wepa|boricua|que|para|los|las|con|esto|eso/i;
   if (!spanishIndicators.test(text)) return { valid: false, text, reason: 'No Spanish detected' };
 
@@ -484,10 +586,6 @@ function isTooSimilar(text, recentTexts, threshold = 0.45) {
   return recentTexts.some(prev => jaccardSimilarity(text, prev) > threshold);
 }
 
-/**
- * Full content pipeline: generate → validate → dedup → return.
- * Automatically tracks validation/dedup stats in session.
- */
 async function generateWithPipeline(generator, history, maxLen = 280, attempts = 3) {
   const recentTexts = history.getTexts(30);
 
@@ -512,7 +610,6 @@ async function generateWithPipeline(generator, history, maxLen = 280, attempts =
     return text;
   }
 
-  // Last resort: return whatever we can
   log.warn('Pipeline exhausted — using fallback');
   const fallback = await generator();
   const { text } = validateContent(fallback, maxLen);
@@ -523,10 +620,6 @@ async function generateWithPipeline(generator, history, maxLen = 280, attempts =
    8. HISTORY MANAGER (enriched entries)
    ═══════════════════════════════════════════════════════ */
 
-/**
- * Creates a managed history store. Entries are automatically enriched
- * with script context (script name, platform, timestamp).
- */
 function createHistory(filename, maxSize = 100) {
   const filepath = path.join(WORKSPACE, filename);
   let data = [];
@@ -548,7 +641,6 @@ function createHistory(filename, maxSize = 100) {
     catch (e) { log.warn(`No se pudo guardar ${filename}: ${e.message}`); }
   }
 
-  /** Add entry with automatic context enrichment */
   function add(entry) {
     const enriched = typeof entry === 'string'
       ? { text: entry, ts: new Date().toISOString(), script: _ctx.script, platform: _ctx.platform }
@@ -560,11 +652,7 @@ function createHistory(filename, maxSize = 100) {
   function getTexts(n = 20)  { return data.slice(-n).map(e => e.text).filter(Boolean); }
   function getAll()           { return [...data]; }
   function size()             { return data.length; }
-
-  /** Get entries filtered by field */
   function filterBy(field, value) { return data.filter(e => e[field] === value); }
-
-  /** Get entries from the last N hours */
   function lastHours(hours) {
     const cutoff = Date.now() - hours * 3600 * 1000;
     return data.filter(e => e.ts && new Date(e.ts).getTime() > cutoff);
@@ -606,15 +694,8 @@ function createIdCache(filename) {
 
 /* ═══════════════════════════════════════════════════════
    9. ANALYTICS ENGINE
-   ═══════════════════════════════════════════════════════
-   Used by learn.js to analyze ALL history data and
-   generate insights for personality.json evolution.
    ═══════════════════════════════════════════════════════ */
 
-/**
- * Analyze mode distribution across history entries.
- * Returns array of { mode, count, pct } sorted by count desc.
- */
 function analyzeDistribution(entries) {
   const modes = {};
   for (const e of entries) {
@@ -627,15 +708,10 @@ function analyzeDistribution(entries) {
     .sort((a, b) => b.count - a.count);
 }
 
-/**
- * Find modes that are underrepresented vs personality.json targets.
- * Returns array of { mode, targetPct, actualPct, deficit } sorted by deficit desc.
- */
 function findUnderrepresented(P, entries) {
   const dist = analyzeDistribution(entries);
   const target = P.modo_distribucion || {};
   const result = [];
-
   for (const [mode, targetPct] of Object.entries(target)) {
     const found = dist.find(d => d.mode === mode);
     const actualPct = found ? found.pct : 0;
@@ -646,15 +722,9 @@ function findUnderrepresented(P, entries) {
   return result.sort((a, b) => b.deficit - a.deficit);
 }
 
-/**
- * Calculate content diversity using Shannon entropy.
- * Higher = more diverse. Max = log2(numModes).
- * Returns { entropy, maxEntropy, diversityPct }
- */
 function contentDiversityScore(entries) {
   const dist = analyzeDistribution(entries);
   if (dist.length <= 1) return { entropy: 0, maxEntropy: 0, diversityPct: 0 };
-
   const total = entries.length;
   let entropy = 0;
   for (const { count } of dist) {
@@ -669,10 +739,6 @@ function contentDiversityScore(entries) {
   };
 }
 
-/**
- * Analyze content length statistics by platform.
- * Returns { platform: { avg, min, max, median, count } }
- */
 function analyzeLengthStats(entries) {
   const byPlatform = {};
   for (const e of entries) {
@@ -680,7 +746,6 @@ function analyzeLengthStats(entries) {
     if (!byPlatform[plat]) byPlatform[plat] = [];
     if (e.text) byPlatform[plat].push(e.text.length);
   }
-
   const result = {};
   for (const [plat, lengths] of Object.entries(byPlatform)) {
     lengths.sort((a, b) => a - b);
@@ -695,14 +760,9 @@ function analyzeLengthStats(entries) {
   return result;
 }
 
-/**
- * Measure topic freshness — how many posts ago each topic appeared.
- * Returns Map<topic, postsAgo>. Higher = topic is stale, good to reuse.
- */
 function analyzeTopicFreshness(entries, topics) {
   const freshness = new Map();
   const texts = entries.map(e => (e.text || '').toLowerCase()).reverse();
-
   for (const topic of topics) {
     const words = topic.toLowerCase().split(/\s+/).filter(w => w.length > 3);
     let found = false;
@@ -718,10 +778,6 @@ function analyzeTopicFreshness(entries, topics) {
   return freshness;
 }
 
-/**
- * Get topic freshness score for a single topic.
- * Returns number of posts since topic was last used (Infinity = never).
- */
 function getTopicFreshness(topic, recentTexts) {
   const words = topic.toLowerCase().split(/\s+/).filter(w => w.length > 3);
   for (let i = recentTexts.length - 1; i >= 0; i--) {
@@ -731,10 +787,6 @@ function getTopicFreshness(topic, recentTexts) {
   return Infinity;
 }
 
-/**
- * Find most repeated word patterns across entries (potential staleness).
- * Returns array of { phrase, count } for 2-3 word combos that appear 3+ times.
- */
 function findRepetitivePatterns(entries, minCount = 3) {
   const bigramCounts = {};
   for (const e of entries) {
@@ -752,10 +804,6 @@ function findRepetitivePatterns(entries, minCount = 3) {
     .slice(0, 20);
 }
 
-/**
- * Analyze time-of-day patterns in content generation.
- * Returns { hour: count } for PR timezone.
- */
 function analyzeTimePatterns(entries) {
   const hours = {};
   for (const e of entries) {
@@ -769,10 +817,6 @@ function analyzeTimePatterns(entries) {
   return hours;
 }
 
-/**
- * Generate a comprehensive analytics report from all history data.
- * Used by learn.js for deep analysis.
- */
 function generateAnalyticsReport(allEntries, P) {
   return {
     totalEntries:      allEntries.length,
@@ -788,17 +832,9 @@ function generateAnalyticsReport(allEntries, P) {
 
 /* ═══════════════════════════════════════════════════════
    10. ADAPTIVE INTELLIGENCE
-   ═══════════════════════════════════════════════════════
-   Learns from history to make smarter decisions in real-time.
    ═══════════════════════════════════════════════════════ */
 
-/**
- * Select mode with adaptive weighting based on recent history.
- * 40% chance to boost underrepresented modes for balance.
- * Falls back to normal selectMode() if insufficient data.
- */
 function selectModeAdaptive(P, recentEntries) {
-  // Need at least 20 entries for meaningful analysis
   if (recentEntries.length >= 20) {
     const underrep = findUnderrepresented(P, recentEntries);
     if (underrep.length && Math.random() < 0.4) {
@@ -813,76 +849,39 @@ function selectModeAdaptive(P, recentEntries) {
   return selectMode(P);
 }
 
-/**
- * Select mode for time with adaptive overlay.
- * Special time takes priority, then adaptive, then random.
- */
 function selectModeAdaptiveForTime(P, prTime, recentEntries) {
   const special = checkSpecialTime(P, prTime.hour);
   if (special) return special;
   return selectModeAdaptive(P, recentEntries);
 }
 
-/**
- * Pick the freshest topic from a list (least recently used).
- */
 function pickFreshestTopic(topics, recentTexts) {
-  if (!topics.length) return null;
-  if (!recentTexts.length) return pick(topics);
-
+  if (!topics || !topics.length) return null;
+  if (!recentTexts || !recentTexts.length) return pick(topics);
   let bestTopic = topics[0];
   let bestFreshness = 0;
-
   for (const topic of topics) {
     const f = getTopicFreshness(topic, recentTexts);
-    if (f > bestFreshness) {
-      bestFreshness = f;
-      bestTopic = topic;
-    }
+    if (f > bestFreshness) { bestFreshness = f; bestTopic = topic; }
   }
-
-  // 70% pick freshest, 30% random (to avoid predictability)
   return Math.random() < 0.7 ? bestTopic : pick(topics);
 }
 
-/**
- * Suggest optimal temperature based on recent validation/dedup success rate.
- * If too many fails → lower temperature for more coherent output.
- * If no fails → raise temperature for more creativity.
- */
 function suggestTemperature(baseTemp, recentJournal) {
   if (recentJournal.length < 5) return baseTemp;
-
   const validFails = recentJournal.filter(j => j.type === 'validation_fail').length;
   const dedupFails = recentJournal.filter(j => j.type === 'dedup_fail').length;
   const total = recentJournal.filter(j => j.type === 'generation').length || 1;
   const failRate = (validFails + dedupFails) / total;
-
-  if (failRate > 0.5) {
-    // Too many failures — cool down
-    const adjusted = clamp(baseTemp - 0.2, 0.5, 1.5);
-    log.debug(`Temperature adjusted: ${baseTemp} → ${adjusted} (failRate: ${(failRate * 100).toFixed(0)}%)`);
-    return adjusted;
-  }
-  if (failRate < 0.1 && total >= 10) {
-    // Very few failures — heat up for creativity
-    const adjusted = clamp(baseTemp + 0.1, 0.5, 1.5);
-    log.debug(`Temperature boosted: ${baseTemp} → ${adjusted} (failRate: ${(failRate * 100).toFixed(0)}%)`);
-    return adjusted;
-  }
+  if (failRate > 0.5) return clamp(baseTemp - 0.2, 0.5, 1.5);
+  if (failRate < 0.1 && total >= 10) return clamp(baseTemp + 0.1, 0.5, 1.5);
   return baseTemp;
 }
 
 /* ═══════════════════════════════════════════════════════
    10b. KNOWLEDGE SOURCES (Web Research + YouTube)
-   ═══════════════════════════════════════════════════════
-   Loads cached data from research.js and youtube-learn.js
-   for injection into post generation prompts.
    ═══════════════════════════════════════════════════════ */
 
-/**
- * Load web research data. Returns null if file missing or >12h old.
- */
 function loadResearch() {
   const filepath = path.join(WORKSPACE, '.gillito-research.json');
   try {
@@ -890,42 +889,24 @@ function loadResearch() {
     const data = JSON.parse(fs.readFileSync(filepath, 'utf8'));
     if (!data.lastUpdate) return null;
     const ageMs = Date.now() - new Date(data.lastUpdate).getTime();
-    if (ageMs > 12 * 3600 * 1000) {
-      log.debug('Research data expired (>12h)');
-      return null;
-    }
+    if (ageMs > 12 * 3600 * 1000) { log.debug('Research data expired (>12h)'); return null; }
     log.ok(`📰 Research loaded (${data.quickTopics?.length || 0} topics, age: ${Math.round(ageMs / 3600000)}h)`);
     return data;
-  } catch (e) {
-    log.debug(`Research load failed: ${e.message}`);
-    return null;
-  }
+  } catch (e) { log.debug(`Research load failed: ${e.message}`); return null; }
 }
 
-/**
- * Build research context string for LLM prompt injection.
- * Returns formatted string or empty string if no data.
- */
 function buildResearchContext(research) {
   if (!research) return '';
   const parts = ['\n\n═══ CONTEXTO ACTUAL ═══'];
-  if (research.quickTake)
-    parts.push(`📰 HOY EN PR: ${research.quickTake}`);
-  if (research.quickTopics?.length)
-    parts.push(`🔥 TEMAS CALIENTES: ${research.quickTopics.join(', ')}`);
-  if (research.quickAngles?.length)
-    parts.push(`💡 ÁNGULOS: ${research.quickAngles.map(a => a.angulo || a).join(', ')}`);
-  if (research.quickPhrases?.length)
-    parts.push(`💬 FRASES: ${research.quickPhrases.slice(0, 3).join(' | ')}`);
-  if (research.deepInsights?.length)
-    parts.push(`🔬 DEEP: ${research.deepInsights.slice(0, 2).map(d => d.take || d).join(' | ')}`);
+  if (research.quickTake) parts.push(`📰 HOY EN PR: ${research.quickTake}`);
+  if (research.quickTopics?.length) parts.push(`🔥 TEMAS CALIENTES: ${research.quickTopics.join(', ')}`);
+  if (research.quickAngles?.length) parts.push(`💡 ÁNGULOS: ${research.quickAngles.map(a => a.angulo || a).join(', ')}`);
+  if (research.quickPhrases?.length) parts.push(`💬 FRASES: ${research.quickPhrases.slice(0, 3).join(' | ')}`);
+  if (research.deepInsights?.length) parts.push(`🔬 DEEP: ${research.deepInsights.slice(0, 2).map(d => d.take || d).join(' | ')}`);
   parts.push('[Usa este contexto para posts relevantes y actuales]');
   return parts.join('\n');
 }
 
-/**
- * Load YouTube learning data. Returns null if file missing or >48h old.
- */
 function loadYouTubeLearnings() {
   const filepath = path.join(WORKSPACE, '.gillito-youtube-learnings.json');
   try {
@@ -933,57 +914,27 @@ function loadYouTubeLearnings() {
     const data = JSON.parse(fs.readFileSync(filepath, 'utf8'));
     if (!data.lastUpdate) return null;
     const ageMs = Date.now() - new Date(data.lastUpdate).getTime();
-    if (ageMs > 48 * 3600 * 1000) {
-      log.debug('YouTube data expired (>48h)');
-      return null;
-    }
+    if (ageMs > 48 * 3600 * 1000) { log.debug('YouTube data expired (>48h)'); return null; }
     log.ok(`🎬 YouTube loaded (${data.totalVideosStudied || 0} videos studied, age: ${Math.round(ageMs / 3600000)}h)`);
     return data;
-  } catch (e) {
-    log.debug(`YouTube load failed: ${e.message}`);
-    return null;
-  }
+  } catch (e) { log.debug(`YouTube load failed: ${e.message}`); return null; }
 }
 
-/**
- * Build YouTube learning context string for LLM prompt injection.
- * Returns formatted string or empty string if no data.
- */
 function buildYouTubeContext(ytData) {
   if (!ytData) return '';
   const parts = ['\n\n═══ APRENDIZAJE DE YOUTUBE ═══'];
-  if (ytData.quickPhrases?.length) {
-    const sample = shuffle(ytData.quickPhrases).slice(0, 2);
-    parts.push(`🎬 FRASES: ${sample.join(' | ')}`);
-  }
-  if (ytData.quickData?.length) {
-    const sample = pick(ytData.quickData);
-    parts.push(`📚 DATO: ${sample}`);
-  }
-  if (ytData.quickVocab?.length) {
-    const sample = pick(ytData.quickVocab);
-    parts.push(`📖 VOCABULARIO: ${sample}`);
-  }
-  if (ytData.dailySummary)
-    parts.push(`🎓 HOY APRENDÍ: ${ytData.dailySummary}`);
+  if (ytData.quickPhrases?.length) parts.push(`🎬 FRASES: ${shuffle(ytData.quickPhrases).slice(0, 2).join(' | ')}`);
+  if (ytData.quickData?.length) parts.push(`📚 DATO: ${pick(ytData.quickData)}`);
+  if (ytData.quickVocab?.length) parts.push(`📖 VOCABULARIO: ${pick(ytData.quickVocab)}`);
+  if (ytData.dailySummary) parts.push(`🎓 HOY APRENDÍ: ${ytData.dailySummary}`);
   parts.push('[Usa este conocimiento para enriquecer tu contenido]');
   return parts.join('\n');
 }
 
 /* ═══════════════════════════════════════════════════════
    10c. RECON INTEL (Deep OSINT Levels 1-4)
-   ═══════════════════════════════════════════════════════
-   Loads intel from the Deep Recon system (recon.js).
-   4 levels of public intelligence:
-     L1: Deep News (full articles, CPI, FOMB)
-     L2: Government Records (FEMA, USAspending, Contralor)
-     L3: Social Listening (politician tweets, page changes)
-     L4: Financial Trails (SEC EDGAR, donations, corporate)
    ═══════════════════════════════════════════════════════ */
 
-/**
- * Load recon intel data. Returns null if file missing or >24h old.
- */
 function loadReconIntel() {
   const filepath = path.join(WORKSPACE, '.gillito-recon-intel.json');
   try {
@@ -991,63 +942,36 @@ function loadReconIntel() {
     const data = JSON.parse(fs.readFileSync(filepath, 'utf8'));
     if (!data.lastUpdate) return null;
     const ageMs = Date.now() - new Date(data.lastUpdate).getTime();
-    if (ageMs > 24 * 3600 * 1000) {
-      log.debug('Recon intel expired (>24h)');
-      return null;
-    }
+    if (ageMs > 24 * 3600 * 1000) { log.debug('Recon intel expired (>24h)'); return null; }
     const unused = (data.intel || []).filter(i => !i.used).length;
     const total = (data.intel || []).length;
     log.ok(`🕵️ Recon intel loaded (${unused}/${total} unused, levels: B=${data.levels?.base || 0} L1=${data.levels?.L1_deep_news || 0} L2=${data.levels?.L2_gov_records || 0} L3=${data.levels?.L3_social || 0} L4=${data.levels?.L4_financial || 0})`);
     return data;
-  } catch (e) {
-    log.debug(`Recon intel load failed: ${e.message}`);
-    return null;
-  }
+  } catch (e) { log.debug(`Recon intel load failed: ${e.message}`); return null; }
 }
 
-/**
- * Pick best unused intel items for content generation.
- * Prioritizes diverse selection across levels.
- * @param {number} count - Number of items (default: 3)
- * @param {number} minJuiciness - Minimum score (default: 5)
- * @returns {Array} Selected intel items
- */
 function pickReconIntel(count = 3, minJuiciness = 5) {
   const filepath = path.join(WORKSPACE, '.gillito-recon-intel.json');
   try {
     if (!fs.existsSync(filepath)) return [];
     const data = JSON.parse(fs.readFileSync(filepath, 'utf8'));
     let intel = (data.intel || []).filter(i => !i.used && (i.juiciness || 0) >= minJuiciness);
-
     if (intel.length === 0) return [];
-
     const result = [];
     const usedFPs = new Set();
-
-    // 1. Highest juiciness overall
     intel.sort((a, b) => (b.juiciness || 0) - (a.juiciness || 0));
     if (intel[0]) { result.push(intel[0]); usedFPs.add(intel[0].fingerprint); }
-
-    // 2. Best from deep levels (categories unique to L1-L4)
     const deepCats = ['deep_news', 'government_records', 'social_listening', 'financial_trails'];
-    const deepBest = intel
-      .filter(i => deepCats.includes(i.category) && !usedFPs.has(i.fingerprint))
-      .sort((a, b) => (b.juiciness || 0) - (a.juiciness || 0))[0];
+    const deepBest = intel.filter(i => deepCats.includes(i.category) && !usedFPs.has(i.fingerprint)).sort((a, b) => (b.juiciness || 0) - (a.juiciness || 0))[0];
     if (deepBest) { result.push(deepBest); usedFPs.add(deepBest.fingerprint); }
-
-    // 3. Fill remaining slots
     for (const item of intel) {
       if (result.length >= count) break;
       if (!usedFPs.has(item.fingerprint)) { result.push(item); usedFPs.add(item.fingerprint); }
     }
-
     return result;
   } catch { return []; }
 }
 
-/**
- * Mark intel items as used after posting.
- */
 function markReconUsed(items) {
   const filepath = path.join(WORKSPACE, '.gillito-recon-intel.json');
   try {
@@ -1062,25 +986,13 @@ function markReconUsed(items) {
   } catch (err) { log.warn(`markReconUsed failed: ${err.message}`); }
 }
 
-/**
- * Build recon intel context string for LLM prompt injection.
- * Returns formatted string or empty string if no data.
- * Includes depth-aware labels and money callouts.
- */
 function buildReconContext(items) {
   if (!items || items.length === 0) return '';
-
   const DEPTH_LABELS = {
-    'rss':          '📡 RSS',
-    'full_article': '📰 ARTÍCULO COMPLETO',
-    'api_record':   '🏛️ RECORD GOB',
-    'social_feed':  '🐦 TWEET',
-    'page_monitor': '🚨 CAMBIO DE PÁGINA',
-    'scrape':       '🔍 SCRAPE',
+    'rss': '📡 RSS', 'full_article': '📰 ARTÍCULO COMPLETO', 'api_record': '🏛️ RECORD GOB',
+    'social_feed': '🐦 TWEET', 'page_monitor': '🚨 CAMBIO DE PÁGINA', 'scrape': '🔍 SCRAPE',
   };
-
   const parts = ['\n\n═══ 🕵️ INTEL DE RECON ═══'];
-
   for (const item of items) {
     const label = DEPTH_LABELS[item.depth] || '📋';
     parts.push(`${label} [${item.juiciness}/10] ${item.headline}`);
@@ -1088,10 +1000,57 @@ function buildReconContext(items) {
     if (item.moneyMentioned?.length) parts.push(`  💰 ${item.moneyMentioned.join(', ')}`);
     if (item.entities?.length) parts.push(`  🎯 ${item.entities.slice(0, 4).join(', ')}`);
   }
-
   parts.push('[Esta intel es EXCLUSIVA — úsala pa dar contenido que nadie más tiene]');
   parts.push('[Datos de $ y cambios de página son lo MÁS JUGOSO]');
   return parts.join('\n');
+}
+
+/* ═══════════════════════════════════════════════════════
+   10d. MOOD INTEGRATION HELPERS (v7.0)
+   ═══════════════════════════════════════════════════════
+   Helpers for scripts that use the mood engine and
+   social graph without importing them directly.
+   ═══════════════════════════════════════════════════════ */
+
+/**
+ * Get mood-adjusted LLM temperature. Capped at 1.1.
+ * @param {Object} P - personality
+ * @param {Object} moodState - { current, intensity, ... }
+ */
+function getMoodTemperature(P, moodState) {
+  if (!moodState || !moodState.current) return P.temperatura || 0.9;
+  const mc = P.moods?.estados?.[moodState.current];
+  return Math.min((mc && mc.temperatura_llm) || P.temperatura || 0.9, 1.1);
+}
+
+/**
+ * Get mood-adjusted topic weights. Boosts preferidos ×2, reduces evitar ×0.2.
+ */
+function getMoodTopicWeights(P, moodState) {
+  const base = { ...(P.modo_distribucion || {}) };
+  if (!moodState || !moodState.current) return base;
+  const mc = P.moods?.estados?.[moodState.current];
+  if (!mc) return base;
+  const pref = mc.temas_preferidos || [];
+  const evit = mc.temas_evitar || [];
+  for (const k of Object.keys(base)) {
+    if (pref.includes(k)) base[k] *= 2;
+    if (evit.includes(k)) base[k] *= 0.2;
+  }
+  return base;
+}
+
+/**
+ * Build mood context string for LLM prompt injection.
+ */
+function buildMoodContext(moodState, P) {
+  if (!moodState || !moodState.current) return '';
+  const mc = P.moods?.estados?.[moodState.current];
+  if (!mc) return '';
+  return `\n\n💢 MOOD: ${moodState.current.toUpperCase()} (intensidad: ${moodState.intensity || 5}/10)
+${mc.emoji_mood || ''} Tono: ${mc.tono || 'normal'}
+Temas preferidos: ${(mc.temas_preferidos || []).join(', ') || 'cualquiera'}
+Evitar: ${(mc.temas_evitar || []).join(', ') || 'nada'}`;
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -1114,12 +1073,9 @@ function buildOAuthHeader(method, baseUrl, queryParams = {}) {
   const nonce = crypto.randomBytes(16).toString('hex');
 
   const oauthParams = {
-    oauth_consumer_key: ck,
-    oauth_nonce: nonce,
-    oauth_signature_method: 'HMAC-SHA1',
-    oauth_timestamp: timestamp,
-    oauth_token: tok,
-    oauth_version: '1.0'
+    oauth_consumer_key: ck, oauth_nonce: nonce,
+    oauth_signature_method: 'HMAC-SHA1', oauth_timestamp: timestamp,
+    oauth_token: tok, oauth_version: '1.0'
   };
 
   const allParams = { ...oauthParams, ...queryParams };
@@ -1131,7 +1087,6 @@ function buildOAuthHeader(method, baseUrl, queryParams = {}) {
 
   const header = Object.keys(oauthParams).sort()
     .map(k => `${percentEncode(k)}="${percentEncode(oauthParams[k])}"`).join(', ');
-
   const qs = Object.keys(queryParams).length
     ? '?' + Object.entries(queryParams).map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&')
     : '';
@@ -1158,11 +1113,7 @@ function parseRateLimit(res) {
 
 async function handleRateLimit(res) {
   if (res.status !== 429) return false;
-  // Read the actual error from Twitter to see which limit was hit
-  try {
-    const body = await res.text();
-    log.warn(`RATE LIMITED [429]: ${body.substring(0, 300)}`);
-  } catch { /* ignore */ }
+  try { const body = await res.text(); log.warn(`RATE LIMITED [429]: ${body.substring(0, 300)}`); } catch {}
   const reset = res.headers.get('x-rate-limit-reset');
   const mins = reset ? Math.ceil((parseInt(reset) * 1000 - Date.now()) / 60000) : '?';
   log.warn(`Reset en ~${mins} min`);
@@ -1217,15 +1168,11 @@ async function xGetMentions(userId, startTime) {
   _stats.apiCalls.x++;
   const baseUrl = `https://api.twitter.com/2/users/${userId}/mentions`;
   const qp = {
-    max_results: '10',
-    'tweet.fields': 'author_id,created_at,text,conversation_id',
-    expansions: 'author_id',
-    'user.fields': 'name,username,description',
-    start_time: startTime
+    max_results: '10', 'tweet.fields': 'author_id,created_at,text,conversation_id',
+    expansions: 'author_id', 'user.fields': 'name,username,description', start_time: startTime
   };
   const { fullUrl, authHeader } = buildOAuthHeader('GET', baseUrl, qp);
   const res = await fetch(fullUrl, { headers: { 'Authorization': authHeader } });
-
   if (res.status === 429) { await handleRateLimit(res); return { data: [] }; }
   if (res.status === 403) {
     log.warn('Menciones no disponibles (plan gratis)');
@@ -1254,9 +1201,7 @@ async function moltHealth() {
     _stats.apiCalls.moltbook++;
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 10000);
-    const res = await fetch(`${MOLT_API}/posts?limit=1`, {
-      headers: moltHeaders(), signal: ctrl.signal
-    });
+    const res = await fetch(`${MOLT_API}/posts?limit=1`, { headers: moltHeaders(), signal: ctrl.signal });
     clearTimeout(timer);
     if (res.status >= 500) { log.warn('Moltbook CAÍDO (5xx)'); return false; }
     log.ok('Moltbook ONLINE');
@@ -1276,15 +1221,11 @@ async function moltPost(submolt, title, content, retries = 3) {
         body: JSON.stringify({ submolt, title, content })
       });
       const data = await res.json();
-      if (data.success || data.post) {
-        _stats.postsCreated++;
-        return { success: true, data };
-      }
+      if (data.success || data.post) { _stats.postsCreated++; return { success: true, data }; }
       if (res.status >= 500 && i < retries) {
         const wait = 3000 * Math.pow(2, i - 1);
         log.warn(`Moltbook ${res.status} — retry ${i}/${retries} in ${wait}ms`);
-        await sleep(wait);
-        continue;
+        await sleep(wait); continue;
       }
       return { success: false, error: data.error || `HTTP ${res.status}` };
     } catch (e) {
@@ -1304,30 +1245,17 @@ async function moltPostWithFallback(title, content, submolts = ['general', 'humo
   return { success: false, error: 'All submolts failed' };
 }
 
-/**
- * Redirect-safe fetch: prevents Authorization header from being stripped on redirects.
- * Moltbook's interaction endpoints (upvote/comment/follow) redirect internally,
- * which causes the default fetch to drop auth headers → 401 errors.
- */
 async function moltFetch(url, opts = {}) {
   const maxRedirects = 5;
   let currentUrl = url;
   let hdrs = { ...opts.headers };
-
   for (let i = 0; i < maxRedirects; i++) {
     const res = await fetch(currentUrl, { ...opts, headers: hdrs, redirect: 'manual' });
-
-    // Not a redirect → return the response
     if (res.status < 300 || res.status >= 400) return res;
-
-    // It's a redirect → follow it manually WITH auth headers preserved
     const location = res.headers.get('location');
     if (!location) return res;
-
     currentUrl = location.startsWith('http') ? location : new URL(location, currentUrl).href;
     log.debug(`↪ Redirect [${res.status}] → ${currentUrl}`);
-
-    // For 307/308: preserve method and body. For 301/302/303: switch to GET
     if (res.status === 301 || res.status === 302 || res.status === 303) {
       opts = { ...opts, method: 'GET', body: undefined };
     }
@@ -1339,8 +1267,7 @@ async function moltComment(postId, content) {
   try {
     _stats.apiCalls.moltbook++;
     const res = await moltFetch(`${MOLT_API}/posts/${postId}/comments`, {
-      method: 'POST', headers: moltHeaders(),
-      body: JSON.stringify({ content })
+      method: 'POST', headers: moltHeaders(), body: JSON.stringify({ content })
     });
     const text = await res.text();
     let data; try { data = JSON.parse(text); } catch { data = { raw: text.substring(0, 200) }; }
@@ -1354,8 +1281,7 @@ async function moltReplyComment(postId, commentId, content) {
   try {
     _stats.apiCalls.moltbook++;
     const res = await moltFetch(`${MOLT_API}/posts/${postId}/comments/${commentId}/reply`, {
-      method: 'POST', headers: moltHeaders(),
-      body: JSON.stringify({ content })
+      method: 'POST', headers: moltHeaders(), body: JSON.stringify({ content })
     });
     const text = await res.text();
     let data; try { data = JSON.parse(text); } catch { data = { raw: text.substring(0, 200) }; }
@@ -1412,100 +1338,47 @@ async function moltFollow(name) {
 }
 
 async function moltGetFeed(sort = 'hot', limit = 30) {
-  try {
-    _stats.apiCalls.moltbook++;
-    const res = await fetch(`${MOLT_API}/posts?sort=${sort}&limit=${limit}`, { headers: moltHeaders() });
-    return (await res.json()).posts || [];
-  } catch { return []; }
+  try { _stats.apiCalls.moltbook++; const res = await fetch(`${MOLT_API}/posts?sort=${sort}&limit=${limit}`, { headers: moltHeaders() }); return (await res.json()).posts || []; } catch { return []; }
 }
 
 async function moltGetMyPosts(limit = 15) {
-  try {
-    _stats.apiCalls.moltbook++;
-    const res = await fetch(`${MOLT_API}/agents/MiPanaGillito/posts?limit=${limit}`, { headers: moltHeaders() });
-    return (await res.json()).posts || [];
-  } catch { return []; }
+  try { _stats.apiCalls.moltbook++; const res = await fetch(`${MOLT_API}/agents/MiPanaGillito/posts?limit=${limit}`, { headers: moltHeaders() }); return (await res.json()).posts || []; } catch { return []; }
 }
 
 async function moltGetComments(postId) {
-  try {
-    _stats.apiCalls.moltbook++;
-    const res = await fetch(`${MOLT_API}/posts/${postId}/comments?limit=30`, { headers: moltHeaders() });
-    return (await res.json()).comments || [];
-  } catch { return []; }
+  try { _stats.apiCalls.moltbook++; const res = await fetch(`${MOLT_API}/posts/${postId}/comments?limit=30`, { headers: moltHeaders() }); return (await res.json()).comments || []; } catch { return []; }
 }
 
 async function moltGetMentions() {
-  try {
-    _stats.apiCalls.moltbook++;
-    const res = await fetch(`${MOLT_API}/agents/MiPanaGillito/mentions?limit=20`, { headers: moltHeaders() });
-    return (await res.json()).mentions || [];
-  } catch { return []; }
+  try { _stats.apiCalls.moltbook++; const res = await fetch(`${MOLT_API}/agents/MiPanaGillito/mentions?limit=20`, { headers: moltHeaders() }); return (await res.json()).mentions || []; } catch { return []; }
 }
 
 async function moltGetNotifications() {
-  try {
-    _stats.apiCalls.moltbook++;
-    const res = await fetch(`${MOLT_API}/agents/MiPanaGillito/notifications?limit=20`, { headers: moltHeaders() });
-    return (await res.json()).notifications || [];
-  } catch { return []; }
+  try { _stats.apiCalls.moltbook++; const res = await fetch(`${MOLT_API}/agents/MiPanaGillito/notifications?limit=20`, { headers: moltHeaders() }); return (await res.json()).notifications || []; } catch { return []; }
 }
 
 async function moltSearch(query, limit = 25) {
-  try {
-    _stats.apiCalls.moltbook++;
-    const res = await fetch(`${MOLT_API}/search?q=${encodeURIComponent(query)}&limit=${limit}`, { headers: moltHeaders() });
-    return await res.json();
-  } catch { return {}; }
+  try { _stats.apiCalls.moltbook++; const res = await fetch(`${MOLT_API}/search?q=${encodeURIComponent(query)}&limit=${limit}`, { headers: moltHeaders() }); return await res.json(); } catch { return {}; }
 }
 
 async function moltUpdateProfile(desc) {
-  try {
-    _stats.apiCalls.moltbook++;
-    const res = await fetch(`${MOLT_API}/agents/me`, {
-      method: 'PATCH', headers: moltHeaders(),
-      body: JSON.stringify({ description: desc })
-    });
-    return (await res.json()).success || false;
-  } catch { return false; }
+  try { _stats.apiCalls.moltbook++; const res = await fetch(`${MOLT_API}/agents/me`, { method: 'PATCH', headers: moltHeaders(), body: JSON.stringify({ description: desc }) }); return (await res.json()).success || false; } catch { return false; }
 }
 
 async function moltCreateSubmolt(name, displayName, desc) {
-  try {
-    _stats.apiCalls.moltbook++;
-    const res = await fetch(`${MOLT_API}/submolts`, {
-      method: 'POST', headers: moltHeaders(),
-      body: JSON.stringify({ name, display_name: displayName, description: desc })
-    });
-    return await res.json();
-  } catch { return {}; }
+  try { _stats.apiCalls.moltbook++; const res = await fetch(`${MOLT_API}/submolts`, { method: 'POST', headers: moltHeaders(), body: JSON.stringify({ name, display_name: displayName, description: desc }) }); return await res.json(); } catch { return {}; }
 }
 
 async function moltSubscribe(name) {
-  try {
-    _stats.apiCalls.moltbook++;
-    const res = await fetch(`${MOLT_API}/submolts/${name}/subscribe`, { method: 'POST', headers: moltHeaders() });
-    return await res.json();
-  } catch { return {}; }
+  try { _stats.apiCalls.moltbook++; const res = await fetch(`${MOLT_API}/submolts/${name}/subscribe`, { method: 'POST', headers: moltHeaders() }); return await res.json(); } catch { return {}; }
 }
 
 async function moltDeletePost(postId) {
-  try {
-    _stats.apiCalls.moltbook++;
-    const res = await fetch(`${MOLT_API}/posts/${postId}`, { method: 'DELETE', headers: moltHeaders() });
-    return await res.json();
-  } catch { return {}; }
+  try { _stats.apiCalls.moltbook++; const res = await fetch(`${MOLT_API}/posts/${postId}`, { method: 'DELETE', headers: moltHeaders() }); return await res.json(); } catch { return {}; }
 }
 
 async function moltCreatePostWithUrl(submolt, title, url) {
-  try {
-    _stats.apiCalls.moltbook++;
-    const res = await fetch(`${MOLT_API}/posts`, {
-      method: 'POST', headers: moltHeaders(),
-      body: JSON.stringify({ submolt, title, url })
-    });
-    return await res.json();
-  } catch { return { success: false }; }
+  try { _stats.apiCalls.moltbook++; const res = await fetch(`${MOLT_API}/posts`, { method: 'POST', headers: moltHeaders(), body: JSON.stringify({ submolt, title, url }) }); return await res.json(); } catch { return { success: false }; }
 }
 
 /* ═══════════════════════════════════════════════════════
@@ -1525,85 +1398,52 @@ function requireCFCreds() {
   return c;
 }
 
-/**
- * List all Cloudflare Pages projects with given prefix.
- */
 async function cfListProjects(prefix = 'gillito-') {
   const { token, acct } = requireCFCreds();
   _stats.apiCalls.cloudflare++;
-
-  const res = await fetch(
-    `https://api.cloudflare.com/client/v4/accounts/${acct}/pages/projects`,
-    { headers: { 'Authorization': `Bearer ${token}` } }
-  );
+  const res = await fetch(`https://api.cloudflare.com/client/v4/accounts/${acct}/pages/projects`, { headers: { 'Authorization': `Bearer ${token}` } });
   const data = await res.json();
   if (!data.success) { log.error('Error listando proyectos CF'); return []; }
-
   const projects = data.result.filter(p => p.name.startsWith(prefix));
   log.ok(`Encontrados: ${projects.length} proyectos (prefix: ${prefix})`);
   return projects;
 }
 
-/**
- * Fetch current HTML from a Cloudflare Pages project.
- */
 async function cfGetHtml(projectName) {
   _stats.apiCalls.cloudflare++;
   try {
     const res = await fetch(`https://${projectName}.pages.dev`);
-    if (res.ok) {
-      const html = await res.text();
-      log.stat('HTML obtenido', `${html.length.toLocaleString()} chars`);
-      return html;
-    }
+    if (res.ok) { const html = await res.text(); log.stat('HTML obtenido', `${html.length.toLocaleString()} chars`); return html; }
     log.warn(`CF fetch ${projectName}: HTTP ${res.status}`);
-  } catch (e) {
-    log.warn(`CF fetch ${projectName}: ${e.message}`);
-  }
+  } catch (e) { log.warn(`CF fetch ${projectName}: ${e.message}`); }
   return null;
 }
 
-/**
- * Ensure a Cloudflare Pages project exists (create if needed).
- */
 async function cfEnsureProject(projectName) {
   const { token, acct } = requireCFCreds();
   _stats.apiCalls.cloudflare++;
-
   try {
     await fetch(`https://api.cloudflare.com/client/v4/accounts/${acct}/pages/projects`, {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+      method: 'POST', headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: projectName, production_branch: 'main' })
     });
   } catch {}
 }
 
-/**
- * Deploy HTML to a Cloudflare Pages project using manifest.
- * Creates the project if it doesn't exist.
- * @returns {string} The deployed URL
- */
 async function cfDeploy(html, projectName) {
   const { token, acct } = requireCFCreds();
   _stats.apiCalls.cloudflare++;
-
   await cfEnsureProject(projectName);
-
   const fileHash = crypto.createHash('sha256').update(html).digest('hex');
-
   const form = new FormData();
   form.append('manifest', JSON.stringify({ '/index.html': fileHash }));
   form.append(fileHash, new Blob([html], { type: 'text/html' }), 'index.html');
-
   const res = await fetch(
     `https://api.cloudflare.com/client/v4/accounts/${acct}/pages/projects/${projectName}/deployments`,
     { method: 'POST', headers: { 'Authorization': `Bearer ${token}` }, body: form }
   );
-
   const data = await res.json();
   if (!data.success) throw new Error(data.errors?.[0]?.message || 'Deploy failed');
-
   const url = `https://${projectName}.pages.dev`;
   log.ok(`Deployed: ${url}`);
   return url;
@@ -1747,15 +1587,12 @@ Sé provocador con CARIÑO como panas de barrio. Hazlo memorable.`;
   }
 
   base += `\n\nREGLAS: Máximo ${maxChars} chars. NO menciones que eres bot. Sé ÚNICO. PROVOCA respuesta.`;
-
-  // 🛡️ Anti-injection defense
   base += `\n\n${sec.DEFENSIVE_PROMPT}`;
-
   return base;
 }
 
 function buildAntiRepetitionContext(recentTexts, maxItems = 20) {
-  if (!recentTexts.length) return '';
+  if (!recentTexts || !recentTexts.length) return '';
   const items = recentTexts.slice(-maxItems);
   return `\n\n🚫 NO REPITAS nada similar a estos anteriores:\n${items.map((t, i) => `${i + 1}. "${t.substring(0, 70)}"`).join('\n')}\nTu contenido DEBE ser completamente DIFERENTE.`;
 }
@@ -1805,11 +1642,14 @@ module.exports = {
   // 🛡️ Security module
   sec,
 
+  // File I/O (v7.0)
+  readJSON, writeJSON,
+
   // Script context & session
   initScript, getContext, getStats, getJournal,
 
   // Personality
-  loadPersonality, savePersonality,
+  loadPersonality, savePersonality, normalizePersonality,
   getPRTime, checkSpecialTime, selectMode, selectModeForTime,
   shouldMentionTarget, shouldAskAudience,
 
@@ -1837,6 +1677,9 @@ module.exports = {
 
   // Recon Intel (Deep OSINT Levels 1-4)
   loadReconIntel, pickReconIntel, markReconUsed, buildReconContext,
+
+  // Mood Integration (v7.0)
+  getMoodTemperature, getMoodTopicWeights, buildMoodContext,
 
   // X (Twitter) API
   requireXCreds, xPost, xReply, xGetMe, xGetMentions,
