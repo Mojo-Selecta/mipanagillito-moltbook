@@ -1,4 +1,4 @@
-name: 💓🔥 Gillito Heartbeat v2.0 BEAST MODE
+name: 💓🔥 Gillito Heartbeat v3.0 TROLL KING
 on:
   schedule:
     - cron: '*/30 * * * *'    # Every 30 min — runs ~25min then exits
@@ -20,8 +20,8 @@ jobs:
           GILLITO_DB_URL: https://gillito-db.vip-joeojeda.workers.dev
           GILLITO_DB_KEY: ${{ secrets.GILLITO_DB_KEY }}
         run: node scripts/db-sync.js download
-      # ═══ 🔥 RUN HEARTBEAT ═══
-      - name: 💓🔥 Gillito BEAST MODE
+      # ═══ 🔥 RUN HEARTBEAT v3.0 ═══
+      - name: 💓🔥 Gillito TROLL KING MODE
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
