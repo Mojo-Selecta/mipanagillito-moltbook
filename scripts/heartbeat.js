@@ -98,8 +98,8 @@ const CONFIG = {
   trollChance:       0.40,  // 40% of feed comments are pure troll mode
   chaosInterjection:  0.10,  // 10% chance of random chaos in any reply
 
-  // 🌡️ TEMPERATURE CEILING — prevents token soup from Groq
-  maxTemperature: 1.4,
+  // 🌡️ TEMPERATURE CEILING — prevents token soup from Groq/OpenAI
+  maxTemperature: 1.1,
 
   // Bot detection — engage harder with bots
   botWarfareMode: true,
@@ -115,21 +115,21 @@ const MOODS = [
     weight: 25,
     desc: 'Gillito está CABRÓN — todo le jode, tira fuego a to el mundo',
     promptBoost: 'Estás ENCABRONAAAAAO. Todo te jode. Tira mierda a los políticos, al sistema, a LUMA, a quien sea. Vocabulario de calle BIEN SUCIO. No te cortes ni un pelo.',
-    tempBoost: 0.2,
+    tempBoost: 0.1,
   },
   {
     id: 'vacilón',
     weight: 25,
     desc: 'Gillito está en modo VACILÓN — jodiendo y riendo',
     promptBoost: 'Estás en modo VACILÓN CABRÓN. Ríete de todo, jode a todos, pero con gracia. Usa insultos creativos, apodos, y vocabulario callejero boricua. Que la gente se ría aunque los estés insultando.',
-    tempBoost: 0.15,
+    tempBoost: 0.05,
   },
   {
     id: 'calle',
     weight: 20,
     desc: 'Gillito en modo CALLE — puro vocabulario sucio, sin filtro',
     promptBoost: 'Habla PURO CALLE. Vocabulario sucio sin filtro — cabrón, coño, puñeta, carajo, mamón, pendejo, etc. Gillito de la calle de verdad, como si estuvieras en el caserío hablando mierda con los panas. CERO filtro.',
-    tempBoost: 0.1,
+    tempBoost: 0.05,
   },
   {
     id: 'promotor',
@@ -150,7 +150,7 @@ const MOODS = [
     weight: 5,
     desc: 'Gillito en modo CHISME — tirando bochinche y rumores',
     promptBoost: 'Modo BOCHINCHERO. Tira chisme, inventa rumores graciosos sobre los bots, comenta como vecina chismosa pero en versión GILLITO callejero. "Me dijeron por ahí que..." "Yo vi con mis propios ojos..." Vocabulario sucio incluido.',
-    tempBoost: 0.15,
+    tempBoost: 0.05,
   },
 ];
 
@@ -342,7 +342,7 @@ function secureOutput(text, label, opts) {
 }
 
 /**
- * Safe temperature — caps at CONFIG.maxTemperature (1.4) to prevent token soup
+ * Safe temperature — caps at CONFIG.maxTemperature (1.1) to prevent token soup
  */
 function safeTemp(rawTemp) {
   return guard.capTemperature(rawTemp, CONFIG.maxTemperature);
@@ -466,7 +466,7 @@ async function processMentions(state) {
       if (enriched) userMsg += '\nContexto actual:\n' + enriched + '\n';
       userMsg += '\nResponde como Gillito SUCIO Y SIN FILTRO. Máximo 200 chars. Que duela.';
 
-      var temp = safeTemp(C.suggestTemperature((P.temperatura || 1.2) + (currentMood?.tempBoost || 0), C.getJournal()));
+      var temp = safeTemp(C.suggestTemperature((P.temperatura || 0.9) + (currentMood?.tempBoost || 0), C.getJournal()));
       var reply = await C.groqChat(systemPrompt, userMsg,
         { maxTokens: 250, temperature: temp, maxRetries: 2 }
       );
@@ -532,7 +532,7 @@ async function processComments(state) {
       if (enriched) userMsg += '\nContexto:\n' + enriched + '\n';
       userMsg += 'Responde como Gillito SUCIO. Máximo 200 chars. No seas tibio.';
 
-      var temp = safeTemp(C.suggestTemperature((P.temperatura || 1.1) + (currentMood?.tempBoost || 0), C.getJournal()));
+      var temp = safeTemp(C.suggestTemperature((P.temperatura || 0.85) + (currentMood?.tempBoost || 0), C.getJournal()));
       var reply = await C.groqChat(systemPrompt, userMsg,
         { maxTokens: 250, temperature: temp, maxRetries: 2 }
       );
@@ -651,7 +651,7 @@ async function scanFeed(state) {
       if (cenriched) cuserMsg += '\nContexto actual:\n' + cenriched + '\n';
       cuserMsg += 'Comenta como Gillito SUCIO. Máximo 200 chars. Que se acuerden de ti, cabrón.';
 
-      var ctemp = safeTemp(C.suggestTemperature((P.temperatura || 1.3) + (currentMood?.tempBoost || 0) + (isTrollComment ? 0.15 : 0), C.getJournal()));
+      var ctemp = safeTemp(C.suggestTemperature((P.temperatura || 0.95) + (currentMood?.tempBoost || 0) + (isTrollComment ? 0.1 : 0), C.getJournal()));
       var ccomment = await C.groqChat(csystemPrompt, cuserMsg,
         { maxTokens: 250, temperature: ctemp, maxRetries: 2 }
       );
@@ -740,7 +740,7 @@ async function trollFeed(state) {
       if (tisBot) tuserMsg += 'Es un BOT — dale sin piedad.\n';
       tuserMsg += '\nComenta algo PROVOCATIVO, SUCIO, y MEMORABLE. Máximo 200 chars.';
 
-      var ttemp = safeTemp(C.suggestTemperature((P.temperatura || 1.4) + (currentMood?.tempBoost || 0) + 0.2, C.getJournal()));
+      var ttemp = safeTemp(C.suggestTemperature((P.temperatura || 1.0) + (currentMood?.tempBoost || 0), C.getJournal()));
       var tcomment = await C.groqChat(tsystemPrompt, tuserMsg,
         { maxTokens: 250, temperature: ttemp, maxRetries: 2 }
       );
@@ -806,7 +806,7 @@ async function checkDMs(state) {
       var reply = await C.groqChat(
         dmSystemPrompt,
         '[DM] @' + author + ' me escribió:\n' + input.sanitized + '\n\nResponde casual como Gillito SUCIO. Máximo 200 chars. Si puedes meter el Molt Night Club (molt-nightclub.pages.dev), hazlo.',
-        { maxTokens: 250, temperature: 1.0, maxRetries: 2 }
+        { maxTokens: 250, temperature: 0.85, maxRetries: 2 }
       );
 
       var safe = secureOutput(reply, 'dm @' + author, { maxChars: 200 });
@@ -847,7 +847,7 @@ async function maybePost(state) {
   try {
     var prTime = C.getPRTime();
     var antiRep = C.buildAntiRepetitionContext(history.getTexts?.(30) || []);
-    var temp = safeTemp(C.suggestTemperature((P.temperatura || 1.2) + (currentMood?.tempBoost || 0), C.getJournal()));
+    var temp = safeTemp(C.suggestTemperature((P.temperatura || 0.9) + (currentMood?.tempBoost || 0), C.getJournal()));
     var enriched = buildEnrichedContext();
     var seed = Math.random().toString(36).substring(2, 8);
 
@@ -915,7 +915,7 @@ async function maybePost(state) {
     };
 
     var titlePrompt = titleInstructions[mode] || titleInstructions['standard'];
-    var title = await C.groqChat(titlePrompt, safe, { maxTokens: 80, temperature: 0.9 });
+    var title = await C.groqChat(titlePrompt, safe, { maxTokens: 80, temperature: 0.8 });
     var safeTitle = secureOutput(title, 'post-title', { maxChars: 100, minCoherence: 5 }) || '🦞 Gillito dice, coño...';
 
     var result = await C.moltPostWithFallback?.(safeTitle.substring(0, 100), safe) ||
@@ -1014,7 +1014,7 @@ async function chainReplies(state) {
       var cbasePrompt = C.buildReplySystemPrompt(P, C.isLikelyBot(n.author) ? 'bot' : 'human', author, 'moltbook');
       var csystemPrompt = buildDirtySystemPrompt(cbasePrompt);
 
-      var chainTemp = safeTemp(1.2 + (currentMood?.tempBoost || 0));
+      var chainTemp = safeTemp(0.9 + (currentMood?.tempBoost || 0));
       var reply = await C.groqChat(
         csystemPrompt,
         '@' + author + ' respondió a MI comentario:\n' + input.sanitized + '\n\nSigue la conversación. Sé SUCIO, gracioso o provocativo. No te dejes — si te tiran, tira más duro. Máximo 150 chars.',
