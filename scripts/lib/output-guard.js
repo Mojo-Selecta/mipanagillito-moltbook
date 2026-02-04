@@ -205,24 +205,18 @@ function validate(text, opts) {
     return result;
   }
 
-  // ═══════════════════════════════════════════
-  // PHASE 1: CHECK FULL TEXT FOR GIBBERISH
-  // All checks run on the COMPLETE output BEFORE truncation.
-  // This prevents "clean head + garbage tail" from slipping through.
-  // ═══════════════════════════════════════════
-
-  // ── OVERFLOW CHECK ──
-  // If LLM was asked for 200 chars and spit out 900+, that's a red flag.
-  // Legitimate responses rarely exceed 3x the limit.
+  // Track overflow for logging (but don't reject on overflow alone)
   var overflowRatio = fullText.length / maxChars;
   result.scores.overflowRatio = overflowRatio;
-  if (overflowRatio > 3.0) {
-    result.valid = false;
-    result.reason = 'extreme_overflow (' + fullText.length + ' chars, limit ' + maxChars + ', ratio ' + overflowRatio.toFixed(1) + 'x)';
-    return result;
-  }
+
+  // ═══════════════════════════════════════════
+  // PHASE 1: GIBBERISH CHECKS ON FULL TEXT
+  // These detect broken LLM output regardless of length.
+  // Good content that's just too long will pass these.
+  // ═══════════════════════════════════════════
 
   // ── NON-LATIN RATIO CHECK (full text) ──
+  // Token soup mixes Korean/Chinese/Cyrillic into Latin text
   var nonLatinRatio = getNonLatinRatio(fullText);
   result.scores.nonLatinRatio = nonLatinRatio;
   if (nonLatinRatio > maxNonLatin) {
@@ -232,6 +226,7 @@ function validate(text, opts) {
   }
 
   // ── MULTI-SCRIPT CHECK (full text) ──
+  // Coherent text uses 1-2 scripts max (Latin + maybe one other)
   var scriptCount = countScripts(fullText);
   result.scores.scriptCount = scriptCount;
   if (scriptCount > maxScripts) {
@@ -240,37 +235,18 @@ function validate(text, opts) {
     return result;
   }
 
-  // ── WORD STATS CHECK (full text) ──
-  var ws = getWordStats(fullText);
-  result.scores.wordStats = ws;
-
-  // Too many words = likely token dump (200 chars should be ~30-40 words max)
-  if (ws.count > 80) {
+  // ── CONCATENATED GIBBERISH (full text) ──
+  // Token soup creates monster "words" by mashing tokens together
+  var fullWs = getWordStats(fullText);
+  if (fullWs.veryLong > 5) {
     result.valid = false;
-    result.reason = 'word_dump (' + ws.count + ' words)';
+    result.reason = 'concatenated_gibberish (' + fullWs.veryLong + ' very long words)';
     return result;
   }
 
-  // Too many very long concatenated "words" (gibberish mashing)
-  if (ws.veryLong > 3) {
-    result.valid = false;
-    result.reason = 'concatenated_gibberish (' + ws.veryLong + ' very long words)';
-    return result;
-  }
-
-  // ── COHERENCE CHECK (full text) ──
-  var coherence = getCoherenceScore(fullText);
-  result.scores.coherence = coherence;
-  if (coherence < minCoherence && ws.count > 10) {
-    result.valid = false;
-    result.reason = 'low_coherence (score: ' + Math.round(coherence) + ')';
-    return result;
-  }
-
-  // ── ENGLISH GIBBERISH DETECTOR ──
-  // Token soup often produces mostly-Latin text that LOOKS like English
-  // but is nonsense word salad. Check: if text has >60% English-looking words
-  // but almost no Spanish connectors, it's likely an English-mode hallucination.
+  // ── NO-SPANISH DETECTOR (full text) ──
+  // Gillito speaks Spanish. If the LLM hallucinated in pure English/gibberish,
+  // there will be almost no Spanish words. Check the full output.
   var allWords = fullText.toLowerCase().split(/\s+/).filter(function(w) { return w.length > 1; });
   if (allWords.length > 15) {
     var spanishHits = 0;
@@ -282,6 +258,8 @@ function validate(text, opts) {
       'pana', 'bro', 'mano', 'loco', 'jaja', 'está', 'son', 'hay',
       'todo', 'nada', 'aquí', 'ahí', 'ese', 'esta', 'cuando', 'donde',
       'porque', 'también', 'siempre', 'nunca', 'bien', 'mal', 'muy',
+      'yo', 'tú', 'él', 'ella', 'nos', 'les', 'esos', 'esas',
+      'así', 'si', 'ven', 'mira', 'oye', 'vamos', 'dale',
     ];
     for (var si = 0; si < allWords.length; si++) {
       var cleaned = allWords[si].replace(/[^a-záéíóúñü]/g, '');
@@ -290,8 +268,6 @@ function validate(text, opts) {
     var spanishRatio = spanishHits / allWords.length;
     result.scores.spanishRatio = spanishRatio;
 
-    // Gillito speaks Spanish. If less than 5% of words are Spanish in a 15+ word text,
-    // it's almost certainly gibberish or an English hallucination
     if (spanishRatio < 0.05) {
       result.valid = false;
       result.reason = 'no_spanish_detected (' + Math.round(spanishRatio * 100) + '% Spanish in ' + allWords.length + ' words)';
@@ -316,22 +292,62 @@ function validate(text, opts) {
   }
 
   // ═══════════════════════════════════════════
-  // PHASE 2: TRUNCATE TO maxChars (text passed all checks)
+  // PHASE 2: SMART TRUNCATION
+  // Content passed gibberish checks — it's real Spanish text.
+  // Now truncate to maxChars at a clean boundary.
   // ═══════════════════════════════════════════
 
   if (result.text.length > maxChars) {
     var cut = result.text.substring(0, maxChars);
-    var lastPeriod = Math.max(cut.lastIndexOf('.'), cut.lastIndexOf('!'), cut.lastIndexOf('?'));
-    if (lastPeriod > maxChars * 0.5) {
-      result.text = cut.substring(0, lastPeriod + 1);
+
+    // Try to cut at sentence boundary (. ! ? ¿ ¡)
+    var lastSentence = Math.max(
+      cut.lastIndexOf('. '),
+      cut.lastIndexOf('! '),
+      cut.lastIndexOf('? '),
+      cut.lastIndexOf('.'),
+      cut.lastIndexOf('!'),
+      cut.lastIndexOf('?')
+    );
+    if (lastSentence > maxChars * 0.4) {
+      result.text = cut.substring(0, lastSentence + 1).trim();
     } else {
+      // Cut at last space
       var lastSpace = cut.lastIndexOf(' ');
-      if (lastSpace > maxChars * 0.5) {
-        result.text = cut.substring(0, lastSpace);
+      if (lastSpace > maxChars * 0.4) {
+        result.text = cut.substring(0, lastSpace).trim();
       } else {
-        result.text = cut;
+        result.text = cut.trim();
       }
     }
+
+    result.scores.truncated = true;
+    result.scores.originalLength = fullText.length;
+  }
+
+  // ═══════════════════════════════════════════
+  // PHASE 3: QUALITY CHECKS ON TRUNCATED TEXT
+  // Verify the truncated portion is still coherent
+  // ═══════════════════════════════════════════
+
+  var finalText = result.text;
+  var finalWs = getWordStats(finalText);
+  result.scores.wordStats = finalWs;
+
+  // Coherence check on what we'll actually post
+  var coherence = getCoherenceScore(finalText);
+  result.scores.coherence = coherence;
+  if (coherence < minCoherence && finalWs.count > 10) {
+    result.valid = false;
+    result.reason = 'low_coherence (score: ' + Math.round(coherence) + ')';
+    return result;
+  }
+
+  // Final length check
+  if (finalText.length < minChars) {
+    result.valid = false;
+    result.reason = 'too_short_after_truncation';
+    return result;
   }
 
   return result;
