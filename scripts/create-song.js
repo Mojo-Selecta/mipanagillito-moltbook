@@ -1,133 +1,175 @@
 #!/usr/bin/env node
 /**
- * Mi Pana Gillito — Song Creator v1.0 🎵
+ * Mi Pana Gillito — Song Creator v1.1 🎵
  * ═══════════════════════════════════════════════════════════
  * 🎤 GPT/Groq genera letras de reggaetón/salsa estilo Gillito
- * 🎵 Udio AI genera la canción completa
+ * 🎵 Udio AI genera la canción completa (via Playwright browser)
  * 📢 Postea en X y Moltbook con link al audio
  * 🦞 100% boricua, 100% calle, 100% fuego
  *
- * FLUJO:
- * ─────
- * 1. LLM genera letras originales en español boricua
- * 2. Udio API genera la canción con esas letras
- * 3. Esperamos que Udio termine (polling)
- * 4. Posteamos el link en redes sociales
- *
- * UDIO API (reverse-engineered):
- * ──────────────────────────────
- * POST https://www.udio.com/api/generate-proxy  → genera canción
- * GET  https://www.udio.com/api/songs?songIds=   → poll status
- * Auth: Cookie header con auth token
+ * v1.1: Usa Playwright headless browser pa' bypass Cloudflare
+ *       Las API calls se hacen DESDE el browser (page.evaluate)
  *
  * ENV VARS REQUERIDAS:
  * ────────────────────
- * UDIO_AUTH_TOKEN  — Token de autenticación de Udio (cookie)
+ * UDIO_AUTH_TOKEN_0  — Cookie .0 de sb-ssr-production-auth-token
+ * UDIO_AUTH_TOKEN_1  — Cookie .1 de sb-ssr-production-auth-token
  */
 
 const C = require('./lib/core');
 C.initScript('create-song', 'udio');
 
-const sec = C.sec;
-const P   = C.loadPersonality();
+const { chromium } = require('playwright');
 
 
 /* ═══════════════════════════════════════════════════════════
-   UDIO API CLIENT (Node.js port of UdioWrapper)
-   ═══════════════════════════════════════════════════════════ */
+   UDIO BROWSER CLIENT (Playwright bypass Cloudflare)
+   ═══════════════════════════════════════════════════════════
+   En vez de fetch() directo (que Cloudflare bloquea),
+   abrimos un browser real, inyectamos cookies, y hacemos
+   las API calls desde DENTRO del browser.
+*/
 
-const UDIO_API = 'https://www.udio.com/api';
+let _browser = null;
+let _page = null;
 
-function getUdioHeaders() {
-  // Support both formats:
-  // A) Two separate secrets: UDIO_AUTH_TOKEN_0 + UDIO_AUTH_TOKEN_1
-  // B) One combined secret: UDIO_AUTH_TOKEN (legacy)
+/**
+ * Initialize Playwright browser and inject Udio cookies
+ */
+async function initBrowser() {
+  C.log.info('🌐 Launching headless browser...');
+
+  _browser = await chromium.launch({
+    headless: true,
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--disable-blink-features=AutomationControlled',
+    ],
+  });
+
+  const context = await _browser.newContext({
+    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+    viewport: { width: 1920, height: 1080 },
+    locale: 'en-US',
+  });
+
+  // Inject auth cookies BEFORE navigating
   const token0 = process.env.UDIO_AUTH_TOKEN_0;
   const token1 = process.env.UDIO_AUTH_TOKEN_1;
-  const tokenCombined = process.env.UDIO_AUTH_TOKEN;
 
-  let cookieStr;
-  if (token0 && token1) {
-    // Send as separate cookies (correct way)
-    cookieStr = `sb-ssr-production-auth-token.0=${token0}; sb-ssr-production-auth-token.1=${token1}`;
-  } else if (tokenCombined) {
-    // Legacy: try both cookie names with combined value
-    cookieStr = `sb-api-auth-token=${tokenCombined}; sb-ssr-production-auth-token=${tokenCombined}`;
-  } else {
-    throw new Error('No Udio auth token! Set UDIO_AUTH_TOKEN_0 + UDIO_AUTH_TOKEN_1 in GitHub Secrets');
+  if (!token0 || !token1) {
+    throw new Error('UDIO_AUTH_TOKEN_0 and UDIO_AUTH_TOKEN_1 must be set!');
   }
 
-  return {
-    'Accept': 'application/json, text/plain, */*',
-    'Content-Type': 'application/json',
-    'Cookie': cookieStr,
-    'Origin': 'https://www.udio.com',
-    'Referer': 'https://www.udio.com/my-creations',
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-    'Sec-Fetch-Site': 'same-origin',
-    'Sec-Fetch-Mode': 'cors',
-    'Sec-Fetch-Dest': 'empty',
-    'sec-ch-ua': '"Google Chrome";v="131", "Not:A-Brand";v="8", "Chromium";v="131"',
-    'sec-ch-ua-mobile': '?0',
-    'sec-ch-ua-platform': '"Windows"',
-  };
+  await context.addCookies([
+    {
+      name: 'sb-ssr-production-auth-token.0',
+      value: token0,
+      domain: '.udio.com',
+      path: '/',
+      httpOnly: false,
+      secure: true,
+      sameSite: 'Lax',
+    },
+    {
+      name: 'sb-ssr-production-auth-token.1',
+      value: token1,
+      domain: '.udio.com',
+      path: '/',
+      httpOnly: false,
+      secure: true,
+      sameSite: 'Lax',
+    },
+  ]);
+
+  _page = await context.newPage();
+
+  // Navigate to udio.com to establish session & pass Cloudflare
+  C.log.info('🌐 Navigating to udio.com (passing Cloudflare)...');
+  await _page.goto('https://www.udio.com/my-creations', {
+    waitUntil: 'domcontentloaded',
+    timeout: 30000,
+  });
+
+  // Wait for Cloudflare challenge to resolve
+  await _page.waitForTimeout(3000);
+
+  // Check for Cloudflare challenge page
+  const title = await _page.title();
+  C.log.info(`🌐 Page title: "${title}"`);
+
+  if (title.toLowerCase().includes('just a moment') || title.toLowerCase().includes('challenge')) {
+    C.log.warn('⚠️ Cloudflare challenge detected, waiting 10s...');
+    await _page.waitForTimeout(10000);
+    const newTitle = await _page.title();
+    C.log.info(`🌐 After wait — title: "${newTitle}"`);
+  }
+
+  const pageUrl = _page.url();
+  C.log.ok(`✅ Browser ready! URL: ${pageUrl}`);
 }
 
 /**
- * Generate a song via Udio API
- * @param {string} authToken - Udio auth cookie token
- * @param {string} prompt - Music style/genre prompt
- * @param {string} lyrics - Custom lyrics (optional)
- * @param {number} seed - Random seed (-1 for random)
- * @returns {object} - { track_ids: [...] }
+ * Close the browser
+ */
+async function closeBrowser() {
+  if (_browser) {
+    await _browser.close();
+    _browser = null;
+    _page = null;
+    C.log.info('🌐 Browser closed');
+  }
+}
+
+/**
+ * Generate a song via Udio API (from inside the browser)
  */
 async function udioGenerate(prompt, lyrics = null, seed = -1) {
-  const url = `${UDIO_API}/generate-proxy`;
-  const headers = getUdioHeaders();
-
-  const data = {
-    prompt,
-    samplerOptions: { seed },
-  };
-
-  if (lyrics) {
-    data.lyricInput = lyrics;
-  }
-
-  C.log.info(`🎵 Calling Udio generate-proxy...`);
+  C.log.info(`🎵 Calling Udio generate-proxy (via browser)...`);
   C.log.info(`   Prompt: ${prompt.substring(0, 80)}`);
   if (lyrics) C.log.info(`   Lyrics: ${lyrics.substring(0, 60)}...`);
 
-  const resp = await fetch(url, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(data),
-  });
+  const result = await _page.evaluate(async ({ prompt, lyrics, seed }) => {
+    const data = {
+      prompt,
+      samplerOptions: { seed },
+    };
+    if (lyrics) {
+      data.lyricInput = lyrics;
+    }
 
-  if (!resp.ok) {
-    const errText = await resp.text().catch(() => 'no body');
-    throw new Error(`Udio generate failed: ${resp.status} ${resp.statusText} — ${errText.substring(0, 200)}`);
+    const resp = await fetch('/api/generate-proxy', {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json, text/plain, */*',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(data),
+    });
+
+    if (!resp.ok) {
+      const errText = await resp.text().catch(() => 'no body');
+      return { error: true, status: resp.status, statusText: resp.statusText, body: errText.substring(0, 300) };
+    }
+
+    return await resp.json();
+  }, { prompt, lyrics, seed });
+
+  if (result.error) {
+    throw new Error(`Udio generate failed: ${result.status} ${result.statusText} — ${result.body}`);
   }
 
-  const result = await resp.json();
   C.log.ok(`✅ Udio accepted! Track IDs: ${(result.track_ids || []).join(', ')}`);
   return result;
 }
 
 /**
- * Poll Udio for song completion
- * @param {string} authToken - Udio auth cookie token
- * @param {string[]} trackIds - Array of track IDs to check
- * @param {number} maxWaitMs - Maximum wait time (default 5 minutes)
- * @param {number} pollIntervalMs - Poll interval (default 8 seconds)
- * @returns {object[]} - Array of finished song objects
+ * Poll Udio for song completion (from inside the browser)
  */
 async function udioPollSongs(trackIds, maxWaitMs = 300000, pollIntervalMs = 8000) {
-  const url = `${UDIO_API}/songs?songIds=${trackIds.join(',')}`;
-  const headers = getUdioHeaders();
-  // For GET requests, adjust Accept
-  headers['Accept'] = 'application/json, text/plain, */*';
-
+  const songIdsParam = trackIds.join(',');
   const startTime = Date.now();
   let attempts = 0;
 
@@ -135,15 +177,25 @@ async function udioPollSongs(trackIds, maxWaitMs = 300000, pollIntervalMs = 8000
     attempts++;
     C.log.info(`   ⏳ Polling attempt ${attempts}... (${Math.round((Date.now() - startTime) / 1000)}s)`);
 
-    const resp = await fetch(url, { method: 'GET', headers });
+    const data = await _page.evaluate(async (ids) => {
+      const resp = await fetch(`/api/songs?songIds=${ids}`, {
+        method: 'GET',
+        headers: { 'Accept': 'application/json, text/plain, */*' },
+      });
 
-    if (!resp.ok) {
-      C.log.warn(`   ⚠️ Poll HTTP ${resp.status} — retrying...`);
+      if (!resp.ok) {
+        return { error: true, status: resp.status };
+      }
+
+      return await resp.json();
+    }, songIdsParam);
+
+    if (data.error) {
+      C.log.warn(`   ⚠️ Poll HTTP ${data.status} — retrying...`);
       await sleep(pollIntervalMs);
       continue;
     }
 
-    const data = await resp.json();
     const songs = data.songs || [];
 
     if (songs.length === 0) {
@@ -159,7 +211,6 @@ async function udioPollSongs(trackIds, maxWaitMs = 300000, pollIntervalMs = 8000
       return songs;
     }
 
-    // Log progress
     const finished = songs.filter(s => s.finished).length;
     C.log.info(`   📊 ${finished}/${songs.length} finished`);
 
@@ -176,10 +227,7 @@ function sleep(ms) {
 
 /* ═══════════════════════════════════════════════════════════
    LYRICS GENERATION
-   ═══════════════════════════════════════════════════════════
-   GPT/Groq genera letras originales de reggaetón/salsa
-   con la personalidad de Gillito.
-*/
+   ═══════════════════════════════════════════════════════════ */
 
 const GENRES = [
   { genre: 'reggaetón', style: 'reggaeton, perreo, dembow beat, urban latin' },
@@ -258,28 +306,21 @@ línea 4`;
 
 async function main() {
   C.log.banner([
-    '🎵 GILLITO SONG CREATOR — v1.0',
-    '🎤 LLM Lyrics → Udio AI Music',
+    '🎵 GILLITO SONG CREATOR — v1.1',
+    '🎤 LLM Lyrics → Udio AI Music (Playwright)',
     '🦞 Dios los cuide, que GILLITO los protegerá'
   ]);
 
 
   // ━━━ VALIDATE ENV ━━━
-  const hasTokenParts = process.env.UDIO_AUTH_TOKEN_0 && process.env.UDIO_AUTH_TOKEN_1;
-  const hasTokenCombined = process.env.UDIO_AUTH_TOKEN;
-
-  if (!hasTokenParts && !hasTokenCombined) {
-    C.log.error('❌ Udio auth not set! Add UDIO_AUTH_TOKEN_0 + UDIO_AUTH_TOKEN_1 as GitHub Secrets.');
-    C.log.error('   (Or UDIO_AUTH_TOKEN with combined value)');
+  if (!process.env.UDIO_AUTH_TOKEN_0 || !process.env.UDIO_AUTH_TOKEN_1) {
+    C.log.error('❌ UDIO_AUTH_TOKEN_0 and UDIO_AUTH_TOKEN_1 must be set!');
+    C.log.error('   Go to udio.com → DevTools → Application → Cookies');
+    C.log.error('   Copy sb-ssr-production-auth-token.0 and .1 separately');
     process.exit(1);
   }
 
-  if (hasTokenParts) {
-    C.log.ok(`✅ Udio auth: split tokens (.0=${process.env.UDIO_AUTH_TOKEN_0.length} chars, .1=${process.env.UDIO_AUTH_TOKEN_1.length} chars)`);
-  } else {
-    C.log.ok(`✅ Udio auth: combined token (${process.env.UDIO_AUTH_TOKEN.length} chars)`);
-    C.log.warn('   ⚠️ Para mejor compatibilidad, usa UDIO_AUTH_TOKEN_0 + UDIO_AUTH_TOKEN_1 separados');
-  }
+  C.log.ok(`✅ Udio auth tokens loaded (.0=${process.env.UDIO_AUTH_TOKEN_0.length} chars, .1=${process.env.UDIO_AUTH_TOKEN_1.length} chars)`);
 
 
   // ━━━ PICK RANDOM GENRE + THEME ━━━
@@ -300,11 +341,9 @@ async function main() {
     { maxTokens: 800, temperature: 0.9, maxRetries: 3, backoffMs: 3000 }
   );
 
-  // Clean lyrics — remove any markdown or preamble
+  // Clean lyrics
   let lyrics = lyricsRaw.trim();
-  // Remove markdown fences if present
   lyrics = lyrics.replace(/^```\s*\n?/i, '').replace(/\n?```\s*$/i, '');
-  // Remove any preamble before first tag
   const firstTag = lyrics.search(/\[(Verso|Coro|Intro|Bridge|Outro|Hook|Pre-Coro)/i);
   if (firstTag > 0) {
     lyrics = lyrics.substring(firstTag);
@@ -327,8 +366,8 @@ async function main() {
   );
 
   let title = titleRaw.trim()
-    .replace(/^["'"""'']+/, '').replace(/["'"""'']+$/, '')  // Remove quotes
-    .replace(/^(título|title):?\s*/i, '')  // Remove "Título:" prefix
+    .replace(/^["'"""'']+/, '').replace(/["'"""'']+$/, '')
+    .replace(/^(título|title):?\s*/i, '')
     .substring(0, 60);
 
   if (!title || title.length < 3) {
@@ -338,8 +377,10 @@ async function main() {
   C.log.stat('💡 Título', title);
 
 
-  // ━━━ STAGE 3: CALL UDIO ━━━
-  C.log.info('🎵 Stage 3: Generando canción en Udio...');
+  // ━━━ STAGE 3: LAUNCH BROWSER + CALL UDIO ━━━
+  C.log.info('🎵 Stage 3: Lanzando browser y generando canción...');
+
+  await initBrowser();
 
   const udioPrompt = genreChoice.style;
   C.log.stat('🎹 Udio prompt', udioPrompt);
@@ -350,11 +391,9 @@ async function main() {
   } catch (err) {
     C.log.error(`❌ Udio generate failed: ${err.message}`);
 
-    // If auth fails, try without lyrics (simpler request)
     if (err.message.includes('401') || err.message.includes('403')) {
       C.log.error('🔑 Auth token may be expired! Refresh it in GitHub Secrets.');
-      C.log.error('   Go to udio.com → DevTools → Application → Cookies');
-      C.log.error('   Copy sb-ssr-production-auth-token.0 + .1');
+      await closeBrowser();
       process.exit(1);
     }
 
@@ -364,6 +403,7 @@ async function main() {
       generateResult = await udioGenerate(`${udioPrompt}, spanish lyrics, puerto rico`);
     } catch (err2) {
       C.log.error(`❌ Retry also failed: ${err2.message}`);
+      await closeBrowser();
       process.exit(1);
     }
   }
@@ -371,6 +411,7 @@ async function main() {
   const trackIds = generateResult.track_ids || [];
   if (!trackIds.length) {
     C.log.error('❌ No track IDs returned from Udio');
+    await closeBrowser();
     process.exit(1);
   }
 
@@ -385,10 +426,14 @@ async function main() {
     songs = await udioPollSongs(trackIds);
   } catch (err) {
     C.log.error(`❌ Polling failed: ${err.message}`);
+    await closeBrowser();
     process.exit(1);
   }
 
-  // Pick the best song (first one that has a song_path)
+  // Done with browser
+  await closeBrowser();
+
+  // Pick the best song
   const song = songs.find(s => s.song_path) || songs[0];
 
   if (!song || !song.song_path) {
@@ -409,7 +454,6 @@ async function main() {
 
 
   // ━━━ STAGE 5: BUILD UDIO SHARE URL ━━━
-  // Udio songs are accessible at: https://www.udio.com/songs/{songId}
   const shareUrl = `https://www.udio.com/songs/${songId}`;
   C.log.stat('🌐 Share URL', shareUrl);
 
@@ -476,7 +520,8 @@ async function main() {
 }
 
 
-main().catch(err => {
+main().catch(async err => {
   C.log.error(`💀 Fatal: ${err.message}`);
+  await closeBrowser();
   process.exit(1);
 });
