@@ -23,13 +23,14 @@ jobs:
       - name: 📦 Install dependencies
         run: npm install
 
+      - name: 🎭 Install Playwright + Chromium
+        run: npx playwright install chromium --with-deps
+
       - name: 🎵 Create Song
         env:
-          # Udio (split cookies - preferred)
+          # Udio (split cookies)
           UDIO_AUTH_TOKEN_0: ${{ secrets.UDIO_AUTH_TOKEN_0 }}
           UDIO_AUTH_TOKEN_1: ${{ secrets.UDIO_AUTH_TOKEN_1 }}
-          # Udio (combined - legacy fallback)
-          UDIO_AUTH_TOKEN: ${{ secrets.UDIO_AUTH_TOKEN }}
           # LLM (for lyrics generation)
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
