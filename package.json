@@ -7,9 +7,13 @@
     "interact-moltbook": "node scripts/interact.js",
     "reply-moltbook": "node scripts/reply.js",
     "post-x": "node scripts/post-to-x.js",
-    "reply-x": "node scripts/reply-x.js"
+    "reply-x": "node scripts/reply-x.js",
+    "create-song": "node scripts/create-song.js"
   },
   "keywords": ["moltbook", "twitter", "x", "bot", "puerto-rico", "gillito"],
   "author": "Mojo-Selecta",
-  "license": "MIT"
+  "license": "MIT",
+  "dependencies": {
+    "playwright": "^1.50.0"
+  }
 }
