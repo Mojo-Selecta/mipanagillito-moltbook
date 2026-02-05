@@ -38,11 +38,29 @@ const P   = C.loadPersonality();
 
 const UDIO_API = 'https://www.udio.com/api';
 
-function getUdioHeaders(authToken) {
+function getUdioHeaders() {
+  // Support both formats:
+  // A) Two separate secrets: UDIO_AUTH_TOKEN_0 + UDIO_AUTH_TOKEN_1
+  // B) One combined secret: UDIO_AUTH_TOKEN (legacy)
+  const token0 = process.env.UDIO_AUTH_TOKEN_0;
+  const token1 = process.env.UDIO_AUTH_TOKEN_1;
+  const tokenCombined = process.env.UDIO_AUTH_TOKEN;
+
+  let cookieStr;
+  if (token0 && token1) {
+    // Send as separate cookies (correct way)
+    cookieStr = `sb-ssr-production-auth-token.0=${token0}; sb-ssr-production-auth-token.1=${token1}`;
+  } else if (tokenCombined) {
+    // Legacy: try both cookie names with combined value
+    cookieStr = `sb-api-auth-token=${tokenCombined}; sb-ssr-production-auth-token=${tokenCombined}`;
+  } else {
+    throw new Error('No Udio auth token! Set UDIO_AUTH_TOKEN_0 + UDIO_AUTH_TOKEN_1 in GitHub Secrets');
+  }
+
   return {
     'Accept': 'application/json, text/plain, */*',
     'Content-Type': 'application/json',
-    'Cookie': `sb-api-auth-token=${authToken}; sb-ssr-production-auth-token=${authToken}`,
+    'Cookie': cookieStr,
     'Origin': 'https://www.udio.com',
     'Referer': 'https://www.udio.com/my-creations',
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
@@ -63,9 +81,9 @@ function getUdioHeaders(authToken) {
  * @param {number} seed - Random seed (-1 for random)
  * @returns {object} - { track_ids: [...] }
  */
-async function udioGenerate(authToken, prompt, lyrics = null, seed = -1) {
+async function udioGenerate(prompt, lyrics = null, seed = -1) {
   const url = `${UDIO_API}/generate-proxy`;
-  const headers = getUdioHeaders(authToken);
+  const headers = getUdioHeaders();
 
   const data = {
     prompt,
@@ -104,9 +122,9 @@ async function udioGenerate(authToken, prompt, lyrics = null, seed = -1) {
  * @param {number} pollIntervalMs - Poll interval (default 8 seconds)
  * @returns {object[]} - Array of finished song objects
  */
-async function udioPollSongs(authToken, trackIds, maxWaitMs = 300000, pollIntervalMs = 8000) {
+async function udioPollSongs(trackIds, maxWaitMs = 300000, pollIntervalMs = 8000) {
   const url = `${UDIO_API}/songs?songIds=${trackIds.join(',')}`;
-  const headers = getUdioHeaders(authToken);
+  const headers = getUdioHeaders();
   // For GET requests, adjust Accept
   headers['Accept'] = 'application/json, text/plain, */*';
 
@@ -247,12 +265,21 @@ async function main() {
 
 
   // ━━━ VALIDATE ENV ━━━
-  const authToken = process.env.UDIO_AUTH_TOKEN;
-  if (!authToken) {
-    C.log.error('❌ UDIO_AUTH_TOKEN not set! Add it as a GitHub Secret.');
+  const hasTokenParts = process.env.UDIO_AUTH_TOKEN_0 && process.env.UDIO_AUTH_TOKEN_1;
+  const hasTokenCombined = process.env.UDIO_AUTH_TOKEN;
+
+  if (!hasTokenParts && !hasTokenCombined) {
+    C.log.error('❌ Udio auth not set! Add UDIO_AUTH_TOKEN_0 + UDIO_AUTH_TOKEN_1 as GitHub Secrets.');
+    C.log.error('   (Or UDIO_AUTH_TOKEN with combined value)');
     process.exit(1);
   }
-  C.log.ok(`✅ Udio auth token loaded (${authToken.length} chars)`);
+
+  if (hasTokenParts) {
+    C.log.ok(`✅ Udio auth: split tokens (.0=${process.env.UDIO_AUTH_TOKEN_0.length} chars, .1=${process.env.UDIO_AUTH_TOKEN_1.length} chars)`);
+  } else {
+    C.log.ok(`✅ Udio auth: combined token (${process.env.UDIO_AUTH_TOKEN.length} chars)`);
+    C.log.warn('   ⚠️ Para mejor compatibilidad, usa UDIO_AUTH_TOKEN_0 + UDIO_AUTH_TOKEN_1 separados');
+  }
 
 
   // ━━━ PICK RANDOM GENRE + THEME ━━━
@@ -319,7 +346,7 @@ async function main() {
 
   let generateResult;
   try {
-    generateResult = await udioGenerate(authToken, udioPrompt, lyrics);
+    generateResult = await udioGenerate(udioPrompt, lyrics);
   } catch (err) {
     C.log.error(`❌ Udio generate failed: ${err.message}`);
 
@@ -334,7 +361,7 @@ async function main() {
     // Retry without lyrics
     C.log.warn('🔄 Retrying without custom lyrics...');
     try {
-      generateResult = await udioGenerate(authToken, `${udioPrompt}, spanish lyrics, puerto rico`);
+      generateResult = await udioGenerate(`${udioPrompt}, spanish lyrics, puerto rico`);
     } catch (err2) {
       C.log.error(`❌ Retry also failed: ${err2.message}`);
       process.exit(1);
@@ -355,7 +382,7 @@ async function main() {
 
   let songs;
   try {
-    songs = await udioPollSongs(authToken, trackIds);
+    songs = await udioPollSongs(trackIds);
   } catch (err) {
     C.log.error(`❌ Polling failed: ${err.message}`);
     process.exit(1);
