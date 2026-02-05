@@ -406,12 +406,10 @@ Incluye <style> para CSS y <script> para JS. Mínimo 200 líneas.`,
    ═══════════════════════════════════════════════════════ */
 
 async function deployAndAnnounce(html, appPlan, validation) {
-  // Security check
-  const secCheck = sec.processOutput(html);
-  if (!secCheck.safe) {
-    C.log.warn('🛡️ Security cleaned: ' + secCheck.blocked.join(', '));
-  }
-  const finalHtml = secCheck.safe ? secCheck.text : html;
+  // NOTE: NO sec.processOutput() here — that filter is for tweets/posts.
+  // It strips <script> tags and code blocks which are REQUIRED for web apps.
+  // HTML validation + cleanHtmlOutput() is our safety net for websites.
+  const finalHtml = html;
 
   // Deploy
   const projectName = `gillito-${appPlan.id}`;
