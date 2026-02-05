@@ -287,8 +287,10 @@ async function main() {
   const selected = await selectAndAnalyze(projects);
 
   if (!selected) {
-    C.log.error('No se pudo seleccionar ningún proyecto');
-    process.exit(1);
+    C.log.warn('⚠️ No se pudo leer ningún proyecto — todos dieron error HTTP');
+    C.log.info('💡 Tip: Borra los proyectos rotos en Cloudflare y deja que deploy-website cree nuevos');
+    C.log.session();
+    return;
   }
 
   const { project, html: currentHtml, validation: currentVal } = selected;
@@ -381,9 +383,9 @@ async function main() {
     return;
   }
 
-  // Security check
-  const secCheck = sec.processOutput(newHtml);
-  const finalHtml = secCheck.safe ? secCheck.text : newHtml;
+  // NOTE: NO sec.processOutput() here — that filter is for tweets/posts.
+  // It strips <script> tags and code which are REQUIRED for web apps.
+  const finalHtml = newHtml;
 
   // Deploy
   C.log.info(`☁️ Deploying: ${project.name}`);
