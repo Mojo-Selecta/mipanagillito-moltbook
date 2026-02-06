@@ -2,39 +2,36 @@
 // 🏛️ RECON MODULE: Politicians & Government
 // ═══════════════════════════════════════════════════════
 // PATH: scripts/recon/politicians.js
+// 🥷 STEALTH: Uses stealth-http for anti-bot detection evasion
 
 const path = require('path');
-const { safeRequest, parseRSS, extractEntities, classifyText, fingerprint, isRecent, sanitize } = require(path.join(__dirname, '..', 'lib', 'recon-utils'));
+const { parseRSS, extractEntities, classifyText, fingerprint, isRecent, sanitize } = require(path.join(__dirname, '..', 'lib', 'recon-utils'));
+const { safeRequest } = require('./stealth-http');  // 🥷 Stealth drop-in
 const { POLITICIANS, RSS_FEEDS } = require(path.join(__dirname, '..', '..', 'config', 'recon-targets'));
 
 async function scan() {
   console.log('   🏛️ Scanning political sources...');
   const findings = [];
   const seen = new Set();
-
   for (const feed of RSS_FEEDS.politicians) {
     try {
       const xml = await safeRequest(feed.url);
       if (!xml) { console.log('      ⚠️ ' + feed.name + ': no response'); continue; }
       const items = parseRSS(xml);
       console.log('      📡 ' + feed.name + ': ' + items.length + ' items');
-
       for (const item of items) {
         if (!item.title) continue;
         if (!isRecent(item.pubDate, 48)) continue;
         const fp = fingerprint(item.title);
         if (seen.has(fp)) continue;
         seen.add(fp);
-
         const text = sanitize(item.title + ' ' + item.description);
         const entities = extractEntities(text, POLITICIANS);
         const classification = classifyText(text);
-
         if (entities.length === 0 && !classification.signals.includes('scandal') &&
             !/politic|gobierno|legisl|senado|cámara|gobernador|alcalde/i.test(text)) {
           continue;
         }
-
         findings.push({
           category: 'politicians',
           subcategory: classification.category,
@@ -52,7 +49,6 @@ async function scan() {
       console.error('      ❌ ' + feed.name + ': ' + err.message);
     }
   }
-
   console.log('   🏛️ Politicians: ' + findings.length + ' findings');
   return findings;
 }
