@@ -2,9 +2,11 @@
 // 📰 LEVEL 1: DEEP NEWS MINING
 // ═══════════════════════════════════════════════════════
 // PATH: scripts/recon/deep-news.js
+// 🥷 STEALTH: Uses stealth-http for anti-bot detection evasion
 
 const path = require('path');
-const { safeRequest, extractEntities, classifyText, fingerprint, sanitize } = require(path.join(__dirname, '..', 'lib', 'recon-utils'));
+const { extractEntities, classifyText, fingerprint, sanitize } = require(path.join(__dirname, '..', 'lib', 'recon-utils'));
+const { safeRequest } = require('./stealth-http');  // 🥷 Stealth drop-in
 const { POLITICIANS, ENERGY_ENTITIES, FEDERAL_ENTITIES } = require(path.join(__dirname, '..', '..', 'config', 'recon-targets'));
 
 const ALL_ENTITIES = [...POLITICIANS, ...ENERGY_ENTITIES, ...FEDERAL_ENTITIES];
