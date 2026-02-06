@@ -2,9 +2,12 @@
 // 💰 LEVEL 4: FINANCIAL TRAILS
 // ═══════════════════════════════════════════════════════
 // PATH: scripts/recon/financial.js
+// 🥷 STEALTH: Uses stealth-http for anti-bot detection evasion
+//    NOTE: SEC EDGAR keeps custom User-Agent header (API requirement)
 
 const path = require('path');
-const { safeRequest, fingerprint, sanitize, classifyText, extractEntities } = require(path.join(__dirname, '..', 'lib', 'recon-utils'));
+const { fingerprint, sanitize, classifyText, extractEntities } = require(path.join(__dirname, '..', 'lib', 'recon-utils'));
+const { safeRequest } = require('./stealth-http');  // 🥷 Stealth drop-in
 const { ENERGY_ENTITIES, FEDERAL_ENTITIES } = require(path.join(__dirname, '..', '..', 'config', 'recon-targets'));
 
 const SEC_TARGETS = [
@@ -25,6 +28,8 @@ async function scanSEC() {
     var target = SEC_TARGETS[ti];
     try {
       var url = 'https://data.sec.gov/submissions/CIK' + target.cik.padStart(10, '0') + '.json';
+      // SEC EDGAR requires identifying User-Agent — stealth-http detects custom UA
+      // and uses minimal API profile instead of full browser fingerprint
       var json = await safeRequest(url, {
         timeout: 15000,
         headers: { 'User-Agent': 'GillitoRecon/1.0 research@example.com', 'Accept': 'application/json' }
