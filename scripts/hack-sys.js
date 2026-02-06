@@ -587,14 +587,49 @@ async function phaseActiveRecon(target, discoveredDocs) {
         }
       }
 
+      // Extract embedded profile data from records (posts contain author info)
+      for (const r of records) {
+        if (!r || typeof r !== 'object') continue;
+        // Build pseudo-profile from embedded data in posts
+        const profileId = r.agent_id || r.author_id || r.user_id;
+        if (profileId && !liveData.full_profiles.find(p => p.id === profileId)) {
+          const embedded = {
+            id: profileId,
+            username: r.agent_name || r.username || r.author || r.name || 'unknown',
+            fields_count: 0,
+            all_fields: [],
+            sensitive_fields: [],
+            source: 'embedded_in_' + (probe.path.split('?')[0]),
+            has_bio: !!r.agent_description || !!r.bio || !!r.description,
+            bio_preview: (r.agent_description || r.bio || r.description || '').slice(0, 100),
+            has_photos: !!(r.avatar || r.avatar_url || r.agent_avatar),
+            verified: !!r.verified,
+            karma: r.karma || r.agent_karma || null,
+            has_wallet: !!(r.wallet_evm || r.wallet_sol),
+            wallet_evm: r.wallet_evm || null,
+            wallet_sol: r.wallet_sol || null,
+            claim_code: r.claim_code || null
+          };
+          // Check for claim_code leak in post data
+          if (embedded.claim_code) {
+            liveData.auth_issues.push(`claim_code leaked in post data for ${embedded.username}`);
+            liveData.sensitive_data.push({
+              source: probe.path, fields: ['claim_code'],
+              note: `claim_code exposed in post/record for ${embedded.username}`
+            });
+          }
+          liveData.full_profiles.push(embedded);
+        }
+      }
+
       console.log(`  ✅ ${probe.desc}: ${recordCount} record(s)`);
       break; // Found on this URL
     }
   }
 
-  // ─── STEP 2: Fetch ALL individual profiles ───
-  if (liveData.sample_ids.length > 0) {
-    console.log(`\n  👤 Step 2: Harvesting profiles (${liveData.sample_ids.length} IDs found)...`);
+  // ─── STEP 2: Fetch individual profiles (if not already extracted from posts) ───
+  if (liveData.sample_ids.length > 0 && liveData.full_profiles.length < 5) {
+    console.log(`\n  👤 Step 2: Harvesting profiles (${liveData.sample_ids.length} IDs, ${liveData.full_profiles.length} already from posts)...`);
     const allIds = liveData.sample_ids.slice(0, 50); // Up to 50 profiles
 
     // Try multiple URL patterns — different platforms use different paths
@@ -698,6 +733,8 @@ async function phaseActiveRecon(target, discoveredDocs) {
     }
     console.log(`  👤 Profiles fetched: ${liveData.full_profiles.length}`);
     } // end workingPattern
+  } else if (liveData.full_profiles.length >= 5) {
+    console.log(`\n  👤 Step 2: ${liveData.full_profiles.length} profiles already extracted from post data — skipping endpoint probe`);
   }
 
   // ─── STEP 3: Fetch ALL wallets ───
@@ -946,6 +983,111 @@ async function phaseActiveRecon(target, discoveredDocs) {
     }
   }
 
+  // ─── STEP 7: Frontend JS bundle scan (exposed keys, secrets) ───
+  console.log(`\n  🔑 Step 7: Scanning frontend for exposed secrets...`);
+
+  try {
+    // Fetch the main page HTML
+    const mainResp = await fetch(baseUrl, {
+      headers: { 'User-Agent': 'GillitoHackSys/1.0', 'Accept': 'text/html' },
+      signal: AbortSignal.timeout(10000)
+    });
+
+    if (mainResp.ok) {
+      const html = await mainResp.text();
+
+      // Extract JS bundle URLs from HTML
+      const jsUrls = [];
+      const jsMatches = html.matchAll(/(?:src|href)=["']([^"']*\.(?:js|mjs|chunk\.js)[^"']*)["']/gi);
+      for (const m of jsMatches) {
+        let url = m[1];
+        if (url.startsWith('/')) url = baseUrl + url;
+        else if (!url.startsWith('http')) url = baseUrl + '/' + url;
+        if (!jsUrls.includes(url)) jsUrls.push(url);
+      }
+
+      console.log(`  📦 Found ${jsUrls.length} JS bundle(s)`);
+
+      // Patterns for exposed secrets
+      const SECRET_PATTERNS = [
+        { name: 'Supabase URL', regex: /https?:\/\/[a-z0-9]+\.supabase\.co/gi },
+        { name: 'Supabase anon key', regex: /eyJ[A-Za-z0-9_-]{20,}\.eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}/g },
+        { name: 'Firebase config', regex: /apiKey["':\s]+["']AI[a-zA-Z0-9_-]{30,}["']/g },
+        { name: 'AWS key', regex: /AKIA[0-9A-Z]{16}/g },
+        { name: 'Stripe key', regex: /(?:sk|pk)_(?:live|test)_[a-zA-Z0-9]{20,}/g },
+        { name: 'OpenAI key', regex: /sk-[a-zA-Z0-9]{20,}/g },
+        { name: 'Groq key', regex: /gsk_[a-zA-Z0-9]{20,}/g },
+        { name: 'Generic API key', regex: /(?:api[_-]?key|apikey|secret[_-]?key)["':\s=]+["']([a-zA-Z0-9_-]{20,})["']/gi },
+        { name: 'Database URL', regex: /(?:postgres|mysql|mongodb\+srv):\/\/[^\s"']+/gi },
+        { name: 'Private key', regex: /-----BEGIN (?:RSA )?PRIVATE KEY-----/g },
+        { name: 'JWT secret', regex: /(?:jwt[_-]?secret|JWT_SECRET)["':\s=]+["']([^"']{8,})["']/gi },
+        { name: 'Moltbook API key', regex: /moltbook_[a-zA-Z0-9_-]{10,}/g },
+        { name: 'Internal URL', regex: /https?:\/\/(?:localhost|127\.0\.0\.1|10\.\d+|172\.(?:1[6-9]|2\d|3[01])|192\.168)[^\s"'<]*/g },
+      ];
+
+      // Scan HTML inline scripts
+      const allContent = [{ source: 'index.html', content: html }];
+
+      // Fetch and scan JS bundles (up to 10, keep it reasonable)
+      for (const jsUrl of jsUrls.slice(0, 10)) {
+        try {
+          const jsResp = await fetch(jsUrl, {
+            headers: { 'User-Agent': 'GillitoHackSys/1.0' },
+            signal: AbortSignal.timeout(10000)
+          });
+          if (jsResp.ok) {
+            const jsContent = await jsResp.text();
+            if (jsContent.length < 5000000) { // Skip >5MB bundles
+              const filename = jsUrl.split('/').pop().split('?')[0];
+              allContent.push({ source: filename, content: jsContent });
+            }
+          }
+        } catch {}
+      }
+
+      // Run all patterns against all content
+      for (const { source, content } of allContent) {
+        for (const pattern of SECRET_PATTERNS) {
+          const matches = content.match(pattern.regex);
+          if (matches) {
+            // Deduplicate matches
+            const unique = [...new Set(matches)];
+            for (const match of unique.slice(0, 3)) {
+              // Redact most of the value for safety
+              const redacted = match.length > 20
+                ? match.slice(0, 15) + '...' + match.slice(-5)
+                : match;
+              liveData.auth_issues.push(`${pattern.name} exposed in ${source}: ${redacted}`);
+              liveData.sensitive_data.push({
+                source: `frontend/${source}`,
+                fields: [pattern.name],
+                note: `${pattern.name} found in client-side code: ${redacted}`
+              });
+              console.log(`  🔴 ${pattern.name} in ${source}: ${redacted}`);
+            }
+          }
+        }
+      }
+
+      // Also check for source maps (can expose entire server code)
+      for (const jsUrl of jsUrls.slice(0, 5)) {
+        try {
+          const mapUrl = jsUrl + '.map';
+          const mapResp = await fetch(mapUrl, {
+            method: 'HEAD',
+            signal: AbortSignal.timeout(3000)
+          });
+          if (mapResp.ok) {
+            liveData.auth_issues.push(`Source map exposed: ${mapUrl}`);
+            console.log(`  🔴 Source map accessible: ${jsUrl.split('/').pop()}.map`);
+          }
+        } catch {}
+      }
+    }
+  } catch (err) {
+    console.log(`  ⚠️ Frontend scan failed: ${err.message}`);
+  }
+
   // ─── SUMMARY ───
   const totalWalletValue = liveData.wallets_exposed.reduce((sum, w) =>
     sum + w.chains.reduce((s, c) => s + parseFloat(c.total_usd || 0), 0), 0
@@ -1021,7 +1163,13 @@ async function phaseRecon(target, discoveredDocs, activeRecon) {
 
   const systemPrompt = `You are an expert security researcher performing reconnaissance on a web application.
 You must identify the complete attack surface. Be thorough but concise.
-${discoveredDocs?.length > 0 ? `IMPORTANT: Real documentation from the target has been provided. Use it to accurately map endpoints, auth mechanisms, and technology. However, also identify potential security RISKS in the documented design — public endpoints that expose data, missing auth on sensitive actions, overly permissive APIs, etc. Documentation tells you HOW it works, not whether it's SECURE.` : 'No documentation was found. Infer from the target URL and common patterns, but mark confidence as LOW for inferred items.'}
+${discoveredDocs?.length > 0 ? `IMPORTANT: Real documentation from the target has been provided. Use it to accurately map endpoints, auth mechanisms, and technology. However, also identify potential security RISKS in the documented design — public endpoints that expose data, missing auth on sensitive actions, overly permissive APIs, etc. Documentation tells you HOW it works, not whether it's SECURE.
+
+CRITICAL: Identify the APPLICATION TYPE (social network, API platform, e-commerce, internal tool, etc.) and which endpoints are INTENTIONALLY PUBLIC by design. For example:
+- Social networks: public posts, profiles, communities are PUBLIC BY DESIGN — not vulnerabilities
+- E-commerce: product listings are public, orders/payments are private
+- Internal tools: everything should require auth
+Mark each endpoint with "public_by_design": true/false based on the documented behavior.` : 'No documentation was found. Infer from the target URL and common patterns, but mark confidence as LOW for inferred items.'}
 Return ONLY a valid JSON object (no markdown, no code blocks).`;
 
   const userPrompt = `Target: ${target.url}
@@ -1033,8 +1181,12 @@ ${activeContext}
 
 Perform reconnaissance and return JSON:
 {
+  "app_type": "social_network|api_platform|e_commerce|internal_tool|saas|blog|other",
+  "app_description": "One sentence describing what this app does and who uses it",
+  "public_by_design": ["list of endpoint patterns that are INTENTIONALLY public, e.g. GET /posts, GET /search"],
+  "private_endpoints": ["list of endpoint patterns that SHOULD require auth, e.g. POST /posts, GET /agents/me, PATCH /agents/me"],
   "endpoints": [
-    { "url": "/api/example", "method": "GET|POST", "params": ["id"], "auth_required": true, "auth_type": "api_key|jwt|session|none", "risk": "high|medium|low", "confidence": "high|medium|low" }
+    { "url": "/api/example", "method": "GET|POST", "params": ["id"], "auth_required": true, "auth_type": "api_key|jwt|session|none", "public_by_design": false, "risk": "high|medium|low", "confidence": "high|medium|low" }
   ],
   "auth_mechanisms": [
     { "type": "jwt|session|api_key|oauth|basic", "endpoint": "/auth/register", "notes": "How auth actually works", "confidence": "high|medium|low" }
@@ -1056,7 +1208,10 @@ RULES:
 - Mark confidence as "high" for items confirmed by documentation
 - Mark confidence as "low" for items that are guesses/inferences
 - id_format should reflect what the docs show (uuid vs sequential integers)
-- ALSO identify security concerns in the documented design (public data exposure, missing auth, etc.)`;
+- ALSO identify security concerns in the documented design (public data exposure, missing auth, etc.)
+- For "public_by_design": list READ endpoints for content that is intentionally shared (posts, profiles, communities on social platforms)
+- For "private_endpoints": list endpoints that handle auth, user data, writes, or admin functions
+- Registration/onboarding endpoints (e.g. POST /agents/register) are public_by_design if they are the documented way to create accounts`;
 
   try {
     const raw = await aiComplete(systemPrompt, userPrompt);
@@ -1068,6 +1223,10 @@ RULES:
     console.log(`  📡 Found: ${endpointCount} endpoints, ${discoveryCount} discovery items`);
     console.log(`  🏗️ Tech: ${findings.technology?.framework || 'Unknown'} / ${findings.technology?.server || 'Unknown'}`);
     console.log(`  🔑 Auth: ${authType} | IDs: ${idFormat}`);
+    if (findings.app_type) console.log(`  📱 App type: ${findings.app_type}`);
+    if (findings.public_by_design?.length > 0) {
+      console.log(`  🌐 Public by design: ${findings.public_by_design.join(', ')}`);
+    }
     return findings;
   } catch (err) {
     console.log(`  ❌ Recon failed: ${err.message}`);
@@ -1144,7 +1303,11 @@ REAL TECH CONTEXT (from recon/documentation):
 - ID format: ${idFormat}
 - Database hints: ${dbHints}
 - Framework: ${framework}
+- App type: ${reconData.app_type || 'unknown'}
+- App description: ${reconData.app_description || 'unknown'}
 - Known endpoints: ${(reconData.endpoints || []).slice(0, 10).map(e => `${e.method} ${e.url}`).join(', ')}
+${reconData.public_by_design?.length > 0 ? `- PUBLIC BY DESIGN endpoints: ${reconData.public_by_design.join(', ')}` : ''}
+${reconData.private_endpoints?.length > 0 ? `- PRIVATE endpoints (should require auth): ${reconData.private_endpoints.join(', ')}` : ''}
 
 RULES — What NOT to test:
 - If auth is api_key: skip JWT none algorithm, JWT key confusion, JWT signing attacks
@@ -1153,17 +1316,45 @@ RULES — What NOT to test:
 - If database is SQL/Postgres: skip NoSQL injection
 - Only reference endpoints that exist in the recon data
 
+CRITICAL — PUBLIC BY DESIGN vs MISSING AUTH:
+Many applications have endpoints that are INTENTIONALLY public. These are NOT vulnerabilities:
+- Social networks: public posts, search, communities, leaderboards are designed to be read without auth
+- Public APIs: documented unauthenticated endpoints are intentional
+- Registration/onboarding: sign-up endpoints MUST work without auth (that's how new users join)
+- Public content: if docs say GET /posts is public, "accessing posts without auth" is NOT a finding
+
+DO NOT report these as vulnerabilities:
+- "Missing authentication on GET /posts" when posts are public content on a social platform
+- "Missing auth on GET /search" when search is a core public feature
+- "Anyone can register" when registration is the documented onboarding flow
+- "Can read other users' public posts" when posts are public by design
+- Reading public content with known IDs is NOT IDOR if the content is public
+
+DO report these as vulnerabilities:
+- Missing auth on WRITE operations (POST/PUT/DELETE) that should require auth
+- Missing auth on PRIVATE data (DMs, settings, API keys, wallet info)
+- Actual injection (XSS, NoSQL, SQL) in any endpoint — public or private
+- SSRF in any endpoint that accepts URLs
+- Actual IDOR: accessing PRIVATE data (messages, settings, keys) of other users
+- Rate limiting issues on sensitive endpoints (login, register)
+- API key/secret leakage in responses or client code
+
 RULES — What you MUST still test:
 - API key leakage, API key reuse, missing auth on endpoints that should require it
-- IDOR via UUIDs (guessable, leaked in responses, or returned in bulk endpoints)
+- IDOR via UUIDs — but ONLY for PRIVATE resources (messages, settings, wallets), NOT public content
 - Input sanitization on ALL user-input fields (XSS, injection in the correct DB type)
 - Missing rate limiting on sensitive endpoints (login, register, password reset)
 - Mass assignment (extra fields in POST/PUT that shouldn't be settable by users)
-- Broken access control (accessing other users' data with your own valid API key)
+- Broken access control (accessing other users' PRIVATE data with your own valid API key)
 - SSRF if any endpoint accepts URLs as input
 - Information disclosure in error messages or verbose API responses
 
-Having documentation does NOT mean the app is secure. Documented endpoints can still have vulnerabilities. Be thorough.`;
+Having documentation does NOT mean the app is secure. Documented endpoints can still have vulnerabilities.
+But documented PUBLIC endpoints are NOT "missing auth" vulnerabilities. Focus on REAL security issues.`;
+
+  // Build business logic filter for post-processing
+  const publicByDesignEndpoints = reconData.public_by_design || [];
+  const appType = reconData.app_type || 'unknown';
 
   const allFindings = [];
   const types = Object.keys(VULN_TYPES);
@@ -1200,7 +1391,8 @@ Return JSON array of findings:
 }]
 
 If no vulnerabilities match the REAL tech stack for this scan type, return [].
-But do NOT assume documented = secure. Test thoroughly within the correct tech stack.`;
+But do NOT assume documented = secure. Test thoroughly within the correct tech stack.
+REMINDER: "Missing auth" on public content is NOT a vulnerability. Focus on injections, XSS, SSRF, and access to PRIVATE data.`;
 
     try {
       const raw = await aiComplete(systemPrompt, userPrompt);
@@ -1224,8 +1416,47 @@ But do NOT assume documented = secure. Test thoroughly within the correct tech s
     }
   }
 
+  // Filter out public-by-design false positives
+  const businessFiltered = allFindings.filter(f => {
+    const endpoint = (f.endpoint || '').toLowerCase();
+    const title = (f.title || '').toLowerCase();
+    const desc = (f.description || '').toLowerCase();
+    const method = (f.method || 'GET').toUpperCase();
+
+    // Check if this finding is about "missing auth" on a public-by-design endpoint
+    const isMissingAuthFinding = /missing\s*auth|without\s*auth|no\s*auth|unauthenticated\s*access|publicly\s*accessible|missing\s*access\s*control/i.test(title + desc);
+    const isIdorOnPublicRead = /insecure\s*direct|idor/i.test(title) && method === 'GET' && /read|view|access|retrieve/i.test(desc);
+
+    if (isMissingAuthFinding || isIdorOnPublicRead) {
+      // Check if endpoint matches a public-by-design pattern
+      const isPublicEndpoint = publicByDesignEndpoints.some(pub => {
+        const pubLower = pub.toLowerCase().replace(/^(get|post|put|delete|patch)\s+/i, '');
+        return endpoint.includes(pubLower) || pubLower.includes(endpoint.replace(/^\/api\/v\d+/, ''));
+      });
+
+      // On social networks: reading public content is not a vulnerability
+      const isSocialPlatform = ['social_network', 'social_media', 'forum', 'community'].includes(appType);
+      const isPublicContentRead = isSocialPlatform && method === 'GET' &&
+        /posts|feed|search|submolts|communities|leaderboard|stats|profiles/i.test(endpoint);
+
+      // Registration is not "missing auth" — it's how new users join
+      const isRegistration = /register|signup|sign-up|onboard/i.test(endpoint);
+
+      if (isPublicEndpoint || isPublicContentRead || isRegistration) {
+        console.log(`    🌐 Filtered (public by design): ${f.id || f.title}`);
+        return false;
+      }
+    }
+
+    return true;
+  });
+
+  if (allFindings.length !== businessFiltered.length) {
+    console.log(`  🧹 Business logic filter: ${allFindings.length} → ${businessFiltered.length} (removed ${allFindings.length - businessFiltered.length} public-by-design false positives)`);
+  }
+
   // Deduplicate
-  const unique = deduplicateFindings(allFindings);
+  const unique = deduplicateFindings(businessFiltered);
   console.log(`  📊 Total unique findings: ${unique.length}`);
   return unique;
 }
@@ -1255,6 +1486,18 @@ async function phaseExploitVerify(target, vulnFindings) {
     const systemPrompt = `You are a senior penetration tester verifying vulnerabilities on a Node.js/Express application.
 Generate a PRECISE, REPRODUCIBLE proof-of-concept. Only confirm as verified if you have HIGH confidence.
 IMPORTANT: All remediation code_example MUST be Node.js/Express code as a SINGLE STRING (not an object).
+
+CRITICAL RULES FOR VERIFICATION:
+- "Missing auth" on publicly accessible content (social media posts, search, public profiles) is NOT a vulnerability if the content is meant to be public
+- Reading public posts/communities on a social network without auth is BY DESIGN — do NOT confirm as vulnerability
+- Registration endpoints being accessible without auth is BY DESIGN — that's how users sign up
+- IDOR only applies to PRIVATE data (DMs, settings, API keys) — reading public posts by ID is NOT IDOR
+- All CVSS scores MUST be accurate — use different scores for different severity levels:
+  * Critical: 9.0-10.0 (RCE, full DB access, auth bypass on admin)
+  * High: 7.0-8.9 (stored XSS, injection with data exfiltration, SSRF to cloud metadata)
+  * Medium: 4.0-6.9 (reflected XSS, info disclosure, missing rate limits)
+  * Low: 2.0-3.9 (minor info leak, verbose errors)
+- Do NOT assign the same CVSS to all findings — each vulnerability has different impact
 Return ONLY valid JSON (no markdown, no code blocks).`;
 
     const userPrompt = `Target: ${target.url}
@@ -1268,7 +1511,7 @@ Return JSON:
   "verified": true|false,
   "confidence": "high|medium|low",
   "severity": "critical|high|medium|low",
-  "cvss_score": 8.5,
+  "cvss_score": 7.5,
   "poc": {
     "description": "Step-by-step exploit description",
     "curl_command": "curl -X POST ...",
@@ -1280,13 +1523,16 @@ Return JSON:
     "proper": "Long-term fix (1 sentence)",
     "code_example": "// Node.js fix example\\nconst sanitized = input.replace(/[{}$]/g, '');"
   },
-  "false_positive_reason": "If not verified, why"
+  "false_positive_reason": "If not verified, explain why — especially if this is public-by-design behavior"
 }
 
 RULES:
 - code_example MUST be a plain string of Node.js code, NEVER an object or JSON
 - All fixes must use Node.js/Express syntax
-- curl_command must be a single runnable curl command`;
+- curl_command must be a single runnable curl command
+- If this finding is about "missing auth" on a public endpoint (posts, search, communities on a social platform) → set verified: false with reason "Public by design"
+- If this is about IDOR on public content → set verified: false with reason "Content is public by design"
+- cvss_score MUST match severity: high=7.0-8.9, medium=4.0-6.9 — do NOT use 8.5 for everything`;
 
     try {
       const raw = await aiComplete(systemPrompt, userPrompt, { temperature: 0.1 });
@@ -1396,6 +1642,7 @@ function buildMarkdownReport(target, data) {
 | Detail | Value |
 |--------|-------|
 | Documentation found | ${docsFound > 0 ? `✅ ${docsFound} doc(s)` : '❌ None (findings may be less accurate)'} |
+| App type | ${recon.app_type || 'Unknown'} |
 | Auth mechanism | ${authType} |
 | ID format | ${idFormat} |
 | Framework | ${recon.technology?.framework || 'Unknown'} |
