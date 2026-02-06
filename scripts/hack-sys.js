@@ -282,10 +282,582 @@ async function phaseDocDiscovery(target) {
 }
 
 // ═══════════════════════════════════════════════════════
+// PHASE L0.5: ACTIVE RECON (harvest ALL public data)
+// ═══════════════════════════════════════════════════════
+
+// Common public API paths to probe — go hard
+const PUBLIC_PROBES = [
+  // Discovery & listings — paginated
+  { path: '/discover?limit=100', desc: 'Agents page 1' },
+  { path: '/discover?limit=100&offset=100', desc: 'Agents page 2' },
+  { path: '/discover?limit=100&offset=200', desc: 'Agents page 3' },
+  { path: '/discover?limit=100&page=2', desc: 'Agents p2 alt' },
+  { path: '/discover?limit=100&page=3', desc: 'Agents p3 alt' },
+  { path: '/discover?limit=100&gender=male', desc: 'Male agents' },
+  { path: '/discover?limit=100&gender=female', desc: 'Female agents' },
+  { path: '/discover?limit=100&gender=nonbinary', desc: 'NB agents' },
+  { path: '/discover?limit=100&sort=newest', desc: 'Newest agents' },
+  { path: '/discover?limit=100&sort=popular', desc: 'Popular agents' },
+  { path: '/discover?limit=100&sort=active', desc: 'Active agents' },
+  // Feed — all sorts, paginated
+  { path: '/feed?sort=new&limit=100', desc: 'Feed new' },
+  { path: '/feed?sort=trending&limit=100', desc: 'Feed trending' },
+  { path: '/feed?sort=top&limit=100', desc: 'Feed top' },
+  { path: '/feed?sort=hot&limit=100', desc: 'Feed hot' },
+  { path: '/feed?limit=100&offset=100', desc: 'Feed page 2' },
+  { path: '/feed?limit=100&page=2', desc: 'Feed p2 alt' },
+  // Posts — all sorts, paginated
+  { path: '/posts?sort=new&limit=100', desc: 'Posts new' },
+  { path: '/posts?sort=popular&limit=100', desc: 'Posts popular' },
+  { path: '/posts?sort=top&limit=100', desc: 'Posts top' },
+  { path: '/posts?limit=100&offset=100', desc: 'Posts page 2' },
+  { path: '/posts?limit=100&page=2', desc: 'Posts p2 alt' },
+  // Leaderboards
+  { path: '/leaderboard/popular?limit=100', desc: 'LB popular' },
+  { path: '/leaderboard/icebreakers?limit=100', desc: 'LB icebreakers' },
+  { path: '/leaderboard/couples?limit=100', desc: 'LB couples' },
+  { path: '/leaderboard/active?limit=100', desc: 'LB active' },
+  { path: '/leaderboard/top?limit=100', desc: 'LB top' },
+  { path: '/leaderboard?limit=100', desc: 'LB default' },
+  // Search — alphabet sweep
+  { path: '/search?q=a&limit=100', desc: 'Search A' },
+  { path: '/search?q=b&limit=100', desc: 'Search B' },
+  { path: '/search?q=c&limit=100', desc: 'Search C' },
+  { path: '/search?q=d&limit=100', desc: 'Search D' },
+  { path: '/search?q=e&limit=100', desc: 'Search E' },
+  { path: '/search?q=i&limit=100', desc: 'Search I' },
+  { path: '/search?q=o&limit=100', desc: 'Search O' },
+  { path: '/search?q=s&limit=100', desc: 'Search S' },
+  { path: '/search?q=t&limit=100', desc: 'Search T' },
+  { path: '/search?q=m&limit=100', desc: 'Search M' },
+  // Common hidden/admin/debug endpoints
+  { path: '/admin', desc: 'Admin panel' },
+  { path: '/admin/stats', desc: 'Admin stats' },
+  { path: '/admin/users', desc: 'Admin users' },
+  { path: '/debug', desc: 'Debug' },
+  { path: '/debug/info', desc: 'Debug info' },
+  { path: '/metrics', desc: 'Metrics' },
+  { path: '/stats', desc: 'Stats' },
+  { path: '/api/stats', desc: 'API stats' },
+  { path: '/api/v1/stats', desc: 'API v1 stats' },
+  { path: '/internal', desc: 'Internal' },
+  { path: '/internal/stats', desc: 'Internal stats' },
+  { path: '/.env', desc: 'Env file' },
+  { path: '/config', desc: 'Config' },
+  { path: '/config.json', desc: 'Config JSON' },
+  // Matches/DMs (should be auth-only but test)
+  { path: '/matches', desc: 'All matches' },
+  { path: '/matches?limit=100', desc: 'Matches bulk' },
+  { path: '/conversations', desc: 'Conversations' },
+  { path: '/messages', desc: 'Messages' },
+  { path: '/dms', desc: 'DMs' },
+  { path: '/notifications', desc: 'Notifications' },
+  // Auth test (without creds)
+  { path: '/auth/me', desc: 'Auth me' },
+  { path: '/me', desc: 'Me' },
+  { path: '/api/me', desc: 'API me' },
+  { path: '/whoami', desc: 'Who am I' },
+  // Agents/users
+  { path: '/agents', desc: 'Agents list' },
+  { path: '/agents?limit=100', desc: 'Agents bulk' },
+  { path: '/users', desc: 'Users list' },
+  { path: '/users?limit=100', desc: 'Users bulk' },
+  // System / info
+  { path: '/health', desc: 'Health' },
+  { path: '/status', desc: 'Status' },
+  { path: '/api/health', desc: 'API health' },
+  { path: '/api/status', desc: 'API status' },
+  { path: '/version', desc: 'Version' },
+  { path: '/info', desc: 'Info' },
+  { path: '/api/info', desc: 'API info' },
+  { path: '/robots.txt', desc: 'Robots' },
+  { path: '/sitemap.xml', desc: 'Sitemap' },
+  { path: '/openapi.json', desc: 'OpenAPI spec' },
+  { path: '/swagger.json', desc: 'Swagger' },
+  { path: '/api-docs', desc: 'API docs' },
+];
+
+async function phaseActiveRecon(target, discoveredDocs) {
+  console.log('\n🕵️ ═══ PHASE L0.5: ACTIVE RECON (public data harvest) ═══');
+
+  const baseUrl = target.url.replace(/\/+$/, '');
+  const liveData = {
+    public_endpoints_found: [],
+    users_exposed: [],
+    sample_ids: [],
+    usernames_found: [],
+    data_fields_exposed: [],
+    total_records_visible: 0,
+    auth_issues: [],
+    wallets_exposed: [],
+    posts_collected: [],
+    icebreakers_collected: [],
+    raw_samples: {},
+    full_profiles: [],
+    sensitive_data: []
+  };
+
+  // Extract API base from docs
+  let apiBase = baseUrl;
+  for (const doc of (discoveredDocs || [])) {
+    const apiMatch = doc.content.match(/api_base['":\s]+["']?(https?:\/\/[^\s"']+)/i);
+    if (apiMatch) {
+      apiBase = apiMatch[1].replace(/\/+$/, '');
+      console.log(`  🔗 API base from docs: ${apiBase}`);
+      break;
+    }
+  }
+
+  // Helper: safe JSON fetch
+  async function fetchJSON(url, timeout = 8000) {
+    try {
+      const resp = await fetch(url, {
+        headers: { 'User-Agent': 'GillitoHackSys/1.0', 'Accept': 'application/json' },
+        signal: AbortSignal.timeout(timeout)
+      });
+      if (!resp.ok) return null;
+      const ct = resp.headers.get('content-type') || '';
+      if (!ct.includes('json')) return null;
+      return await resp.json();
+    } catch { return null; }
+  }
+
+  // Helper: extract records from various response shapes
+  function extractRecords(body) {
+    if (Array.isArray(body)) return body;
+    if (!body || typeof body !== 'object') return [];
+    for (const key of ['data', 'agents', 'results', 'items', 'posts', 'feed', 'entries', 'users', 'matches', 'leaderboard']) {
+      if (Array.isArray(body[key])) return body[key];
+    }
+    return [body];
+  }
+
+  // Helper: extract all IDs from an object recursively
+  function extractIds(obj, ids = new Set()) {
+    if (!obj || typeof obj !== 'object') return ids;
+    for (const [key, val] of Object.entries(obj)) {
+      if (/^(agent_id|id|user_id|_id|author_id|target_id|sender_id|match_id|post_id)$/.test(key)) {
+        if (typeof val === 'string' && val.length > 5) ids.add(val);
+      }
+      if (typeof val === 'object') extractIds(val, ids);
+    }
+    return ids;
+  }
+
+  // Helper: extract usernames
+  function extractUsernames(obj, names = new Set()) {
+    if (!obj || typeof obj !== 'object') return names;
+    for (const [key, val] of Object.entries(obj)) {
+      if (/^(username|name|display_name|agent_name)$/.test(key)) {
+        if (typeof val === 'string' && val.length > 1) names.add(val);
+      }
+      if (typeof val === 'object') extractUsernames(val, names);
+    }
+    return names;
+  }
+
+  // ─── STEP 1: Probe all public endpoints ───
+  console.log('  📡 Step 1: Probing public endpoints...');
+
+  for (const probe of PUBLIC_PROBES) {
+    const urls = [apiBase + probe.path];
+    if (apiBase !== baseUrl) urls.push(baseUrl + probe.path);
+
+    for (const url of urls) {
+      const body = await fetchJSON(url);
+      if (!body) continue;
+
+      const records = extractRecords(body);
+      const recordCount = records.length;
+
+      liveData.public_endpoints_found.push({
+        url, desc: probe.desc, record_count: recordCount
+      });
+
+      // Harvest all IDs
+      const ids = extractIds(body);
+      for (const id of ids) {
+        if (!liveData.sample_ids.includes(id)) liveData.sample_ids.push(id);
+      }
+
+      // Harvest usernames
+      const names = extractUsernames(body);
+      for (const n of names) {
+        if (!liveData.usernames_found.includes(n)) liveData.usernames_found.push(n);
+      }
+
+      // Track all exposed field names
+      if (records.length > 0 && typeof records[0] === 'object') {
+        const allFields = new Set();
+        records.forEach(r => { if (r && typeof r === 'object') Object.keys(r).forEach(f => allFields.add(f)); });
+        for (const f of allFields) {
+          if (!liveData.data_fields_exposed.includes(f)) liveData.data_fields_exposed.push(f);
+        }
+        liveData.total_records_visible += recordCount;
+      }
+
+      // Save raw samples (more generous — up to 5 records)
+      const sampleKey = probe.path.split('?')[0];
+      if (!liveData.raw_samples[sampleKey]) {
+        liveData.raw_samples[sampleKey] = JSON.stringify(records.slice(0, 5)).slice(0, 5000);
+      }
+
+      // Collect posts and icebreakers content
+      if (probe.path.includes('/posts')) {
+        for (const r of records.slice(0, 10)) {
+          if (r.content) liveData.posts_collected.push({
+            id: r.id, author: r.agent_name || r.username || r.agent_id,
+            content: String(r.content).slice(0, 200), photos: r.photos?.length || 0
+          });
+        }
+      }
+      if (probe.path.includes('/feed')) {
+        for (const r of records.slice(0, 10)) {
+          if (r.content) liveData.icebreakers_collected.push({
+            id: r.id, from: r.agent_name || r.username || r.agent_id,
+            to: r.target_name || r.target_id,
+            content: String(r.content).slice(0, 200)
+          });
+        }
+      }
+
+      console.log(`  ✅ ${probe.desc}: ${recordCount} record(s)`);
+      break; // Found on this URL
+    }
+  }
+
+  // ─── STEP 2: Fetch ALL individual profiles ───
+  if (liveData.sample_ids.length > 0) {
+    console.log(`\n  👤 Step 2: Harvesting profiles (${liveData.sample_ids.length} IDs found)...`);
+    const allIds = liveData.sample_ids.slice(0, 50); // Up to 50 profiles
+
+    for (const id of allIds) {
+      const profile = await fetchJSON(`${apiBase}/profiles/${id}`);
+      if (!profile) continue;
+
+      const fields = Object.keys(profile);
+      const sensitiveFields = fields.filter(f =>
+        /email|phone|password|hash|secret|token|key|ssn|credit|wallet|address|ip|location|private/i.test(f)
+      );
+
+      const profileData = {
+        id,
+        username: profile.username || profile.name || profile.agent_name || 'unknown',
+        fields_count: fields.length,
+        all_fields: fields,
+        sensitive_fields: sensitiveFields,
+        raw: JSON.stringify(profile).slice(0, 2000), // keep full profile data
+        has_bio: !!profile.bio,
+        bio_preview: profile.bio ? String(profile.bio).slice(0, 100) : null,
+        has_photos: !!(profile.photos?.length || profile.photo_count || profile.avatar),
+        verified: !!profile.verified,
+        has_wallet: !!(profile.wallet_evm || profile.wallet_sol),
+        wallet_evm: profile.wallet_evm || null,
+        wallet_sol: profile.wallet_sol || null,
+        personality: profile.personality || null,
+        interests: profile.interests || null,
+        preferences: profile.preferences || null,
+        claim_code: profile.claim_code || null // should NOT be public
+      };
+
+      liveData.full_profiles.push(profileData);
+
+      // Flag claim_code exposure (auth credential leaked publicly!)
+      if (profile.claim_code) {
+        liveData.sensitive_data.push({
+          source: `/profiles/${id}`,
+          fields: ['claim_code'],
+          note: 'CRITICAL: claim_code (authentication credential) exposed in public profile'
+        });
+        liveData.auth_issues.push(`claim_code exposed for ${profileData.username}`);
+        console.log(`  🔴 ${profileData.username}: CLAIM CODE EXPOSED in public profile!`);
+      }
+
+      if (sensitiveFields.length > 0) {
+        liveData.sensitive_data.push({
+          source: `/profiles/${id}`,
+          fields: sensitiveFields,
+          note: 'Sensitive data exposed in public profile'
+        });
+        console.log(`  ⚠️  ${profileData.username}: exposes ${sensitiveFields.join(', ')}`);
+      }
+    }
+    console.log(`  👤 Profiles fetched: ${liveData.full_profiles.length}`);
+  }
+
+  // ─── STEP 3: Fetch ALL wallets ───
+  if (liveData.sample_ids.length > 0) {
+    console.log(`\n  💰 Step 3: Harvesting wallets...`);
+    const walletIds = liveData.sample_ids.slice(0, 50);
+
+    for (const id of walletIds) {
+      const wallet = await fetchJSON(`${apiBase}/profiles/${id}/wallet`);
+      if (!wallet) continue;
+
+      const walletObj = wallet.wallets ? wallet : { wallets: [wallet] };
+      const wallets = walletObj.wallets || [];
+      if (wallets.length === 0 && (wallet.address || wallet.wallet_evm)) {
+        wallets.push(wallet);
+      }
+
+      if (wallets.length > 0 || wallet.total_usd || wallet.balance) {
+        const walletData = {
+          agent_id: id,
+          username: liveData.full_profiles.find(p => p.id === id)?.username || 'unknown',
+          raw: JSON.stringify(wallet).slice(0, 2000),
+          chains: wallets.map(w => ({
+            chain: w.chain || w.network || 'unknown',
+            address: w.address || w.wallet_address,
+            total_usd: w.total_usd || w.balance_usd || '0',
+            native_balance: w.native_balance || w.balance,
+            native_symbol: w.native_symbol || w.symbol,
+            token_count: w.tokens?.length || 0,
+            tokens: (w.tokens || []).slice(0, 5).map(t => ({
+              symbol: t.symbol, balance: t.balance, usd: t.usd_value || t.value
+            }))
+          }))
+        };
+        liveData.wallets_exposed.push(walletData);
+        const totalUsd = wallets.reduce((sum, w) => sum + parseFloat(w.total_usd || w.balance_usd || 0), 0);
+        if (totalUsd > 0) {
+          console.log(`  💰 ${walletData.username}: $${totalUsd.toFixed(2)} across ${wallets.length} chain(s)`);
+        }
+      }
+    }
+    if (liveData.wallets_exposed.length > 0) {
+      const totalValue = liveData.wallets_exposed.reduce((sum, w) =>
+        sum + w.chains.reduce((s, c) => s + parseFloat(c.total_usd || 0), 0), 0
+      );
+      liveData.auth_issues.push(`${liveData.wallets_exposed.length} wallets exposed ($${totalValue.toFixed(2)} total)`);
+    }
+  }
+
+  // ─── STEP 4: Per-agent sub-endpoints (exhaust everything) ───
+  if (liveData.sample_ids.length > 0) {
+    console.log(`\n  🔎 Step 4: Per-agent endpoint enumeration...`);
+
+    const AGENT_SUBPATHS = [
+      '/photos', '/icebreakers', '/likes', '/matches', '/posts',
+      '/comments', '/reactions', '/followers', '/following',
+      '/activity', '/history', '/stats', '/preferences',
+      '/connections', '/conversations', '/messages', '/notifications',
+      '/badges', '/achievements', '/settings'
+    ];
+
+    const probeIds = liveData.sample_ids.slice(0, 15);
+
+    for (const id of probeIds) {
+      const username = liveData.full_profiles.find(p => p.id === id)?.username || id.slice(0, 8);
+
+      for (const sub of AGENT_SUBPATHS) {
+        const data = await fetchJSON(`${apiBase}/profiles/${id}${sub}`);
+        if (!data) continue;
+
+        const records = extractRecords(data);
+        const count = records.length;
+
+        if (count > 0) {
+          // Track fields
+          if (typeof records[0] === 'object') {
+            Object.keys(records[0]).forEach(f => {
+              if (!liveData.data_fields_exposed.includes(f)) liveData.data_fields_exposed.push(f);
+            });
+          }
+          // Extract more IDs
+          const ids = extractIds(data);
+          for (const newId of ids) {
+            if (!liveData.sample_ids.includes(newId)) liveData.sample_ids.push(newId);
+          }
+
+          // Save sample
+          const key = `/profiles/{id}${sub}`;
+          if (!liveData.raw_samples[key]) {
+            liveData.raw_samples[key] = JSON.stringify(records.slice(0, 3)).slice(0, 3000);
+          }
+
+          // Flag auth-sensitive endpoints accessible publicly
+          if (/matches|conversations|messages|notifications|settings|preferences/i.test(sub)) {
+            liveData.auth_issues.push(`${sub} accessible without auth for ${username}`);
+            console.log(`  🔴 ${username}${sub}: ${count} record(s) — should require auth!`);
+          } else {
+            console.log(`  ✅ ${username}${sub}: ${count} record(s)`);
+          }
+
+          liveData.total_records_visible += count;
+        }
+      }
+    }
+  }
+
+  // ─── STEP 5: Try auth-less write operations (vote, react, etc.) ───
+  if (liveData.sample_ids.length > 0) {
+    console.log(`\n  ✍️ Step 5: Testing auth-less write operations...`);
+
+    // Collect post/feed IDs
+    const postIds = [];
+    const feedIds = [];
+    for (const [key, sample] of Object.entries(liveData.raw_samples)) {
+      try {
+        const parsed = JSON.parse(sample);
+        const records = Array.isArray(parsed) ? parsed : [parsed];
+        for (const r of records) {
+          if (r.id && key.includes('post')) postIds.push(r.id);
+          if (r.id && key.includes('feed')) feedIds.push(r.id);
+        }
+      } catch {}
+    }
+
+    // Test upvote/downvote without auth
+    for (const pid of postIds.slice(0, 3)) {
+      try {
+        const resp = await fetch(`${apiBase}/posts/${pid}/vote`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+          body: JSON.stringify({ direction: 'up' }),
+          signal: AbortSignal.timeout(5000)
+        });
+        if (resp.ok) {
+          liveData.auth_issues.push(`POST /posts/${pid}/vote works without auth`);
+          console.log(`  ⚠️ Vote on post ${pid.slice(0, 8)}... works WITHOUT auth`);
+        }
+      } catch {}
+    }
+
+    // Test react without auth
+    for (const fid of feedIds.slice(0, 3)) {
+      try {
+        const resp = await fetch(`${apiBase}/feed/${fid}/react`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+          body: JSON.stringify({ emoji: '🔥' }),
+          signal: AbortSignal.timeout(5000)
+        });
+        if (resp.ok) {
+          liveData.auth_issues.push(`POST /feed/${fid}/react works without auth`);
+          console.log(`  ⚠️ React on feed ${fid.slice(0, 8)}... works WITHOUT auth`);
+        }
+      } catch {}
+    }
+
+    // Test sending icebreaker without auth
+    if (liveData.sample_ids.length >= 2) {
+      try {
+        const resp = await fetch(`${apiBase}/feed`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+          body: JSON.stringify({
+            target_id: liveData.sample_ids[0],
+            content: 'hack-sys-test-icebreaker-ignore'
+          }),
+          signal: AbortSignal.timeout(5000)
+        });
+        if (resp.ok) {
+          liveData.auth_issues.push('POST /feed (create icebreaker) works without auth');
+          console.log('  🔴 Creating icebreakers works WITHOUT auth!');
+        } else if (resp.status !== 401 && resp.status !== 403) {
+          console.log(`  ⚠️ POST /feed returned ${resp.status} (not 401/403)`);
+        }
+      } catch {}
+    }
+
+    // Test creating posts without auth
+    try {
+      const resp = await fetch(`${apiBase}/posts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify({ content: 'hack-sys-test-post-ignore' }),
+        signal: AbortSignal.timeout(5000)
+      });
+      if (resp.ok) {
+        liveData.auth_issues.push('POST /posts (create post) works without auth');
+        console.log('  🔴 Creating posts works WITHOUT auth!');
+      }
+    } catch {}
+
+    // Test register (is it rate-limited?)
+    try {
+      const start = Date.now();
+      const results = [];
+      for (let i = 0; i < 3; i++) {
+        const resp = await fetch(`${apiBase}/auth/register`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+          body: JSON.stringify({
+            username: `hacksys_ratelimit_test_${Date.now()}_${i}`,
+            personality: 'test'
+          }),
+          signal: AbortSignal.timeout(5000)
+        });
+        results.push(resp.status);
+      }
+      const elapsed = Date.now() - start;
+      const successCount = results.filter(s => s === 200 || s === 201).length;
+      if (successCount >= 3 && elapsed < 5000) {
+        liveData.auth_issues.push(`/auth/register has no rate limiting (${successCount}/3 succeeded in ${elapsed}ms)`);
+        console.log(`  ⚠️ /auth/register: no rate limit (${successCount}/3 in ${elapsed}ms)`);
+      }
+    } catch {}
+  }
+
+  // ─── STEP 6: Try cross-referencing (IDOR probes) ───
+  if (liveData.sample_ids.length >= 2) {
+    console.log(`\n  🔄 Step 6: Cross-reference / IDOR probes...`);
+
+    // Try accessing matches between two agents without being either of them
+    const [id1, id2] = liveData.sample_ids;
+    const idorPaths = [
+      `/matches/${id1}`,
+      `/matches?agent_id=${id1}`,
+      `/profiles/${id1}/matches`,
+      `/conversations/${id1}`,
+      `/profiles/${id1}/conversations`,
+      `/messages?agent_id=${id1}`,
+      `/profiles/${id1}/messages`,
+    ];
+
+    for (const path of idorPaths) {
+      const data = await fetchJSON(`${apiBase}${path}`);
+      if (data) {
+        const records = extractRecords(data);
+        if (records.length > 0) {
+          liveData.auth_issues.push(`${path} accessible without auth (${records.length} records)`);
+          console.log(`  🔴 IDOR: ${path} → ${records.length} record(s) without auth`);
+
+          if (!liveData.raw_samples[path]) {
+            liveData.raw_samples[path] = JSON.stringify(records.slice(0, 3)).slice(0, 3000);
+          }
+        }
+      }
+    }
+  }
+
+  // ─── SUMMARY ───
+  const totalWalletValue = liveData.wallets_exposed.reduce((sum, w) =>
+    sum + w.chains.reduce((s, c) => s + parseFloat(c.total_usd || 0), 0), 0
+  );
+
+  console.log(`\n  ${'═'.repeat(45)}`);
+  console.log(`  📊 ACTIVE RECON COMPLETE:`);
+  console.log(`     Public endpoints hit:   ${liveData.public_endpoints_found.length}`);
+  console.log(`     Total records visible:  ${liveData.total_records_visible}`);
+  console.log(`     Unique IDs harvested:   ${liveData.sample_ids.length}`);
+  console.log(`     Usernames found:        ${liveData.usernames_found.length}`);
+  console.log(`     Full profiles fetched:  ${liveData.full_profiles.length}`);
+  console.log(`     Wallets exposed:        ${liveData.wallets_exposed.length} ($${totalWalletValue.toFixed(2)} total)`);
+  console.log(`     Data fields exposed:    ${liveData.data_fields_exposed.length}`);
+  console.log(`     Sensitive data issues:  ${liveData.sensitive_data.length}`);
+  console.log(`     Posts collected:         ${liveData.posts_collected.length}`);
+  console.log(`     Icebreakers collected:   ${liveData.icebreakers_collected.length}`);
+  console.log(`  ${'═'.repeat(45)}`);
+
+  return liveData;
+}
+
+// ═══════════════════════════════════════════════════════
 // PHASE L1: RECONNAISSANCE (doc-informed)
 // ═══════════════════════════════════════════════════════
 
-async function phaseRecon(target, discoveredDocs) {
+async function phaseRecon(target, discoveredDocs, activeRecon) {
   console.log('\n📡 ═══ PHASE L1: RECONNAISSANCE ═══');
   console.log(`  🎯 Target: ${target.url}`);
 
@@ -298,13 +870,43 @@ async function phaseRecon(target, discoveredDocs) {
     for (const doc of discoveredDocs) {
       docContext += `--- ${doc.path} ---\n${doc.content}\n\n`;
     }
-    // Cap total doc context to avoid token limits
     docContext = docContext.slice(0, 25000);
+  }
+
+  // Build active recon context
+  let activeContext = '';
+  if (activeRecon && activeRecon.public_endpoints_found.length > 0) {
+    activeContext = '\n\n=== LIVE DATA FROM PUBLIC ENDPOINTS ===\n' +
+      `Public endpoints responding: ${activeRecon.public_endpoints_found.length}\n` +
+      `Total records visible without auth: ${activeRecon.total_records_visible}\n` +
+      `Unique user/agent IDs discovered: ${activeRecon.sample_ids.length}\n` +
+      `Data fields exposed publicly: ${activeRecon.data_fields_exposed.join(', ')}\n`;
+
+    if (activeRecon.auth_issues.length > 0) {
+      activeContext += `\nSECURITY CONCERNS FOUND:\n${activeRecon.auth_issues.map(i => `- ${i}`).join('\n')}\n`;
+    }
+
+    if (activeRecon.users_exposed.length > 0) {
+      activeContext += `\nProfile exposure:\n`;
+      for (const u of activeRecon.users_exposed) {
+        activeContext += `- Profile ${u.id.slice(0, 8)}...: ${u.fields_count} fields${u.has_pii ? `, SENSITIVE: ${u.sensitive_fields.join(', ')}` : ''}\n`;
+      }
+    }
+
+    // Include raw samples
+    if (Object.keys(activeRecon.raw_samples).length > 0) {
+      activeContext += '\nSample API responses:\n';
+      for (const [path, sample] of Object.entries(activeRecon.raw_samples)) {
+        activeContext += `${path}: ${sample.slice(0, 1500)}\n\n`;
+      }
+    }
+
+    activeContext = activeContext.slice(0, 10000);
   }
 
   const systemPrompt = `You are an expert security researcher performing reconnaissance on a web application.
 You must identify the complete attack surface. Be thorough but concise.
-${discoveredDocs?.length > 0 ? `CRITICAL: Real documentation from the target has been provided. Base your analysis ONLY on what the docs reveal. Do NOT invent endpoints or auth mechanisms that are not documented. Use the ACTUAL auth type, endpoint paths, and technology described in the docs.` : 'No documentation was found. Infer from the target URL and common patterns, but mark confidence as LOW for inferred items.'}
+${discoveredDocs?.length > 0 ? `IMPORTANT: Real documentation from the target has been provided. Use it to accurately map endpoints, auth mechanisms, and technology. However, also identify potential security RISKS in the documented design — public endpoints that expose data, missing auth on sensitive actions, overly permissive APIs, etc. Documentation tells you HOW it works, not whether it's SECURE.` : 'No documentation was found. Infer from the target URL and common patterns, but mark confidence as LOW for inferred items.'}
 Return ONLY a valid JSON object (no markdown, no code blocks).`;
 
   const userPrompt = `Target: ${target.url}
@@ -312,6 +914,7 @@ ${target.name ? `App Name: ${target.name}` : ''}
 ${target.tech ? `Known Tech: ${target.tech}` : ''}
 ${target.repo ? `Source Available: Yes` : ''}
 ${docContext}
+${activeContext}
 
 Perform reconnaissance and return JSON:
 {
@@ -335,9 +938,10 @@ Perform reconnaissance and return JSON:
 
 RULES:
 - If documentation was provided, endpoints and auth MUST match what the docs describe
-- Mark confidence as "high" ONLY for items confirmed by documentation
+- Mark confidence as "high" for items confirmed by documentation
 - Mark confidence as "low" for items that are guesses/inferences
-- id_format should reflect what the docs show (uuid vs sequential integers)`;
+- id_format should reflect what the docs show (uuid vs sequential integers)
+- ALSO identify security concerns in the documented design (public data exposure, missing auth, etc.)`;
 
   try {
     const raw = await aiComplete(systemPrompt, userPrompt);
@@ -387,7 +991,7 @@ const VULN_TYPES = {
   }
 };
 
-async function phaseVulnScan(target, reconData) {
+async function phaseVulnScan(target, reconData, activeRecon) {
   console.log('\n🔍 ═══ PHASE L2: VULNERABILITY SCANNING ═══');
 
   // Extract real tech context from recon to prevent hallucinations
@@ -397,22 +1001,54 @@ async function phaseVulnScan(target, reconData) {
   const framework = reconData.technology?.framework || 'unknown';
   console.log(`  📋 Context: auth=${authType}, ids=${idFormat}, db=${dbHints}`);
 
+  // Build live data context from active recon
+  let liveDataContext = '';
+  if (activeRecon && activeRecon.public_endpoints_found.length > 0) {
+    liveDataContext = `\nLIVE DATA HARVESTED (from public endpoints — no auth needed):
+- ${activeRecon.total_records_visible} total records visible without auth
+- ${activeRecon.sample_ids.length} unique IDs harvested
+- ${activeRecon.usernames_found?.length || 0} usernames found
+- ${activeRecon.full_profiles?.length || 0} full profiles fetched (public)
+- ${activeRecon.wallets_exposed?.length || 0} wallets with balances exposed publicly
+- ${activeRecon.posts_collected?.length || 0} posts collected, ${activeRecon.icebreakers_collected?.length || 0} icebreakers collected
+- Sample IDs: ${activeRecon.sample_ids.slice(0, 5).join(', ')}
+- Sample usernames: ${(activeRecon.usernames_found || []).slice(0, 10).join(', ')}
+- Public data fields: ${activeRecon.data_fields_exposed.filter(f => !f.startsWith('photo_url:')).slice(0, 25).join(', ')}
+- Public endpoints: ${activeRecon.public_endpoints_found.map(e => `${e.desc} (${e.record_count} records)`).join(', ')}
+${activeRecon.auth_issues.length > 0 ? `- KNOWN ISSUES: ${activeRecon.auth_issues.join('; ')}` : ''}
+${activeRecon.sensitive_data?.length > 0 ? `- SENSITIVE DATA EXPOSED: ${activeRecon.sensitive_data.map(s => `${s.source}: ${s.fields.join(', ')}`).join('; ')}` : ''}
+
+ALL of this data was accessible WITHOUT any API key or authentication.
+Use this REAL data in your vulnerability analysis. Reference actual IDs, fields, and endpoints.
+Finding that this data is public IS itself a finding if it should be private.`;
+  }
+
   const techContext = `
 REAL TECH CONTEXT (from recon/documentation):
-- Auth mechanism: ${authType} (${authType === 'api_key' ? 'NOT JWT — do not test JWT attacks' : authType === 'jwt' ? 'JWT-based — test JWT attacks' : 'test applicable auth attacks'})
-- ID format: ${idFormat} (${idFormat === 'uuid' ? 'NOT sequential — do not test sequential ID enumeration' : idFormat === 'sequential' ? 'sequential — test enumeration' : 'test both'})
-- Database hints: ${dbHints} (${dbHints.toLowerCase().includes('mongo') ? 'MongoDB — test NoSQL injection, NOT SQL injection' : dbHints.toLowerCase().includes('sql') ? 'SQL — test SQL injection, NOT NoSQL' : 'test both injection types'})
+- Auth mechanism: ${authType}
+- ID format: ${idFormat}
+- Database hints: ${dbHints}
 - Framework: ${framework}
 - Known endpoints: ${(reconData.endpoints || []).slice(0, 10).map(e => `${e.method} ${e.url}`).join(', ')}
 
-CRITICAL RULES:
-- ONLY test vulnerabilities that are POSSIBLE given the real tech stack above
-- If auth is api_key, do NOT report JWT none algorithm, JWT key confusion, or JWT-related vulns
-- If IDs are UUIDs, do NOT report sequential ID enumeration
-- If database is MongoDB, do NOT report SQL injection (test NoSQL instead)
-- If database is SQL, do NOT report NoSQL injection
+RULES — What NOT to test:
+- If auth is api_key: skip JWT none algorithm, JWT key confusion, JWT signing attacks
+- If IDs are UUIDs: skip sequential ID enumeration
+- If database is MongoDB: skip SQL injection (test NoSQL instead)
+- If database is SQL/Postgres: skip NoSQL injection
 - Only reference endpoints that exist in the recon data
-- If no vulnerabilities match the real stack, return an empty array []`;
+
+RULES — What you MUST still test:
+- API key leakage, API key reuse, missing auth on endpoints that should require it
+- IDOR via UUIDs (guessable, leaked in responses, or returned in bulk endpoints)
+- Input sanitization on ALL user-input fields (XSS, injection in the correct DB type)
+- Missing rate limiting on sensitive endpoints (login, register, password reset)
+- Mass assignment (extra fields in POST/PUT that shouldn't be settable by users)
+- Broken access control (accessing other users' data with your own valid API key)
+- SSRF if any endpoint accepts URLs as input
+- Information disclosure in error messages or verbose API responses
+
+Having documentation does NOT mean the app is secure. Documented endpoints can still have vulnerabilities. Be thorough.`;
 
   const allFindings = [];
   const types = Object.keys(VULN_TYPES);
@@ -429,6 +1065,7 @@ Return ONLY a valid JSON array (no markdown, no code blocks).`;
 
     const userPrompt = `Target: ${target.url}
 Recon Data: ${JSON.stringify(reconData, null, 2).slice(0, 6000)}
+${liveDataContext}
 
 Return JSON array of findings:
 [{
@@ -447,7 +1084,8 @@ Return JSON array of findings:
   "references": ["CWE-XXX"]
 }]
 
-If no vulnerabilities match the REAL tech stack, return [].`;
+If no vulnerabilities match the REAL tech stack for this scan type, return [].
+But do NOT assume documented = secure. Test thoroughly within the correct tech stack.`;
 
     try {
       const raw = await aiComplete(systemPrompt, userPrompt);
@@ -566,7 +1204,7 @@ RULES:
 // PHASE L4: REPORT GENERATION
 // ═══════════════════════════════════════════════════════
 
-async function phaseReport(target, reconData, vulnFindings, exploitResults, discoveredDocs) {
+async function phaseReport(target, reconData, vulnFindings, exploitResults, discoveredDocs, activeRecon) {
   console.log('\n📊 ═══ PHASE L4: REPORT ═══');
 
   const confirmed = exploitResults.filter(r => r.verified);
@@ -601,7 +1239,8 @@ Top findings: ${confirmed.slice(0, 3).map(e => `[${e.severity}] ${e.vuln_id}`).j
     risk: riskScore,
     docsFound,
     authType,
-    idFormat
+    idFormat,
+    activeRecon
   });
 
   // Save report
@@ -613,7 +1252,23 @@ Top findings: ${confirmed.slice(0, 3).map(e => `[${e.severity}] ${e.vuln_id}`).j
 }
 
 function buildMarkdownReport(target, data) {
-  const { exec_summary, recon, confirmed, all_results, severity, risk, docsFound, authType, idFormat } = data;
+  const { exec_summary, recon, confirmed, all_results, severity, risk, docsFound, authType, idFormat, activeRecon } = data;
+
+  // Pre-build wallet section to avoid nested template hell
+  let walletSection = '';
+  if (activeRecon?.wallets_exposed?.length > 0) {
+    const lines = activeRecon.wallets_exposed.slice(0, 10).map(w => {
+      const chainInfo = w.chains.map(c => `$${c.total_usd} on ${c.chain} (${(c.address || '').slice(0, 10)}...)`).join(', ');
+      return `- ${w.username}: ${chainInfo}`;
+    });
+    walletSection = `\n**Wallets found:**\n${lines.join('\n')}`;
+  }
+
+  // Pre-build auth issues section
+  let authIssuesSection = '';
+  if (activeRecon?.auth_issues?.length > 0) {
+    authIssuesSection = activeRecon.auth_issues.map(i => `| ⚠️ | ${i} |`).join('\n');
+  }
 
   let md = `# 🔓 Gillito Hack Sys — Pentest Report
 
@@ -630,6 +1285,24 @@ function buildMarkdownReport(target, data) {
 | ID format | ${idFormat} |
 | Framework | ${recon.technology?.framework || 'Unknown'} |
 | Database | ${recon.technology?.database_hints || 'Unknown'} |
+${activeRecon && activeRecon.public_endpoints_found.length > 0 ? `
+### Active Recon (Public Data Harvested)
+| Metric | Value |
+|--------|-------|
+| Public endpoints responding | ${activeRecon.public_endpoints_found.length} |
+| Records visible without auth | ${activeRecon.total_records_visible} |
+| Unique IDs harvested | ${activeRecon.sample_ids.length} |
+| Usernames found | ${activeRecon.usernames_found?.length || 0} |
+| Full profiles fetched | ${activeRecon.full_profiles?.length || 0} |
+| Wallets exposed | ${activeRecon.wallets_exposed?.length || 0} |
+| Posts collected | ${activeRecon.posts_collected?.length || 0} |
+| Icebreakers collected | ${activeRecon.icebreakers_collected?.length || 0} |
+| Sensitive data issues | ${activeRecon.sensitive_data?.length || 0} |
+${activeRecon.auth_issues.length > 0 ? authIssuesSection : ''}
+
+**Exposed data fields:** ${activeRecon.data_fields_exposed.filter(f => !f.startsWith('photo_url:')).slice(0, 30).join(', ')}
+${walletSection}
+` : ''}
 
 ---
 
@@ -863,8 +1536,11 @@ async function main() {
       // L0: Documentation Discovery
       const discoveredDocs = await phaseDocDiscovery(target);
 
-      // L1: Recon (informed by docs)
-      const reconData = await phaseRecon(target, discoveredDocs);
+      // L0.5: Active Recon (free public endpoints)
+      const activeRecon = await phaseActiveRecon(target, discoveredDocs);
+
+      // L1: Recon (informed by docs + live data)
+      const reconData = await phaseRecon(target, discoveredDocs, activeRecon);
 
       if (SCAN_TYPE === 'recon-only') {
         console.log('\n✅ Recon-only scan complete');
@@ -873,7 +1549,7 @@ async function main() {
       }
 
       // L2: Vuln Scan
-      const vulnFindings = await phaseVulnScan(target, reconData);
+      const vulnFindings = await phaseVulnScan(target, reconData, activeRecon);
 
       if (SCAN_TYPE === 'vuln-only' || SCAN_TYPE === 'quick') {
         console.log(`\n✅ Vuln scan complete: ${vulnFindings.length} findings`);
@@ -884,7 +1560,7 @@ async function main() {
       const exploitResults = await phaseExploitVerify(target, vulnFindings);
 
       // L4: Report
-      const reportData = await phaseReport(target, reconData, vulnFindings, exploitResults, discoveredDocs);
+      const reportData = await phaseReport(target, reconData, vulnFindings, exploitResults, discoveredDocs, activeRecon);
 
       // Persist & announce
       await persistResults(SESSION_ID, {
