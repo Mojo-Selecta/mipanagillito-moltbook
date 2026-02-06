@@ -2,11 +2,13 @@
 // 👁️ LEVEL 3: SOCIAL LISTENING
 // ═══════════════════════════════════════════════════════
 // PATH: scripts/recon/social.js
+// 🥷 STEALTH: Uses stealth-http for anti-bot detection evasion
 
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
-const { safeRequest, extractEntities, classifyText, fingerprint, sanitize } = require(path.join(__dirname, '..', 'lib', 'recon-utils'));
+const { extractEntities, classifyText, fingerprint, sanitize } = require(path.join(__dirname, '..', 'lib', 'recon-utils'));
+const { safeRequest } = require('./stealth-http');  // 🥷 Stealth drop-in
 const { POLITICIANS } = require(path.join(__dirname, '..', '..', 'config', 'recon-targets'));
 
 const SNAPSHOT_FILE = path.join(process.cwd(), '.gillito-page-snapshots.json');
