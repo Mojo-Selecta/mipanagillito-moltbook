@@ -12,11 +12,16 @@
  *   - Referer chain simulation
  *   - TLS fingerprint hints via proper Accept-Encoding
  *   - Retry with exponential backoff + jitter
+ *   - Drop-in safeRequest() replacement for all recon modules
  *
- * Usage:
- *   const stealth = require('./stealth-http');
- *   const html = await stealth.fetch('https://example.com/page');
- *   const data = await stealth.fetchJSON('https://api.example.com/data');
+ * Integration (2-line change per module):
+ *   // BEFORE:
+ *   const { safeRequest, extractEntities, ... } = require('../lib/recon-utils');
+ *   // AFTER:
+ *   const { extractEntities, ... } = require('../lib/recon-utils');
+ *   const { safeRequest } = require('./stealth-http');
+ *
+ * PATH: scripts/recon/stealth-http.js
  */
 
 const https = require('https');
@@ -46,7 +51,7 @@ const USER_AGENTS = [
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.6 Safari/605.1.15',
   // Edge on Windows
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 Edg/131.0.0.0',
-  // Chrome on Linux (for variety)
+  // Chrome on Linux
   'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
 ];
 
@@ -88,6 +93,12 @@ const HEADER_PROFILES = {
     'Accept-Encoding': 'gzip, deflate, br',
     'Connection': 'keep-alive',
   },
+  // Minimal profile for API endpoints (SEC, FEMA, etc.)
+  // Used when caller passes custom User-Agent (respects API requirements)
+  api: {
+    'Accept-Encoding': 'gzip, deflate',
+    'Connection': 'keep-alive',
+  },
 };
 
 // ═══════════════════════════════════════════════════
@@ -95,38 +106,35 @@ const HEADER_PROFILES = {
 // ═══════════════════════════════════════════════════
 class StealthSession {
   constructor() {
-    this._cookieJar = new Map();   // domain → cookies
+    this._cookieJar = new Map();
     this._lastUA = null;
     this._lastProfile = null;
     this._lastRequestTime = 0;
     this._requestCount = 0;
-    this._rotateEvery = randomInt(8, 15); // Rotate UA every N requests
+    this._rotateEvery = randomInt(8, 15);
     this.rotate();
   }
 
-  /** Pick a new random UA + matching headers */
   rotate() {
     const idx = randomInt(0, USER_AGENTS.length - 1);
     this._lastUA = USER_AGENTS[idx];
-
-    if (this._lastUA.includes('Firefox'))      this._lastProfile = 'firefox';
+    if (this._lastUA.includes('Firefox'))           this._lastProfile = 'firefox';
     else if (this._lastUA.includes('Safari') && !this._lastUA.includes('Chrome')) this._lastProfile = 'safari';
-    else                                       this._lastProfile = 'chrome';
-
+    else                                            this._lastProfile = 'chrome';
     this._requestCount = 0;
     this._rotateEvery = randomInt(8, 15);
   }
 
-  /** Get headers for a request URL */
   getHeaders(url, extraHeaders = {}) {
-    // Auto-rotate UA after N requests
     this._requestCount++;
     if (this._requestCount > this._rotateEvery) this.rotate();
 
-    const profile = { ...HEADER_PROFILES[this._lastProfile] };
-    const parsed = new URL(url);
+    // If caller passes custom User-Agent (e.g. SEC API requirement), use minimal API profile
+    const hasCustomUA = !!extraHeaders['User-Agent'];
+    const profileName = hasCustomUA ? 'api' : this._lastProfile;
+    const profile = { ...HEADER_PROFILES[profileName] };
 
-    // Build cookie header from jar
+    const parsed = new URL(url);
     const cookies = this._cookieJar.get(parsed.hostname) || [];
     if (cookies.length > 0) {
       profile['Cookie'] = cookies.map(c => `${c.name}=${c.value}`).join('; ');
@@ -134,30 +142,26 @@ class StealthSession {
 
     return {
       ...profile,
-      'User-Agent': this._lastUA,
+      ...(hasCustomUA ? {} : { 'User-Agent': this._lastUA }),
       'Host': parsed.host,
       ...extraHeaders,
     };
   }
 
-  /** Store Set-Cookie headers from response */
   storeCookies(hostname, setCookieHeaders) {
     if (!setCookieHeaders) return;
     const list = Array.isArray(setCookieHeaders) ? setCookieHeaders : [setCookieHeaders];
     const existing = this._cookieJar.get(hostname) || [];
-
     for (const raw of list) {
       const parts = raw.split(';')[0].trim();
       const eqIdx = parts.indexOf('=');
       if (eqIdx < 1) continue;
       const name  = parts.slice(0, eqIdx).trim();
       const value = parts.slice(eqIdx + 1).trim();
-      // Update existing or add new
       const idx = existing.findIndex(c => c.name === name);
       if (idx >= 0) existing[idx].value = value;
       else existing.push({ name, value });
     }
-
     this._cookieJar.set(hostname, existing);
   }
 
@@ -173,10 +177,7 @@ function randomInt(min, max) {
 }
 
 function randomDelay(minMs = 800, maxMs = 3000) {
-  const base = randomInt(minMs, maxMs);
-  // Add small jitter to avoid perfectly even spacing
-  const jitter = randomInt(-100, 200);
-  return Math.max(200, base + jitter);
+  return Math.max(200, randomInt(minMs, maxMs) + randomInt(-100, 200));
 }
 
 async function sleep(ms) {
@@ -188,20 +189,6 @@ async function sleep(ms) {
 // ═══════════════════════════════════════════════════
 const defaultSession = new StealthSession();
 
-/**
- * Low-level stealth HTTP request
- * @param {string} url - Full URL
- * @param {Object} opts - Options
- * @param {StealthSession} opts.session - Session to use (default: shared)
- * @param {string} opts.method - HTTP method (default: GET)
- * @param {Object} opts.headers - Extra headers to merge
- * @param {string} opts.referer - Referer URL to include
- * @param {number} opts.timeout - Request timeout ms (default: 15000)
- * @param {number} opts.maxRedirects - Max redirects to follow (default: 5)
- * @param {boolean} opts.skipDelay - Skip inter-request delay (default: false)
- * @param {string|Buffer} opts.body - Request body
- * @returns {Promise<{status, headers, body, url}>}
- */
 async function stealthRequest(url, opts = {}) {
   const session   = opts.session || defaultSession;
   const method    = opts.method || 'GET';
@@ -212,8 +199,7 @@ async function stealthRequest(url, opts = {}) {
   if (!opts.skipDelay) {
     const timeSinceLast = Date.now() - session._lastRequestTime;
     if (timeSinceLast < 500) {
-      const delay = randomDelay(800, 2500);
-      await sleep(delay);
+      await sleep(randomDelay(600, 2000));
     }
   }
   session._lastRequestTime = Date.now();
@@ -231,76 +217,49 @@ async function stealthRequest(url, opts = {}) {
       hostname: parsed.hostname,
       port:     parsed.port || (parsed.protocol === 'https:' ? 443 : 80),
       path:     parsed.pathname + parsed.search,
-      method,
-      headers,
-      timeout,
-      // Mimic browser TLS settings
-      ...(parsed.protocol === 'https:' ? {
-        minVersion: 'TLSv1.2',
-        rejectUnauthorized: true,
-      } : {}),
+      method, headers, timeout,
+      ...(parsed.protocol === 'https:' ? { minVersion: 'TLSv1.2', rejectUnauthorized: true } : {}),
     };
 
     const req = lib.request(reqOpts, (res) => {
-      // Store cookies
       session.storeCookies(parsed.hostname, res.headers['set-cookie']);
 
-      // Handle redirects
-      if ([301, 302, 303, 307, 308].includes(res.status || res.statusCode) && res.headers.location && maxRedir > 0) {
+      if ([301, 302, 303, 307, 308].includes(res.statusCode) && res.headers.location && maxRedir > 0) {
         const redirectUrl = new URL(res.headers.location, url).href;
-        res.resume(); // drain
+        res.resume();
         return resolve(stealthRequest(redirectUrl, {
-          ...opts,
-          referer: url,
-          maxRedirects: maxRedir - 1,
-          skipDelay: true, // Don't double-delay on redirects
+          ...opts, referer: url, maxRedirects: maxRedir - 1, skipDelay: true,
         }));
       }
 
-      // Collect body
       const chunks = [];
       res.on('data', c => chunks.push(c));
       res.on('end', () => {
         const raw = Buffer.concat(chunks);
         let body = raw;
-
-        // Decompress
         const encoding = res.headers['content-encoding'];
         try {
-          if (encoding === 'gzip')    body = zlib.gunzipSync(raw);
+          if (encoding === 'gzip')         body = zlib.gunzipSync(raw);
           else if (encoding === 'deflate') body = zlib.inflateSync(raw);
           else if (encoding === 'br')      body = zlib.brotliDecompressSync(raw);
-        } catch (e) {
-          body = raw; // fallback to raw
-        }
+        } catch { body = raw; }
 
-        resolve({
-          status:  res.statusCode,
-          headers: res.headers,
-          body:    body.toString('utf8'),
-          url,
-        });
+        resolve({ status: res.statusCode, headers: res.headers, body: body.toString('utf8'), url });
       });
     });
 
     req.on('error', reject);
     req.on('timeout', () => { req.destroy(); reject(new Error(`Timeout: ${url}`)); });
-
     if (opts.body) req.write(opts.body);
     req.end();
   });
 }
 
 // ═══════════════════════════════════════════════════
-// 🎯 PUBLIC API — Drop-in replacements
+// 🎯 PUBLIC API
 // ═══════════════════════════════════════════════════
 
-/**
- * Stealth fetch — returns body text (follows redirects, decompresses)
- * @param {string} url
- * @param {Object} opts - Same as stealthRequest
- * @returns {Promise<string>} Response body as text
- */
+/** Stealth fetch — returns body text, throws on 4xx/5xx */
 async function stealthFetch(url, opts = {}) {
   const res = await stealthRequest(url, opts);
   if (res.status >= 400) {
@@ -312,118 +271,92 @@ async function stealthFetch(url, opts = {}) {
   return res.body;
 }
 
-/**
- * Stealth JSON fetch — parses response as JSON
- * @param {string} url
- * @param {Object} opts
- * @returns {Promise<any>} Parsed JSON
- */
+/** Stealth JSON fetch */
 async function stealthFetchJSON(url, opts = {}) {
   const res = await stealthRequest(url, {
     ...opts,
-    headers: {
-      'Accept': 'application/json, text/plain, */*',
-      ...(opts.headers || {}),
-    },
+    headers: { 'Accept': 'application/json, text/plain, */*', ...(opts.headers || {}) },
   });
   if (res.status >= 400) {
     const err = new Error(`HTTP ${res.status}: ${url}`);
-    err.status = res.status;
-    err.body = res.body;
-    throw err;
+    err.status = res.status; err.body = res.body; throw err;
   }
-  try {
-    return JSON.parse(res.body);
-  } catch {
-    throw new Error(`Invalid JSON from ${url}: ${res.body.slice(0, 200)}`);
-  }
+  try { return JSON.parse(res.body); }
+  catch { throw new Error(`Invalid JSON from ${url}: ${res.body.slice(0, 200)}`); }
 }
 
 /**
- * Batch fetch with human-like pacing
- * Fetches multiple URLs with random delays between each
- * @param {string[]} urls
- * @param {Object} opts - Options for each request
- * @param {number} opts.minDelay - Min delay between requests (ms, default: 1000)
- * @param {number} opts.maxDelay - Max delay between requests (ms, default: 4000)
- * @param {number} opts.concurrency - Max concurrent (default: 1, sequential)
- * @returns {Promise<Array<{url, body, error}>>}
+ * 🔌 DROP-IN safeRequest() REPLACEMENT
+ * ════════════════════════════════════════
+ * 100% compatible with the original safeRequest from recon-utils.
+ * Returns response body (string) on success, null/'' on error.
+ * Accepts same opts: { timeout, headers }
+ *
+ * This is the ONLY function you need to swap in each recon module.
  */
-async function batchFetch(urls, opts = {}) {
-  const minDelay    = opts.minDelay || 1000;
-  const maxDelay    = opts.maxDelay || 4000;
-  const concurrency = opts.concurrency || 1;
-  const results     = [];
-
-  if (concurrency <= 1) {
-    // Sequential with delays (most human-like)
-    for (let i = 0; i < urls.length; i++) {
-      if (i > 0) await sleep(randomDelay(minDelay, maxDelay));
-      try {
-        const body = await stealthFetch(urls[i], { ...opts, skipDelay: true });
-        results.push({ url: urls[i], body, error: null });
-      } catch (err) {
-        results.push({ url: urls[i], body: null, error: err.message });
+async function safeRequest(url, opts = {}) {
+  if (!url) return null;
+  try {
+    const res = await stealthRequest(url, {
+      timeout:   opts.timeout || 20000,
+      headers:   opts.headers || {},
+      skipDelay: opts.skipDelay || false,
+      session:   opts.session  || defaultSession,
+    });
+    // Mirror original behavior: return body string, or null on bad status
+    if (res.status >= 400) {
+      // On 403/429: rotate UA for next request (soft recovery)
+      if (res.status === 403 || res.status === 429) {
+        (opts.session || defaultSession).rotate();
       }
+      return null;
     }
-  } else {
-    // Limited concurrency with delays between batches
-    for (let i = 0; i < urls.length; i += concurrency) {
-      if (i > 0) await sleep(randomDelay(minDelay * 2, maxDelay * 2));
-      const batch = urls.slice(i, i + concurrency);
-      const batchResults = await Promise.allSettled(
-        batch.map((u, idx) =>
-          sleep(idx * randomDelay(300, 800)).then(() =>
-            stealthFetch(u, { ...opts, skipDelay: true })
-              .then(body => ({ url: u, body, error: null }))
-              .catch(err => ({ url: u, body: null, error: err.message }))
-          )
-        )
-      );
-      results.push(...batchResults.map(r => r.value || r.reason));
+    return res.body;
+  } catch (err) {
+    // Silent fail like original safeRequest — just return null
+    return null;
+  }
+}
+
+/** Batch fetch with human-like pacing */
+async function batchFetch(urls, opts = {}) {
+  const minDelay = opts.minDelay || 1000;
+  const maxDelay = opts.maxDelay || 4000;
+  const results  = [];
+  for (let i = 0; i < urls.length; i++) {
+    if (i > 0) await sleep(randomDelay(minDelay, maxDelay));
+    try {
+      const body = await stealthFetch(urls[i], { ...opts, skipDelay: true });
+      results.push({ url: urls[i], body, error: null });
+    } catch (err) {
+      results.push({ url: urls[i], body: null, error: err.message });
     }
   }
-
   return results;
 }
 
-/**
- * Stealth fetch with retry + exponential backoff
- * @param {string} url
- * @param {Object} opts
- * @param {number} opts.retries - Max retries (default: 3)
- * @param {number} opts.backoffBase - Base delay ms (default: 2000)
- * @returns {Promise<string>}
- */
+/** Fetch with retry + exponential backoff */
 async function fetchWithRetry(url, opts = {}) {
   const retries     = opts.retries || 3;
   const backoffBase = opts.backoffBase || 2000;
-
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
       return await stealthFetch(url, opts);
     } catch (err) {
       if (attempt === retries) throw err;
-
-      // On 403/429, rotate UA and wait longer
       if (err.status === 403 || err.status === 429) {
         (opts.session || defaultSession).rotate();
         const wait = backoffBase * Math.pow(2, attempt) + randomInt(500, 2000);
-        console.log(`   🥷 ${err.status} detected → rotated UA, waiting ${(wait/1000).toFixed(1)}s...`);
+        console.log(`   🥷 ${err.status} → rotated UA, waiting ${(wait/1000).toFixed(1)}s...`);
         await sleep(wait);
       } else {
-        // Regular retry
-        const wait = backoffBase * (attempt + 1) + randomInt(0, 1000);
-        await sleep(wait);
+        await sleep(backoffBase * (attempt + 1) + randomInt(0, 1000));
       }
     }
   }
 }
 
-/**
- * Create an isolated session (separate cookie jar + UA)
- * Useful when scraping multiple different sites simultaneously
- */
+/** Create an isolated session (separate cookie jar + UA) */
 function createSession() {
   return new StealthSession();
 }
@@ -432,6 +365,9 @@ function createSession() {
 // 📤 EXPORTS
 // ═══════════════════════════════════════════════════
 module.exports = {
+  // 🔌 Drop-in replacement (same signature as recon-utils safeRequest)
+  safeRequest,
+
   // Core
   fetch:         stealthFetch,
   fetchJSON:     stealthFetchJSON,
@@ -445,7 +381,7 @@ module.exports = {
   createSession,
   defaultSession,
 
-  // Utilities (for modules that need custom timing)
+  // Utilities
   sleep,
   randomDelay,
   randomInt,
