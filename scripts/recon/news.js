@@ -2,40 +2,37 @@
 // 📰 RECON MODULE: General PR News
 // ═══════════════════════════════════════════════════════
 // PATH: scripts/recon/news.js
+// 🥷 STEALTH: Uses stealth-http for anti-bot detection evasion
 
 const path = require('path');
-const { safeRequest, parseRSS, classifyText, fingerprint, isRecent, sanitize } = require(path.join(__dirname, '..', 'lib', 'recon-utils'));
+const { parseRSS, classifyText, fingerprint, isRecent, sanitize } = require(path.join(__dirname, '..', 'lib', 'recon-utils'));
+const { safeRequest } = require('./stealth-http');  // 🥷 Stealth drop-in
 const { RSS_FEEDS } = require(path.join(__dirname, '..', '..', 'config', 'recon-targets'));
 
 async function scan() {
   console.log('   📰 Scanning general news sources...');
   const findings = [];
   const seen = new Set();
-
   for (const feed of RSS_FEEDS.general) {
     try {
       const xml = await safeRequest(feed.url);
       if (!xml) { console.log('      ⚠️ ' + feed.name + ': no response'); continue; }
       const items = parseRSS(xml);
       console.log('      📡 ' + feed.name + ': ' + items.length + ' items');
-
       for (const item of items) {
         if (!item.title) continue;
         if (!isRecent(item.pubDate, 48)) continue;
         const fp = fingerprint(item.title);
         if (seen.has(fp)) continue;
         seen.add(fp);
-
         const text = sanitize(item.title + ' ' + item.description);
         const classification = classifyText(text);
-
         if (classification.signals.length === 0 &&
             !/escándalo|investig|arres|corrup|protest|crisis|emergencia|huracán|terremoto/i.test(text)) {
           if (!/puerto rico|boricua|isla|san juan|bayamón|ponce|mayagüez|carolina/i.test(text)) {
             continue;
           }
         }
-
         findings.push({
           category: 'general_news',
           subcategory: classification.category,
@@ -53,7 +50,6 @@ async function scan() {
       console.error('      ❌ ' + feed.name + ': ' + err.message);
     }
   }
-
   console.log('   📰 General news: ' + findings.length + ' findings');
   return findings;
 }
