@@ -231,6 +231,18 @@ async function phaseDocDiscovery(target) {
 
   const baseUrl = target.url.replace(/\/+$/, '');
   const docs = [];
+  const responseSizes = []; // Track sizes for SPA detection
+  const responseHashes = []; // Track content hashes for dedup
+
+  // Simple hash for dedup
+  function quickHash(str) {
+    let h = 0;
+    for (let i = 0; i < Math.min(str.length, 500); i++) {
+      h = ((h << 5) - h) + str.charCodeAt(i);
+      h |= 0;
+    }
+    return h;
+  }
 
   for (const docPath of DOC_PATHS) {
     try {
@@ -243,6 +255,28 @@ async function phaseDocDiscovery(target) {
       if (resp.ok) {
         const contentType = resp.headers.get('content-type') || '';
         const body = await resp.text();
+
+        // Track for SPA detection
+        responseSizes.push(body.length);
+
+        // Skip if content is clearly a SPA shell
+        const isSpaShell = contentType.includes('text/html') && (
+          /<div\s+id=["'](root|app|__next)["']/.test(body) ||
+          /<!DOCTYPE html>.*<script/.test(body.slice(0, 3000)) ||
+          /bundle\.js|main\.js|app\.js|chunk\.js/i.test(body)
+        );
+
+        if (isSpaShell && !docPath.includes('doc')) {
+          // HTML SPA response for a non-doc path — skip silently
+          continue;
+        }
+
+        // Dedup: skip if we already have identical content
+        const hash = quickHash(body);
+        if (responseHashes.includes(hash)) {
+          continue; // Same content as another path — SPA catch-all
+        }
+        responseHashes.push(hash);
 
         // Only keep useful content (not HTML error pages)
         if (body.length > 50 && body.length < 500000) {
@@ -257,7 +291,9 @@ async function phaseDocDiscovery(target) {
                            docPath.endsWith('.txt');
 
           // Also accept HTML if it looks like docs (has API/endpoint keywords)
-          const looksLikeDocs = /endpoint|api|auth|route|curl|POST|GET|DELETE/i.test(body.slice(0, 2000));
+          // But NOT if it's a SPA shell pretending to be docs
+          const looksLikeDocs = !isSpaShell &&
+            /endpoint|api|auth|route|curl|POST|GET|DELETE/i.test(body.slice(0, 2000));
 
           if (isUseful || looksLikeDocs) {
             // Truncate to keep token usage sane
@@ -269,6 +305,25 @@ async function phaseDocDiscovery(target) {
       }
     } catch {
       // Silent fail — most paths won't exist
+    }
+  }
+
+  // SPA catch-all detection: if most responses were the same size, it's a SPA
+  if (responseSizes.length >= 5) {
+    const mode = responseSizes.sort((a, b) => a - b)[Math.floor(responseSizes.length / 2)];
+    const sameSize = responseSizes.filter(s => Math.abs(s - mode) < 100).length;
+    const spaRatio = sameSize / responseSizes.length;
+    if (spaRatio > 0.6) {
+      console.log(`  ⚠️ SPA catch-all detected (${(spaRatio * 100).toFixed(0)}% of responses are ~${mode} bytes)`);
+      console.log(`  🧹 Discarding ${docs.filter(d => d.content.includes('<script') || d.content.includes('<!DOCTYPE')).length} SPA shell doc(s)`);
+      // Remove any docs that are actually SPA shells
+      const realDocs = docs.filter(d =>
+        !d.content.includes('<!DOCTYPE html>') ||
+        d.type.includes('json') || d.type.includes('plain') ||
+        d.type.includes('yaml') || d.type.includes('markdown')
+      );
+      docs.length = 0;
+      docs.push(...realDocs);
     }
   }
 
