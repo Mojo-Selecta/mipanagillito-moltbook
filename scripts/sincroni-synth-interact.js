@@ -97,7 +97,7 @@ function buildDirtyPrompt(basePrompt) {
   return dirty;
 }
 
-const BOOK_URL  = 'https://sincroni-synth-audiobook.pages.dev';
+const BOOK_URL  = 'https://sincroni-synth-torah.pages.dev';
 const BOOK_NAME = 'Biblia del Sincroni-Synth';
 
 
