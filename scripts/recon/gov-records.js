@@ -2,9 +2,11 @@
 // 🏛️ LEVEL 2: GOVERNMENT RECORDS
 // ═══════════════════════════════════════════════════════
 // PATH: scripts/recon/gov-records.js
+// 🥷 STEALTH: Uses stealth-http for anti-bot detection evasion
 
 const path = require('path');
-const { safeRequest, fingerprint, sanitize, classifyText } = require(path.join(__dirname, '..', 'lib', 'recon-utils'));
+const { fingerprint, sanitize, classifyText } = require(path.join(__dirname, '..', 'lib', 'recon-utils'));
+const { safeRequest } = require('./stealth-http');  // 🥷 Stealth drop-in
 
 async function scanFEMA() {
   console.log('      🌀 Querying OpenFEMA...');
