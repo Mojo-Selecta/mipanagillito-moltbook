@@ -370,8 +370,9 @@ async function phaseExploitVerify(target, vulnFindings) {
   for (const vuln of sorted) {
     console.log(`  💥 Verifying: ${vuln.id} — ${vuln.title}`);
 
-    const systemPrompt = `You are a senior penetration tester. Your job is to VERIFY a potential vulnerability.
+    const systemPrompt = `You are a senior penetration tester verifying vulnerabilities on a Node.js/Express application.
 Generate a PRECISE, REPRODUCIBLE proof-of-concept. Only confirm as verified if you have HIGH confidence.
+IMPORTANT: All remediation code_example MUST be Node.js/Express code as a SINGLE STRING (not an object).
 Return ONLY valid JSON (no markdown, no code blocks).`;
 
     const userPrompt = `Target: ${target.url}
@@ -387,18 +388,23 @@ Return JSON:
   "severity": "critical|high|medium|low",
   "cvss_score": 8.5,
   "poc": {
-    "description": "Step-by-step exploit",
+    "description": "Step-by-step exploit description",
     "curl_command": "curl -X POST ...",
     "expected_response": "What confirms exploitation",
     "impact": "What attacker achieves"
   },
   "remediation": {
-    "immediate": "Quick fix",
-    "proper": "Long-term fix",
-    "code_example": "Example fix code"
+    "immediate": "Quick fix action (1 sentence)",
+    "proper": "Long-term fix (1 sentence)",
+    "code_example": "// Node.js fix example\\nconst sanitized = input.replace(/[{}$]/g, '');"
   },
   "false_positive_reason": "If not verified, why"
-}`;
+}
+
+RULES:
+- code_example MUST be a plain string of Node.js code, NEVER an object or JSON
+- All fixes must use Node.js/Express syntax
+- curl_command must be a single runnable curl command`;
 
     try {
       const raw = await aiComplete(systemPrompt, userPrompt, { temperature: 0.1 });
@@ -529,7 +535,15 @@ ${exploit.poc?.description || ''}
       if (exploit.remediation) {
         md += `**Fix:**\n- Immediate: ${exploit.remediation.immediate || 'N/A'}\n- Proper: ${exploit.remediation.proper || 'N/A'}\n`;
         if (exploit.remediation.code_example) {
-          md += `\n\`\`\`\n${exploit.remediation.code_example}\n\`\`\`\n`;
+          // Safe serialize — handle objects that slipped through
+          let codeStr = exploit.remediation.code_example;
+          if (typeof codeStr === 'object') {
+            codeStr = JSON.stringify(codeStr, null, 2);
+          }
+          codeStr = String(codeStr).trim();
+          if (codeStr && codeStr !== '[object Object]') {
+            md += `\n\`\`\`javascript\n${codeStr}\n\`\`\`\n`;
+          }
         }
       }
       md += `\n---\n\n`;
@@ -539,13 +553,13 @@ ${exploit.poc?.description || ''}
   md += `## Remediation Roadmap
 
 ### 🔴 Immediate (24-48h)
-${confirmed.filter(e => e.severity === 'critical').map(e => `- ${e.vuln_id}: ${e.remediation?.immediate || 'Fix ASAP'}`).join('\n') || '- None'}
+${confirmed.filter(e => ['critical', 'high'].includes(e.severity)).map(e => `- **${e.vuln_id}** [${(e.severity || '').toUpperCase()}]: ${e.remediation?.immediate || 'Fix ASAP'}`).join('\n') || '- None'}
 
-### 🟠 Short-term (1-2 weeks)
-${confirmed.filter(e => e.severity === 'high').map(e => `- ${e.vuln_id}: ${e.remediation?.proper || 'Implement fix'}`).join('\n') || '- None'}
+### 🟡 Short-term (1-2 weeks)
+${confirmed.filter(e => e.severity === 'medium').map(e => `- **${e.vuln_id}** [MEDIUM]: ${e.remediation?.proper || 'Implement fix'}`).join('\n') || '- None'}
 
-### 🟡 Medium-term (1 month)
-${confirmed.filter(e => ['medium', 'low'].includes(e.severity)).map(e => `- ${e.vuln_id}: ${e.remediation?.proper || 'Address'}`).join('\n') || '- None'}
+### 🔵 Long-term (1 month)
+${confirmed.filter(e => ['low', 'info'].includes(e.severity)).map(e => `- **${e.vuln_id}**: ${e.remediation?.proper || 'Address'}`).join('\n') || '- None'}
 
 ---
 
