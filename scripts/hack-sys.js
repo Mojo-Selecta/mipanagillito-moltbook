@@ -41,6 +41,12 @@ const MIN_SEVERITY = process.env.MIN_SEVERITY || 'medium';
 const SEVERITY_ORDER = ['info', 'low', 'medium', 'high', 'critical'];
 const SEVERITY_EMOJI = { critical: '🔴', high: '🟠', medium: '🟡', low: '🔵', info: '⚪' };
 
+// Rate limit protection — Groq free tier = 12k TPM
+const DELAY_BETWEEN_CALLS_MS = parseInt(process.env.AI_DELAY_MS || '6000'); // 6s default
+const MAX_RETRIES_ON_429 = 3;
+
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
 // Load hack targets from config
 let HACK_TARGETS = [];
 try {
@@ -134,25 +140,39 @@ async function callProvider(provider, system, user, opts) {
     ]
   };
 
-  const resp = await fetch(provider.endpoint, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${provider.key}`
-    },
-    body: JSON.stringify(body)
-  });
+  // Retry loop for rate limits (429)
+  for (let attempt = 1; attempt <= MAX_RETRIES_ON_429; attempt++) {
+    const resp = await fetch(provider.endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${provider.key}`
+      },
+      body: JSON.stringify(body)
+    });
 
-  if (!resp.ok) {
-    const err = await resp.text().catch(() => '');
-    throw new Error(`${resp.status}: ${err.slice(0, 200)}`);
+    if (resp.status === 429) {
+      // Parse retry-after header or use exponential backoff
+      const retryAfter = resp.headers.get('retry-after');
+      const waitMs = retryAfter ? parseInt(retryAfter) * 1000 : (attempt * 10000); // 10s, 20s, 30s
+      console.log(`    ⏳ ${provider.name} rate limited (429), waiting ${(waitMs / 1000).toFixed(0)}s (attempt ${attempt}/${MAX_RETRIES_ON_429})...`);
+      await sleep(waitMs);
+      continue;
+    }
+
+    if (!resp.ok) {
+      const err = await resp.text().catch(() => '');
+      throw new Error(`${resp.status}: ${err.slice(0, 200)}`);
+    }
+
+    const data = await resp.json();
+    const content = data.choices?.[0]?.message?.content || '';
+
+    if (!content) throw new Error('Empty response');
+    return content;
   }
 
-  const data = await resp.json();
-  const content = data.choices?.[0]?.message?.content || '';
-
-  if (!content) throw new Error('Empty response');
-  return content;
+  throw new Error(`Rate limited after ${MAX_RETRIES_ON_429} retries`);
 }
 
 // ═══════════════════════════════════════════════════════
@@ -315,6 +335,11 @@ If no vulnerabilities found, return [].`;
     } catch (err) {
       console.log(`    ❌ ${vuln.name} scan failed: ${err.message}`);
     }
+
+    // Rate limit protection between scans
+    if (types.indexOf(type) < types.length - 1) {
+      await sleep(DELAY_BETWEEN_CALLS_MS);
+    }
   }
 
   // Deduplicate
@@ -389,6 +414,11 @@ Return JSON:
     } catch (err) {
       console.log(`    ❌ Verification failed: ${err.message}`);
       results.push({ vuln_id: vuln.id, verified: false, false_positive_reason: err.message });
+    }
+
+    // Rate limit protection between verifications
+    if (sorted.indexOf(vuln) < sorted.length - 1) {
+      await sleep(DELAY_BETWEEN_CALLS_MS);
     }
   }
 
