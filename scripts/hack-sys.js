@@ -37,7 +37,7 @@ const core = require('./lib/core');
 
 const SESSION_ID = `hack-${Date.now()}`;
 const SCAN_TYPE = process.env.SCAN_TYPE || 'full';
-const MIN_SEVERITY = process.env.MIN_SEVERITY || 'medium';
+const MIN_SEVERITY = process.env.MIN_SEVERITY || 'low';
 const SEVERITY_ORDER = ['info', 'low', 'medium', 'high', 'critical'];
 const SEVERITY_EMOJI = { critical: '🔴', high: '🟠', medium: '🟡', low: '🔵', info: '⚪' };
 
@@ -1519,10 +1519,93 @@ function meetsThreshold(severity) {
   return idx >= minIdx;
 }
 
+// Benign endpoints that are NOT vulnerabilities (standard health/status checks)
+const BENIGN_ENDPOINTS = [
+  /^\/health$/i,
+  /^\/api\/health$/i,
+  /^\/status$/i,
+  /^\/api\/status$/i,
+  /^\/ping$/i,
+  /^\/api\/ping$/i,
+  /^\/ready$/i,
+  /^\/livez$/i,
+  /^\/readyz$/i,
+  /^\/version$/i,
+  /^\/api\/version$/i,
+  /^\/__health$/i,
+  /^\/_health$/i,
+];
+
+function isBenignEndpoint(endpoint) {
+  if (!endpoint) return false;
+  return BENIGN_ENDPOINTS.some(p => p.test(endpoint));
+}
+
 function deduplicateFindings(findings) {
+  // Step 1: Filter out benign endpoint findings
+  const nonBenign = findings.filter(f => {
+    if (isBenignEndpoint(f.endpoint)) {
+      // A health endpoint returning {status, timestamp} is NOT a vuln
+      // Only keep if the payload shows actual sensitive data exposure beyond status/timestamp
+      const payloadStr = String(f.payload || '').toLowerCase();
+      const descStr = String(f.description || '').toLowerCase();
+      const hasSensitiveData = /password|secret|token|key|database|internal|stack|error|config|env/i.test(payloadStr + descStr);
+      if (!hasSensitiveData) {
+        return false; // Discard — benign health check is not a vulnerability
+      }
+    }
+    return true;
+  });
+
+  // Step 2: Dedup by endpoint (cross-type) — if 3+ scan types found the same
+  //   endpoint with similar descriptions, keep only the highest severity one
+  const byEndpoint = {};
+  for (const f of nonBenign) {
+    const ep = (f.endpoint || 'unknown').toLowerCase().replace(/[?#].*/, '');
+    if (!byEndpoint[ep]) byEndpoint[ep] = [];
+    byEndpoint[ep].push(f);
+  }
+
+  const deduped = [];
+  for (const [ep, group] of Object.entries(byEndpoint)) {
+    if (group.length <= 2) {
+      // 2 or fewer findings for same endpoint — keep all (might be different vulns)
+      deduped.push(...group);
+    } else {
+      // 3+ findings on same endpoint — likely duplicates from different scan types
+      // Keep the highest severity one, plus any that have genuinely different payloads
+      const sorted = group.sort((a, b) => {
+        const order = ['critical', 'high', 'medium', 'low', 'info'];
+        return order.indexOf(a.severity || 'info') - order.indexOf(b.severity || 'info');
+      });
+
+      const kept = [sorted[0]]; // Keep highest severity
+      const seenPayloads = new Set([String(sorted[0].payload || '').slice(0, 50).toLowerCase()]);
+
+      for (const f of sorted.slice(1)) {
+        const payloadKey = String(f.payload || '').slice(0, 50).toLowerCase();
+        // Only keep if payload is genuinely different
+        if (!seenPayloads.has(payloadKey) && payloadKey.length > 0) {
+          // Check if it's actually different (not just curl to the same endpoint)
+          const existingDescs = kept.map(k => String(k.description || '').toLowerCase());
+          const thisDesc = String(f.description || '').toLowerCase();
+          const isDiffDesc = !existingDescs.some(d =>
+            d.includes(thisDesc.slice(0, 30)) || thisDesc.includes(d.slice(0, 30))
+          );
+          if (isDiffDesc) {
+            kept.push(f);
+            seenPayloads.add(payloadKey);
+          }
+        }
+      }
+      deduped.push(...kept);
+    }
+  }
+
+  // Step 3: Final dedup by exact key
   const seen = new Set();
-  return findings.filter(f => {
-    const key = `${f.endpoint}:${f.parameter}:${f.type}`;
+  return deduped.filter(f => {
+    const key = `${(f.endpoint || '').toLowerCase()}:${f.parameter || ''}:${(f.payload || '').slice(0, 50)}`;
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
