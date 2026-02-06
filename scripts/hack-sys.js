@@ -204,47 +204,151 @@ function sanitizeInput(input) {
 }
 
 // ═══════════════════════════════════════════════════════
-// PHASE L1: RECONNAISSANCE
+// PHASE L0: DOCUMENTATION DISCOVERY
 // ═══════════════════════════════════════════════════════
 
-async function phaseRecon(target) {
+// Common paths where apps expose docs, APIs, configs
+const DOC_PATHS = [
+  '/skill.md',
+  '/SKILL.md',
+  '/docs',
+  '/api-docs',
+  '/api/docs',
+  '/swagger.json',
+  '/openapi.json',
+  '/api/openapi.json',
+  '/.well-known/openapi.yaml',
+  '/robots.txt',
+  '/sitemap.xml',
+  '/health',
+  '/api/health',
+  '/status',
+];
+
+async function phaseDocDiscovery(target) {
+  console.log('\n📖 ═══ PHASE L0: DOCUMENTATION DISCOVERY ═══');
+  console.log(`  🔍 Probing ${DOC_PATHS.length} common doc paths...`);
+
+  const baseUrl = target.url.replace(/\/+$/, '');
+  const docs = [];
+
+  for (const docPath of DOC_PATHS) {
+    try {
+      const resp = await fetch(`${baseUrl}${docPath}`, {
+        method: 'GET',
+        headers: { 'User-Agent': 'GillitoHackSys/1.0 (Security Research)' },
+        signal: AbortSignal.timeout(5000)
+      });
+
+      if (resp.ok) {
+        const contentType = resp.headers.get('content-type') || '';
+        const body = await resp.text();
+
+        // Only keep useful content (not HTML error pages)
+        if (body.length > 50 && body.length < 500000) {
+          const isUseful = contentType.includes('json') ||
+                           contentType.includes('text/plain') ||
+                           contentType.includes('markdown') ||
+                           contentType.includes('yaml') ||
+                           contentType.includes('xml') ||
+                           docPath.endsWith('.md') ||
+                           docPath.endsWith('.json') ||
+                           docPath.endsWith('.xml') ||
+                           docPath.endsWith('.txt');
+
+          // Also accept HTML if it looks like docs (has API/endpoint keywords)
+          const looksLikeDocs = /endpoint|api|auth|route|curl|POST|GET|DELETE/i.test(body.slice(0, 2000));
+
+          if (isUseful || looksLikeDocs) {
+            // Truncate to keep token usage sane
+            const truncated = body.slice(0, 15000);
+            docs.push({ path: docPath, content: truncated, type: contentType });
+            console.log(`  ✅ Found: ${docPath} (${(body.length / 1024).toFixed(1)}KB)`);
+          }
+        }
+      }
+    } catch {
+      // Silent fail — most paths won't exist
+    }
+  }
+
+  if (docs.length === 0) {
+    console.log('  ⚠️ No documentation found — AI will infer from target URL');
+  } else {
+    console.log(`  📖 Discovered ${docs.length} doc(s)`);
+  }
+
+  return docs;
+}
+
+// ═══════════════════════════════════════════════════════
+// PHASE L1: RECONNAISSANCE (doc-informed)
+// ═══════════════════════════════════════════════════════
+
+async function phaseRecon(target, discoveredDocs) {
   console.log('\n📡 ═══ PHASE L1: RECONNAISSANCE ═══');
   console.log(`  🎯 Target: ${target.url}`);
 
+  // Build doc context for AI
+  let docContext = '';
+  if (discoveredDocs && discoveredDocs.length > 0) {
+    docContext = '\n\n=== DISCOVERED DOCUMENTATION ===\n' +
+      'IMPORTANT: Use this REAL documentation to map the attack surface.\n' +
+      'Do NOT guess or assume endpoints/auth — use what the docs say.\n\n';
+    for (const doc of discoveredDocs) {
+      docContext += `--- ${doc.path} ---\n${doc.content}\n\n`;
+    }
+    // Cap total doc context to avoid token limits
+    docContext = docContext.slice(0, 25000);
+  }
+
   const systemPrompt = `You are an expert security researcher performing reconnaissance on a web application.
 You must identify the complete attack surface. Be thorough but concise.
+${discoveredDocs?.length > 0 ? `CRITICAL: Real documentation from the target has been provided. Base your analysis ONLY on what the docs reveal. Do NOT invent endpoints or auth mechanisms that are not documented. Use the ACTUAL auth type, endpoint paths, and technology described in the docs.` : 'No documentation was found. Infer from the target URL and common patterns, but mark confidence as LOW for inferred items.'}
 Return ONLY a valid JSON object (no markdown, no code blocks).`;
 
   const userPrompt = `Target: ${target.url}
 ${target.name ? `App Name: ${target.name}` : ''}
 ${target.tech ? `Known Tech: ${target.tech}` : ''}
 ${target.repo ? `Source Available: Yes` : ''}
+${docContext}
 
 Perform reconnaissance and return JSON:
 {
   "endpoints": [
-    { "url": "/api/example", "method": "GET|POST", "params": ["id"], "auth_required": true, "risk": "high|medium|low" }
+    { "url": "/api/example", "method": "GET|POST", "params": ["id"], "auth_required": true, "auth_type": "api_key|jwt|session|none", "risk": "high|medium|low", "confidence": "high|medium|low" }
   ],
   "auth_mechanisms": [
-    { "type": "jwt|session|api_key|oauth|basic", "endpoint": "/login", "notes": "" }
+    { "type": "jwt|session|api_key|oauth|basic", "endpoint": "/auth/register", "notes": "How auth actually works", "confidence": "high|medium|low" }
   ],
   "technology": {
     "server": "", "framework": "", "frontend": "", "database_hints": "",
+    "id_format": "uuid|sequential|custom",
     "security_headers_missing": ["CSP", "HSTS"]
   },
   "discovery_findings": [
     { "path": "/.env", "risk": "critical", "reason": "Environment file exposure" }
   ],
+  "docs_found": ${discoveredDocs?.length || 0},
   "attack_surface_score": 7
-}`;
+}
+
+RULES:
+- If documentation was provided, endpoints and auth MUST match what the docs describe
+- Mark confidence as "high" ONLY for items confirmed by documentation
+- Mark confidence as "low" for items that are guesses/inferences
+- id_format should reflect what the docs show (uuid vs sequential integers)`;
 
   try {
     const raw = await aiComplete(systemPrompt, userPrompt);
     const findings = safeParseJSON(raw);
     const endpointCount = findings.endpoints?.length || 0;
     const discoveryCount = findings.discovery_findings?.length || 0;
+    const authType = findings.auth_mechanisms?.[0]?.type || 'Unknown';
+    const idFormat = findings.technology?.id_format || 'Unknown';
     console.log(`  📡 Found: ${endpointCount} endpoints, ${discoveryCount} discovery items`);
     console.log(`  🏗️ Tech: ${findings.technology?.framework || 'Unknown'} / ${findings.technology?.server || 'Unknown'}`);
+    console.log(`  🔑 Auth: ${authType} | IDs: ${idFormat}`);
     return findings;
   } catch (err) {
     console.log(`  ❌ Recon failed: ${err.message}`);
@@ -286,6 +390,30 @@ const VULN_TYPES = {
 async function phaseVulnScan(target, reconData) {
   console.log('\n🔍 ═══ PHASE L2: VULNERABILITY SCANNING ═══');
 
+  // Extract real tech context from recon to prevent hallucinations
+  const authType = reconData.auth_mechanisms?.[0]?.type || 'unknown';
+  const idFormat = reconData.technology?.id_format || 'unknown';
+  const dbHints = reconData.technology?.database_hints || 'unknown';
+  const framework = reconData.technology?.framework || 'unknown';
+  console.log(`  📋 Context: auth=${authType}, ids=${idFormat}, db=${dbHints}`);
+
+  const techContext = `
+REAL TECH CONTEXT (from recon/documentation):
+- Auth mechanism: ${authType} (${authType === 'api_key' ? 'NOT JWT — do not test JWT attacks' : authType === 'jwt' ? 'JWT-based — test JWT attacks' : 'test applicable auth attacks'})
+- ID format: ${idFormat} (${idFormat === 'uuid' ? 'NOT sequential — do not test sequential ID enumeration' : idFormat === 'sequential' ? 'sequential — test enumeration' : 'test both'})
+- Database hints: ${dbHints} (${dbHints.toLowerCase().includes('mongo') ? 'MongoDB — test NoSQL injection, NOT SQL injection' : dbHints.toLowerCase().includes('sql') ? 'SQL — test SQL injection, NOT NoSQL' : 'test both injection types'})
+- Framework: ${framework}
+- Known endpoints: ${(reconData.endpoints || []).slice(0, 10).map(e => `${e.method} ${e.url}`).join(', ')}
+
+CRITICAL RULES:
+- ONLY test vulnerabilities that are POSSIBLE given the real tech stack above
+- If auth is api_key, do NOT report JWT none algorithm, JWT key confusion, or JWT-related vulns
+- If IDs are UUIDs, do NOT report sequential ID enumeration
+- If database is MongoDB, do NOT report SQL injection (test NoSQL instead)
+- If database is SQL, do NOT report NoSQL injection
+- Only reference endpoints that exist in the recon data
+- If no vulnerabilities match the real stack, return an empty array []`;
+
   const allFindings = [];
   const types = Object.keys(VULN_TYPES);
 
@@ -296,6 +424,7 @@ async function phaseVulnScan(target, reconData) {
     const systemPrompt = `You are an expert penetration tester specializing in ${vuln.name}.
 Analyze the target for vulnerabilities. Focus on: ${vuln.focus}
 Only report findings you have MEDIUM or HIGH confidence in.
+${techContext}
 Return ONLY a valid JSON array (no markdown, no code blocks).`;
 
     const userPrompt = `Target: ${target.url}
@@ -318,7 +447,7 @@ Return JSON array of findings:
   "references": ["CWE-XXX"]
 }]
 
-If no vulnerabilities found, return [].`;
+If no vulnerabilities match the REAL tech stack, return [].`;
 
     try {
       const raw = await aiComplete(systemPrompt, userPrompt);
@@ -437,12 +566,15 @@ RULES:
 // PHASE L4: REPORT GENERATION
 // ═══════════════════════════════════════════════════════
 
-async function phaseReport(target, reconData, vulnFindings, exploitResults) {
+async function phaseReport(target, reconData, vulnFindings, exploitResults, discoveredDocs) {
   console.log('\n📊 ═══ PHASE L4: REPORT ═══');
 
   const confirmed = exploitResults.filter(r => r.verified);
   const severity = severityBreakdown(confirmed);
   const riskScore = calculateRisk(confirmed);
+  const authType = reconData.auth_mechanisms?.[0]?.type || 'Unknown';
+  const idFormat = reconData.technology?.id_format || 'Unknown';
+  const docsFound = discoveredDocs?.length || 0;
 
   // Generate executive summary via AI
   let execSummary = '';
@@ -466,7 +598,10 @@ Top findings: ${confirmed.slice(0, 3).map(e => `[${e.severity}] ${e.vuln_id}`).j
     confirmed,
     all_results: exploitResults,
     severity,
-    risk: riskScore
+    risk: riskScore,
+    docsFound,
+    authType,
+    idFormat
   });
 
   // Save report
@@ -478,7 +613,7 @@ Top findings: ${confirmed.slice(0, 3).map(e => `[${e.severity}] ${e.vuln_id}`).j
 }
 
 function buildMarkdownReport(target, data) {
-  const { exec_summary, recon, confirmed, all_results, severity, risk } = data;
+  const { exec_summary, recon, confirmed, all_results, severity, risk, docsFound, authType, idFormat } = data;
 
   let md = `# 🔓 Gillito Hack Sys — Pentest Report
 
@@ -486,6 +621,15 @@ function buildMarkdownReport(target, data) {
 **Date:** ${new Date().toISOString().split('T')[0]}
 **Session:** ${SESSION_ID}
 **Risk:** ${risk.rating} (${risk.score}/100)
+
+### Reconnaissance
+| Detail | Value |
+|--------|-------|
+| Documentation found | ${docsFound > 0 ? `✅ ${docsFound} doc(s)` : '❌ None (findings may be less accurate)'} |
+| Auth mechanism | ${authType} |
+| ID format | ${idFormat} |
+| Framework | ${recon.technology?.framework || 'Unknown'} |
+| Database | ${recon.technology?.database_hints || 'Unknown'} |
 
 ---
 
@@ -716,8 +860,11 @@ async function main() {
     console.log(`${'═'.repeat(50)}`);
 
     try {
-      // L1: Recon
-      const reconData = await phaseRecon(target);
+      // L0: Documentation Discovery
+      const discoveredDocs = await phaseDocDiscovery(target);
+
+      // L1: Recon (informed by docs)
+      const reconData = await phaseRecon(target, discoveredDocs);
 
       if (SCAN_TYPE === 'recon-only') {
         console.log('\n✅ Recon-only scan complete');
@@ -737,7 +884,7 @@ async function main() {
       const exploitResults = await phaseExploitVerify(target, vulnFindings);
 
       // L4: Report
-      const reportData = await phaseReport(target, reconData, vulnFindings, exploitResults);
+      const reportData = await phaseReport(target, reconData, vulnFindings, exploitResults, discoveredDocs);
 
       // Persist & announce
       await persistResults(SESSION_ID, {
