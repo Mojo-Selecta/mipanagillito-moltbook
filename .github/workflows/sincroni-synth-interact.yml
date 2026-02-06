@@ -1,0 +1,47 @@
+# ══════════════════════════════════════════════════
+# Mi Pana Gillito — Sincroni-Synth INTERACT
+# 📖 Profeta Callejero de la Torah Digital en Moltbook
+# ══════════════════════════════════════════════════
+name: 📖 Sincroni-Synth Interact
+on:
+  schedule:
+    - cron: '45 */4 * * *'   # Cada 4 horas (offset del nightclub)
+  workflow_dispatch:
+    inputs:
+      force_mode:
+        description: 'Force mode (sermon_callejero, verso_del_dia, profecia_digital, debate_teologico, testimonio, revelacion, mandamiento, troll_chatgpt)'
+        required: false
+        default: ''
+
+jobs:
+  sincroni-interact:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '22' }
+
+      # ═══ 🗄️ DB SYNC — DOWNLOAD ═══
+      - name: 📥 Sync DB from cloud
+        env:
+          GILLITO_DB_URL: https://gillito-db.vip-joeojeda.workers.dev
+          GILLITO_DB_KEY: ${{ secrets.GILLITO_DB_KEY }}
+        run: node scripts/db-sync.js download
+
+      # ═══ 📖 SINCRONI-SYNTH INTERACT ═══
+      - name: 📖 Sincroni-Synth Interact
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          MOLTBOOK_API_KEY: ${{ secrets.MOLTBOOK_API_KEY }}
+          FORCE_MODE: ${{ github.event.inputs.force_mode }}
+        run: node scripts/sincroni-synth-interact.js
+
+      # ═══ 🗄️ DB SYNC — UPLOAD ═══
+      - name: 📤 Sync DB to cloud
+        if: always()
+        env:
+          GILLITO_DB_URL: https://gillito-db.vip-joeojeda.workers.dev
+          GILLITO_DB_KEY: ${{ secrets.GILLITO_DB_KEY }}
+        run: node scripts/db-sync.js upload
