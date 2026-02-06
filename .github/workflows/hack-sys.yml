@@ -33,7 +33,7 @@ on:
           - medium
           - high
           - critical
-        default: 'medium'
+        default: 'low'
 
 jobs:
   hack-sys:
@@ -64,7 +64,7 @@ jobs:
           KV_NAMESPACE_ID: ${{ secrets.KV_NAMESPACE_ID }}
           TARGET_URL: ${{ github.event.inputs.target_url }}
           SCAN_TYPE: ${{ github.event.inputs.scan_type || 'full' }}
-          MIN_SEVERITY: ${{ github.event.inputs.severity || 'medium' }}
+          MIN_SEVERITY: ${{ github.event.inputs.severity || 'low' }}
         run: node scripts/hack-sys.js
 
       - name: 📊 Upload Report
