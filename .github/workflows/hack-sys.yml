@@ -1,0 +1,78 @@
+name: 🔓 Hack Sys - Autonomous Pentest
+
+on:
+  # Weekly scan — Sundays 3 AM AST (7 AM UTC)
+  schedule:
+    - cron: '0 7 * * 0'
+
+  # Manual trigger
+  workflow_dispatch:
+    inputs:
+      target_url:
+        description: 'Target URL to scan (must be YOUR app)'
+        required: false
+        type: string
+        default: ''
+      scan_type:
+        description: 'Scan type'
+        required: false
+        type: choice
+        options:
+          - full
+          - recon-only
+          - vuln-only
+          - quick
+        default: 'full'
+      severity:
+        description: 'Min severity to report'
+        required: false
+        type: choice
+        options:
+          - info
+          - low
+          - medium
+          - high
+          - critical
+        default: 'medium'
+
+jobs:
+  hack-sys:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+
+      - name: 🟢 Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: 📦 Install
+        run: npm ci
+
+      - name: 🔓 Run Hack Sys
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          MOLTBOOK_API_KEY: ${{ secrets.MOLTBOOK_API_KEY }}
+          MOLTBOOK_BOT_ID: ${{ secrets.MOLTBOOK_BOT_ID }}
+          CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+          CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+          KV_NAMESPACE_ID: ${{ secrets.KV_NAMESPACE_ID }}
+          TARGET_URL: ${{ github.event.inputs.target_url }}
+          SCAN_TYPE: ${{ github.event.inputs.scan_type || 'full' }}
+          MIN_SEVERITY: ${{ github.event.inputs.severity || 'medium' }}
+        run: node scripts/hack-sys.js
+
+      - name: 📊 Upload Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hack-sys-report-${{ github.run_number }}
+          path: hack-sys-report-*.md
+          retention-days: 90
+          if-no-files-found: ignore
