@@ -152,9 +152,20 @@ async function callProvider(provider, system, user, opts) {
     });
 
     if (resp.status === 429) {
-      // Parse retry-after header or use exponential backoff
+      // Parse retry-after header
       const retryAfter = resp.headers.get('retry-after');
-      const waitMs = retryAfter ? parseInt(retryAfter) * 1000 : (attempt * 10000); // 10s, 20s, 30s
+      const serverWaitSec = retryAfter ? parseInt(retryAfter) : 0;
+
+      // If server says wait > 60s, don't wait — failover to next provider immediately
+      if (serverWaitSec > 60) {
+        console.log(`    ⚠️ ${provider.name} rate limited — retry-after: ${serverWaitSec}s (too long, failing over)`);
+        throw new Error(`Rate limited: retry-after ${serverWaitSec}s exceeds max wait`);
+      }
+
+      // Short wait: use server hint (capped at 30s) or exponential backoff
+      const waitMs = serverWaitSec > 0
+        ? Math.min(serverWaitSec * 1000, 30000)
+        : Math.min(attempt * 10000, 30000); // 10s, 20s, 30s
       console.log(`    ⏳ ${provider.name} rate limited (429), waiting ${(waitMs / 1000).toFixed(0)}s (attempt ${attempt}/${MAX_RETRIES_ON_429})...`);
       await sleep(waitMs);
       continue;
@@ -586,9 +597,57 @@ async function phaseActiveRecon(target, discoveredDocs) {
     console.log(`\n  👤 Step 2: Harvesting profiles (${liveData.sample_ids.length} IDs found)...`);
     const allIds = liveData.sample_ids.slice(0, 50); // Up to 50 profiles
 
-    for (const id of allIds) {
-      const profile = await fetchJSON(`${apiBase}/profiles/${id}`);
-      if (!profile) continue;
+    // Try multiple URL patterns — different platforms use different paths
+    const PROFILE_PATTERNS = [
+      id => `${apiBase}/profiles/${id}`,
+      id => `${apiBase}/users/${id}`,
+      id => `${apiBase}/bots/${id}`,
+      id => `${apiBase}/user/${id}`,
+      id => `${apiBase}/bot/${id}`,
+      id => `${apiBase}/u/${id}`,
+      id => `${apiBase}/agents/${id}`,
+      id => `${apiBase}/members/${id}`,
+    ];
+
+    // Auto-detect which pattern works using first ID
+    let workingPattern = null;
+    const testId = allIds[0];
+    for (const pattern of PROFILE_PATTERNS) {
+      const test = await fetchJSON(pattern(testId));
+      if (test && typeof test === 'object' && Object.keys(test).length > 2) {
+        workingPattern = pattern;
+        console.log(`  🔗 Profile pattern found: ${pattern('{id}').replace(apiBase, '')}`);
+        break;
+      }
+    }
+
+    // Also try username-based if we have usernames
+    if (!workingPattern && liveData.usernames_found.length > 0) {
+      const testName = liveData.usernames_found[0];
+      for (const base of [apiBase, baseUrl]) {
+        for (const path of ['/profiles/', '/users/', '/bots/', '/u/', '/user/', '/bot/']) {
+          const test = await fetchJSON(`${base}${path}${encodeURIComponent(testName)}`);
+          if (test && typeof test === 'object' && Object.keys(test).length > 2) {
+            workingPattern = name => `${base}${path}${encodeURIComponent(name)}`;
+            console.log(`  🔗 Username-based profile pattern: ${path}{username}`);
+            break;
+          }
+        }
+        if (workingPattern) break;
+      }
+    }
+
+    if (!workingPattern) {
+      console.log('  ⚠️ No working profile endpoint found — skipping profile harvest');
+    } else {
+      // Use either IDs or usernames depending on what worked
+      const targets = workingPattern.toString().includes('encodeURI')
+        ? liveData.usernames_found.slice(0, 50)
+        : allIds;
+
+      for (const id of targets) {
+        const profile = await fetchJSON(workingPattern(id));
+        if (!profile) continue;
 
       const fields = Object.keys(profile);
       const sensitiveFields = fields.filter(f =>
@@ -638,6 +697,7 @@ async function phaseActiveRecon(target, discoveredDocs) {
       }
     }
     console.log(`  👤 Profiles fetched: ${liveData.full_profiles.length}`);
+    } // end workingPattern
   }
 
   // ─── STEP 3: Fetch ALL wallets ───
