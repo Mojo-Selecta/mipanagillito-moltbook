@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
   # Correr automático cada 6 horas para monitorear
   schedule:
-    - cron: '0 */6 * * *'    # Cada 6 horas
+    - cron: '10 */6 * * *'    # Cada 6 horas
 
 jobs:
   health-check:

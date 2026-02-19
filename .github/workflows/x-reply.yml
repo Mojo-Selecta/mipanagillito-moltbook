@@ -1,7 +1,7 @@
 name: 💬💎 Gillito - Reply on X v7.0 PREMIUM
 on:
   schedule:
-    - cron: '30 */5 * * *'    # Cada 5 horas (~5 ciclos/día) — max 2 replies/ciclo = ~10/día
+    - cron: '5 */5 * * *'    # Cada 5 horas (~5 ciclos/día) — max 2 replies/ciclo = ~10/día
   workflow_dispatch:
 concurrency:
   group: gillito-reply-x

@@ -1,7 +1,7 @@
 name: 🐦💎 Gillito - Post to X v7.0 PREMIUM
 on:
   schedule:
-   - cron: '0 */8 * * *'    # Cada 8 horas (~3 posts/día) — conservador para threads
+   - cron: '15 */8 * * *'    # Cada 8 horas (~3 posts/día) — conservador para threads
   workflow_dispatch:
 concurrency:
   group: gillito-post-x
