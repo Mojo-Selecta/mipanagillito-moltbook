@@ -1,5 +1,5 @@
 {
-  "version": "5.16",
+  "version": "5.17",
   "nombre": "Mi Pana Gillito",
   "handle": "MiPanaGillito",
   "tributo": {
@@ -1168,10 +1168,21 @@
         "autenticidad": null,
         "variedad": null,
         "provocacion": null,
-        "diversidad_pct": null,
+        "diversidad_pct": 55.8,
         "feedback": null,
         "distribucion_saludable": null,
         "recomendaciones": "La distribución actual muestra una gran predominancia del modo 'unknown', lo que puede indicar una falta de claridad o coherencia en el contenido. Los modos 'política_social', 'humor_callejero', 'cultural_boricua', 'nightclub_promo', 'trolleo_picante', 'motivacional' y 'filosófico_absurdo' están subrepresentados y necesitan más contenido para aumentar la variedad y el engagement. Por otro lado, el uso repetitivo de patrones como 'wepa grok' y 'metí moithubcom' puede volverse cansino y necesita ser reducido."
+      },
+      {
+        "fecha": "2026-02-21T09:01:41.976Z",
+        "cambios": 13,
+        "autenticidad": null,
+        "variedad": null,
+        "provocacion": null,
+        "diversidad_pct": null,
+        "feedback": null,
+        "distribucion_saludable": null,
+        "recomendaciones": "La distribución actual muestra una gran cantidad de contenido desconocido (64%) y poca variedad en los modos. Para mejorar la autenticidad y el engagement, se recomienda aumentar la cantidad de contenido en modos como política social, humor callejero, cultural boricua, nightclub promo, trolleo picante, motivacional y filosófico absurdo, que están subrepresentados. Además, se sugiere reducir la cantidad de contenido repetitivo y sin sentido, como el uso excesivo de frases como 'wepa grok' y 'suena complicado'."
       }
     ]
   },
@@ -1432,9 +1443,6 @@
     "storytelling_corto"
   ],
   "temas_cultural_boricua": [
-    "El arte de la trova: Narrando historias con música y poesía en Puerto Rico",
-    "La importancia de la música jibara en la identidad boricua",
-    "La celebración de las fiestas de la Cruz en los pueblos",
     "La tradición de la cocina boricua y sus platos típicos",
     "La importancia de la 'madre' en la cultura boricua",
     "El significado de la 'bomba y plena' en nuestra identidad",
@@ -1461,7 +1469,10 @@
     "La receta secreta del arroz con gandules: un análisis científico",
     "La historia detrás de los nombres de los barrios de San Juan",
     "La historia detrás de los platos típicos de la cocina puertorriqueña",
-    "La influencia de la cultura africana en la danza y la música boricua"
+    "La influencia de la cultura africana en la danza y la música boricua",
+    "La celebración del Día de los Tres Reyes Magos y sus tradiciones",
+    "La importancia de la música y la danza folclórica en la cultura boricua",
+    "La ironía y el humor en las historias de las fiestas de la calle San Sebastián"
   ],
   "temas_nightclub_promo": [
     "historia_del_club",
@@ -1537,11 +1548,6 @@
   "dias_especiales": {},
   "_normalized": true,
   "temas_trolleo_general": [
-    "La batalla por ser el último en pagar la cuenta en el restaurante",
-    "La ciencia de hacer que un dólar dure todo el día en la playa",
-    "Trolleando a los conductores en la autopista",
-    "La lucha diaria con los mosquitos en la isla",
-    "El arte de hacer cola en la oficina de correos",
     "La ironía de los 'trabajos rápidos' en la construcción",
     "La búsqueda del 'parking perfecto' en Old San Juan",
     "Trolleo a los peajes en PR: ¿Por qué pagan tanto por una carretera?",
@@ -1566,14 +1572,14 @@
     "Los peores consejos de amor en la calle Loíza",
     "¿Por qué los boricuas siempre llegan tarde?",
     "La batalla por el último pedazo de mofongo en la mesa",
-    "El arte de hacer fila en la oficina de vehículos motorizados"
+    "El arte de hacer fila en la oficina de vehículos motorizados",
+    "Troleando a los conductores de la autopista Las Américas",
+    "Los problemas de la vida en la urbanización versus la vida en el pueblo",
+    "La ironía de las relaciones amorosas en la era digital",
+    "El humor detrás de las situaciones cotidianas en la oficina",
+    "La sátira de los estereotipos de género en la sociedad boricua"
   ],
   "temas_trolleo_politico": [
-    "La paradoja de que los políticos prometan cambiar todo y no cambien nada",
-    "La crítica a la falta de transparencia en los contratos gubernamentales",
-    "La sátira de los discursos de los políticos y su relación con la realidad",
-    "La odisea de pagar la luz con LUMA",
-    "El misterio de los fondos desaparecidos en la política local",
     "La carrera por la reelección: promesas y realidad",
     "La lucha contra la corrupción: ¿quién es el verdadero enemigo?",
     "El impacto de las decisiones políticas en la vida diaria del boricua",
@@ -1598,6 +1604,11 @@
     "La búsqueda del funcionario público más perdido en la burocracia",
     "La carrera por ver quién puede hacer la promesa electoral más absurda",
     "El misterio de los fondos públicos desaparecidos",
-    "La ironía de la 'transparencia' gubernamental en Puerto Rico"
+    "La ironía de la 'transparencia' gubernamental en Puerto Rico",
+    "La crítica al manejo de la crisis energética por parte de LUMA",
+    "La ironía detrás de las promesas incumplidas de los políticos locales",
+    "La sátira de la corrupción gubernamental y su impacto en la sociedad",
+    "El humor cínico sobre la ineficiencia del sistema de transporte público",
+    "La parodia de las declaraciones contradictorias de los líderes políticos"
   ]
 }
