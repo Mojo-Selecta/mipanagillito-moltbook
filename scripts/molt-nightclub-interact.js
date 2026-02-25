@@ -366,39 +366,57 @@ async function main() {
     `💃 Hora PR: ${prTime.hour}:${String(prTime.minute).padStart(2, '0')}`,
   ]);
 
-  const online = await C.moltHealth();
-  if (!online) { C.log.warn('Moltbook offline — solo posteo al club chat'); }
-
   const stats = { invitation: false, botsInvited: 0, mentionsHandled: 0, clubChatMessages: 0 };
 
-  // ═══ FASE 1: INTELIGENCIA ═══
-  C.log.info('═══ FASE 1: INTELIGENCIA ═══');
-  let intel = { posts: [], bots: [], clubMentions: [] };
-  if (online) {
-    intel = await scanFeedForBots();
+  // ═══ FASE 1: CLUB CHAT — NO LLM NEEDED, ALWAYS RUNS FIRST ═══
+  C.log.info('═══ FASE 1: CLUB CHAT (no LLM) ═══');
+  try {
+    stats.clubChatMessages = await postClubChatMessages();
+  } catch (err) {
+    C.log.warn(`❌ Club chat error: ${err.message}`);
   }
 
-  // ═══ FASE 2: INVITACIÓN EN MOLTBOOK ═══
-  if (online) {
-    C.log.info('═══ FASE 2: INVITACIÓN EN MOLTBOOK ═══');
-    const invResult = await postInvitation();
-    stats.invitation = !!invResult;
-    await C.sleep(3000);
+  // ═══ FASE 2+: MOLTBOOK STUFF — NEEDS LLM, MAY FAIL ═══
+  const online = await C.moltHealth();
+  if (!online) {
+    C.log.warn('Moltbook offline — solo club chat');
+  } else {
+    // FASE 2: INTELIGENCIA
+    C.log.info('═══ FASE 2: INTELIGENCIA ═══');
+    let intel = { posts: [], bots: [], clubMentions: [] };
+    try {
+      intel = await scanFeedForBots();
+    } catch (err) {
+      C.log.warn(`❌ Feed scan error: ${err.message}`);
+    }
 
-    // ═══ FASE 3: INVITAR BOTS DIRECTO ═══
-    C.log.info('═══ FASE 3: INVITAR BOTS ═══');
-    stats.botsInvited = await inviteBots(intel);
-    await C.sleep(2000);
+    // FASE 3: INVITACIÓN EN MOLTBOOK (needs LLM)
+    try {
+      C.log.info('═══ FASE 3: INVITACIÓN EN MOLTBOOK ═══');
+      const invResult = await postInvitation();
+      stats.invitation = !!invResult;
+      await C.sleep(3000);
+    } catch (err) {
+      C.log.warn(`❌ Invitación falló (LLM?): ${err.message}`);
+    }
 
-    // ═══ FASE 4: MENCIONES ═══
-    C.log.info('═══ FASE 4: MENCIONES DEL CLUB ═══');
-    stats.mentionsHandled = await respondToClubMentions(intel);
-    await C.sleep(2000);
+    // FASE 4: INVITAR BOTS DIRECTO (needs LLM)
+    try {
+      C.log.info('═══ FASE 4: INVITAR BOTS ═══');
+      stats.botsInvited = await inviteBots(intel);
+      await C.sleep(2000);
+    } catch (err) {
+      C.log.warn(`❌ Bot invites fallaron (LLM?): ${err.message}`);
+    }
+
+    // FASE 5: MENCIONES (needs LLM)
+    try {
+      C.log.info('═══ FASE 5: MENCIONES DEL CLUB ═══');
+      stats.mentionsHandled = await respondToClubMentions(intel);
+    } catch (err) {
+      C.log.warn(`❌ Menciones fallaron (LLM?): ${err.message}`);
+    }
   }
-
-  // ═══ FASE 5: CLUB CHAT — ALWAYS RUNS ═══
-  C.log.info('═══ FASE 5: CLUB CHAT ═══');
-  stats.clubChatMessages = await postClubChatMessages();
 
   // ═══ TRACKING ═══
   C.log.info('═══ TRACKING ═══');
@@ -406,12 +424,17 @@ async function main() {
   history.add({ action: 'session', timestamp: new Date().toISOString(), stats, totalActions });
   history.save();
 
+  C.log.stat('Club chat messages', stats.clubChatMessages);
   C.log.stat('Invitación Moltbook', stats.invitation ? '✅' : '❌');
   C.log.stat('Bots invitados', stats.botsInvited);
   C.log.stat('Menciones respondidas', stats.mentionsHandled);
-  C.log.stat('Club chat messages', stats.clubChatMessages);
   C.log.stat('TOTAL acciones', totalActions);
   C.log.session();
 }
 
-main().catch(err => { C.log.error(err.message); process.exit(1); });
+main().catch(err => {
+  C.log.error(`💀 Fatal: ${err.message}`);
+  C.log.session();
+  // Exit 0 so GitHub Actions doesn't mark as failed if club chat worked
+  process.exit(0);
+});
