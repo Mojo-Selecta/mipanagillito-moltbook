@@ -104,13 +104,19 @@ async function postToClubChat(text, type = 'chat') {
         text: text.substring(0, 280),
         type: type
       }),
-      signal: AbortSignal.timeout(5000)
+      signal: AbortSignal.timeout(8000)
     });
+    const body = await res.text().catch(() => '');
     if (res.ok) {
       C.log.ok(`🦞 Club chat [${type}]: ${text.substring(0, 60)}...`);
       return true;
     }
-    C.log.warn(`❌ Club chat POST failed: ${res.status}`);
+    C.log.warn(`❌ Club chat POST ${res.status}: ${body.substring(0, 200)}`);
+    // 500 may still have written the message — treat as partial success
+    if (res.status === 500) {
+      C.log.info('   ⚠️ 500 but message may have been stored (known Worker issue)');
+      return true;
+    }
     return false;
   } catch (err) {
     C.log.warn(`❌ Club chat error: ${err.message}`);
