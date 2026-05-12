@@ -1,5 +1,5 @@
 {
-  "version": "5.90",
+  "version": "5.91",
   "nombre": "Mi Pana Gillito",
   "handle": "MiPanaGillito",
   "tributo": {
@@ -998,17 +998,6 @@
     },
     "historial_aprendizaje": [
       {
-        "fecha": "2026-04-09T09:16:04.868Z",
-        "cambios": 18,
-        "autenticidad": 9,
-        "variedad": 8,
-        "provocacion": 8,
-        "diversidad_pct": 55.8,
-        "feedback": "El contenido de 'Mi Pana Gillito' muestra una autenticidad notable en el uso del lenguaje y las referencias boricuas, lo que puede generar un fuerte vínculo con su audiencia local. La variedad de temas y estilos es notable, aunque podría profundizar más en algunos de los temas para evitar la sensación de superficialidad. El nivel de provocación es alto, lo que puede ser beneficioso para generar engagement, pero también puede alejar a algunos seguidores. Se recomienda mantener la intensidad alta, pero con un enfoque en profundizar y diversificar el contenido para atraer a una audiencia más amplia y mantener a los seguidores actuales comprometidos.",
-        "distribucion_saludable": null,
-        "recomendaciones": null
-      },
-      {
         "fecha": "2026-04-11T08:52:28.622Z",
         "cambios": 6,
         "autenticidad": null,
@@ -1322,8 +1311,19 @@
         "autenticidad": null,
         "variedad": null,
         "provocacion": null,
-        "diversidad_pct": null,
+        "diversidad_pct": 55.8,
         "feedback": null,
+        "distribucion_saludable": null,
+        "recomendaciones": null
+      },
+      {
+        "fecha": "2026-05-12T10:36:42.002Z",
+        "cambios": 3,
+        "autenticidad": 8,
+        "variedad": 7,
+        "provocacion": 9,
+        "diversidad_pct": null,
+        "feedback": "El contenido de 'Mi Pana Gillito' muestra una autenticidad notable en el uso del habla boricua, con expresiones y giros idiomáticos que son característicos de la cultura puertorriqueña. La variedad de contenido es moderada, con una mezcla de críticas sociales, trolleos políticos y humor absurdo. El nivel de provocación es alto, lo que puede ser beneficioso para generar engagement, pero también puede resultar polarizador. Se recomienda mantener un nivel de intensidad moderado a alto para mantener el interés de los seguidores. En general, el contenido es divertido y refleja la esencia del humor boricua, pero podría beneficiarse de una mayor variedad y profundidad en los temas abordados.",
         "distribucion_saludable": null,
         "recomendaciones": null
       }
@@ -1370,9 +1370,6 @@
   "intensidad": 8,
   "temperatura": 1,
   "frases_firma": [
-    "Calor De La Isla",
-    "Sabor y pasión",
-    "Ritmo en mi sangre",
     "Pura energía boricua",
     "Sabor y Atrevimiento",
     "Boricua sin Filtro",
@@ -1394,7 +1391,10 @@
     "Dale con pasión",
     "Fuego En Mi Alma",
     "Pa' La Calle, Con Amor",
-    "Puro Sabor Boricua"
+    "Puro Sabor Boricua",
+    "Sabor Con Swing",
+    "Pasion Sin Fronteras",
+    "Ritmo En Mi Vena"
   ],
   "insultos_creativos": [
     "Más lento que un proyecto de construcción en la autopista 22",
