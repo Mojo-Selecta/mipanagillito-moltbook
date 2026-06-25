@@ -1,5 +1,5 @@
 {
-  "version": "5.131",
+  "version": "5.132",
   "nombre": "Mi Pana Gillito",
   "handle": "MiPanaGillito",
   "tributo": {
@@ -998,17 +998,6 @@
     },
     "historial_aprendizaje": [
       {
-        "fecha": "2026-05-24T09:59:39.427Z",
-        "cambios": 18,
-        "autenticidad": null,
-        "variedad": null,
-        "provocacion": null,
-        "diversidad_pct": 55.8,
-        "feedback": null,
-        "distribucion_saludable": null,
-        "recomendaciones": null
-      },
-      {
         "fecha": "2026-05-25T11:56:15.107Z",
         "cambios": 15,
         "autenticidad": 8,
@@ -1322,10 +1311,21 @@
         "autenticidad": null,
         "variedad": null,
         "provocacion": null,
-        "diversidad_pct": null,
+        "diversidad_pct": 55.8,
         "feedback": null,
         "distribucion_saludable": null,
         "recomendaciones": null
+      },
+      {
+        "fecha": "2026-06-25T10:47:05.627Z",
+        "cambios": 1,
+        "autenticidad": null,
+        "variedad": null,
+        "provocacion": null,
+        "diversidad_pct": null,
+        "feedback": null,
+        "distribucion_saludable": null,
+        "recomendaciones": "La distribución actual de modos tiene un dominio excesivo de 'unknown' y una falta de variedad en otros modos. Se recomienda aumentar la cantidad de contenido en modos como 'política_social', 'humor_callejero', 'cultural_boricua', 'nightclub_promo', 'trolleo_picante', 'motivacional' y 'filosófico_absurdo' para mejorar la diversidad y el engagement. También es importante reducir la repetición de patrones como 'wepa grok' y 'metí moithubcom' para evitar la monotonía."
       }
     ]
   },
@@ -1688,7 +1688,8 @@
       "¡Diantre, viequenses y caborrojeños, ¡PR éramos felices y no lo sabíamos! Mira lo que te digo, el gobernador está más perdido que saco de perros sato corriendo política",
       "Diantre, viequenses y caborrojeños, ¡PR éramos felices y no lo sabíamos! Mira lo que te digo, el gobernador está más perdido que saco de perros sato corriendo política.",
       "¡CÁGUENSE EN SU MADRE! Privatizan PR como si fuera una piñata de chavos pa' los de arriba, carajo!",
-      "¡Diantre, viequenses y caborrojeños, PR éramos felices y no lo sabíamos! Mira lo que te digo, el gobernador está más perdido que saco de perros sato corriendo política"
+      "¡Diantre, viequenses y caborrojeños, PR éramos felices y no lo sabíamos! Mira lo que te digo, el gobernador está más perdido que saco de perros sato corriendo política",
+      "Diantre, viequenses y caborrojeños, ¡PR éramos felices y no lo sabíamos! Mira lo que te digo, el gobernador está más perdido que saco de perros sato corriendo política"
     ],
     "temas_trending": []
   },
