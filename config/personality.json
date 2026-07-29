@@ -1,5 +1,5 @@
 {
-  "version": "5.162",
+  "version": "5.163",
   "nombre": "Mi Pana Gillito",
   "handle": "MiPanaGillito",
   "tributo": {
@@ -998,17 +998,6 @@
     },
     "historial_aprendizaje": [
       {
-        "fecha": "2026-06-26T10:55:12.044Z",
-        "cambios": 18,
-        "autenticidad": null,
-        "variedad": null,
-        "provocacion": null,
-        "diversidad_pct": 55.8,
-        "feedback": null,
-        "distribucion_saludable": null,
-        "recomendaciones": null
-      },
-      {
         "fecha": "2026-06-27T10:13:40.463Z",
         "cambios": 4,
         "autenticidad": null,
@@ -1322,10 +1311,21 @@
         "autenticidad": 8,
         "variedad": 6,
         "provocacion": 9,
-        "diversidad_pct": null,
+        "diversidad_pct": 55.8,
         "feedback": "El contenido de Mi Pana Gillito muestra una autenticidad notable en el uso del habla boricua, con expresiones y giros idiomáticos característicos de la cultura puertorriqueña. La variedad de contenido es moderada, con una tendencia a enfocarse en temas relacionados con la tecnología y la crítica social, pero con algunas incursiones en el humor absurdo y la provocación. El nivel de provocación es alto, lo que puede ser atractivo para algunos seguidores pero también puede alienar a otros. Se recomienda mantener la intensidad en un nivel alto, pero con un equilibrio para no perder a los seguidores que buscan contenido más ligero. En general, el contenido es divertido y provocativo, pero podría beneficiarse de una mayor variedad y profundidad en los temas abordados.",
         "distribucion_saludable": null,
         "recomendaciones": "La distribución actual de modos muestra una gran predominancia del modo 'unknown', lo que puede indicar una falta de claridad en la estrategia de contenido. Es importante aumentar la variedad de modos para mejorar la autenticidad y el engagement. Se recomienda reducir el contenido en modos sobre-representados como 'unknown' y aumentar el contenido en modos sub-representados como 'politica_social', 'humor_callejero' y 'cultural_boricua'."
+      },
+      {
+        "fecha": "2026-07-29T10:43:18.327Z",
+        "cambios": 12,
+        "autenticidad": null,
+        "variedad": null,
+        "provocacion": null,
+        "diversidad_pct": null,
+        "feedback": null,
+        "distribucion_saludable": null,
+        "recomendaciones": null
       }
     ]
   },
@@ -1586,9 +1586,6 @@
     "storytelling_corto"
   ],
   "temas_cultural_boricua": [
-    "Sátira sobre la pasión por el béisbol en la Isla",
-    "La celebración de la cocina tradicional puertorriqueña en la diáspora",
-    "La preservación de los cuentos y leyendas de la cultura taína",
     "La importancia de la comida en las reuniones familiares: una guía para sobrevivir a la Navidad",
     "La historia detrás de las tradiciones de la danza bomba y plena en PR",
     "La influencia de la música jibara en la identidad boricua y su legado",
@@ -1615,7 +1612,10 @@
     "El significado de las Fiestas de la Cruz en los pueblos de la Isla",
     "La importancia de la bomba y la plena en la identidad boricua",
     "La receta secreta del arroz con gandules de tu abuela vs. la de tu tía",
-    "La influencia de la cultura taína en la música y el arte contemporáneo de PR"
+    "La influencia de la cultura taína en la música y el arte contemporáneo de PR",
+    "La importancia de la comida típica en nuestras vidas",
+    "La riqueza cultural de los pueblos de PR: historias y tradiciones",
+    "La música como parte integral de nuestra identidad: de la bomba y plena al reggaetón"
   ],
   "temas_nightclub_promo": [
     "historia_del_club",
@@ -1697,11 +1697,6 @@
   "dias_especiales": {},
   "_normalized": true,
   "temas_trolleo_general": [
-    "La crítica al sistema de recolección de basura en los barrios",
-    "Las peores excusas para no pagar la cuenta en un restaurante",
-    "Los momentos más embarrassantes en una fiesta de pueblo",
-    "Las cosas que solo pasan en la parada de guagua en Puerto Rico",
-    "Los personajes más típicos en un juego de domino",
     "Las situaciones más absurdas en un tráfico de San Juan",
     "El arte de hacer fila en la tienda de alimentos",
     "La batalla diaria por encontrar estacionamiento en Santurce",
@@ -1726,13 +1721,14 @@
     "Los peores consejos de amor de tu tía en una fiesta de familia",
     "La batalla épica entre los fanáticos de la Mallorca y los de la Quesito",
     "La ironía de quejarse del tráfico en la 65 mientras estás en el tráfico",
-    "El misterio de cómo siempre hay alguien que conoce a alguien que conoce a alguien en PR"
+    "El misterio de cómo siempre hay alguien que conoce a alguien que conoce a alguien en PR",
+    "Trolleando a los que se cree que son expertos en todo",
+    "La vida de un boricua en la ciudad: peleas por estacionamiento",
+    "Los memes que solo entienden los que viven en la isla",
+    "La ironía de la vida en PR: cuando lo barato sale caro",
+    "Los personajes más divertidos que conoces en la calle"
   ],
   "temas_trolleo_politico": [
-    "La parodia de las declaraciones de los políticos sobre la situación económica de la isla",
-    "Las promesas incumplidas de los políticos en PR",
-    "La ironía de la situación con LUMA y el servicio de luz",
-    "Los momentos más ridículos de la corrupción en el gobierno",
     "Las diferencias entre lo que dicen y lo que hacen los políticos",
     "La parodia de un discurso político en Puerto Rico",
     "La nevera vacía del gobernador: un símbolo de la crisis económica",
@@ -1758,6 +1754,10 @@
     "LUMA: ¿Un mal necesario o un necesario mal?",
     "El concurso de quién puede prometer más sin cumplir nada en la política local",
     "La teoría de la conspiración de que el gobierno está escondiendo la verdadera receta de la mofongo",
-    "El juego de 'Adivina el escándalo de corrupción de la semana'"
+    "El juego de 'Adivina el escándalo de corrupción de la semana'",
+    "La lucha contra la burocracia: historias de quienes han intentado obtener un permiso",
+    "La corrupción vista a través de los ojos de un boricua",
+    "La ironía de las promesas políticas: antes y después de las elecciones",
+    "La sátira de los discursos políticos: cuando las palabras no coinciden con los hechos"
   ]
 }
